@@ -293,7 +293,7 @@ type Close<T> = unsafe extern "C" fn(*mut *mut T, *mut c_char, usize, *mut usize
 /// do not acquire a new cross-owner concurrency guarantee.
 ///
 /// ```no_run
-/// use ams_mel::{C2MetadataEvent, ControlChannel, Error, ErrorKind};
+/// use ams_mel_ir::{C2MetadataEvent, ControlChannel, Error, ErrorKind};
 /// fn command_status(channel: &mut ControlChannel) -> Result<(), Error> {
 ///     let mut metadata = channel.open_metadata(8)?;
 ///     // Optional and independent of the three base registrations:
@@ -310,11 +310,11 @@ type Close<T> = unsafe extern "C" fn(*mut *mut T, *mut c_char, usize, *mut usize
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
-/// require_send::<ams_mel::C2MetadataStream>();
+/// require_send::<ams_mel_ir::C2MetadataStream>();
 /// ```
 /// ```compile_fail
 /// fn require_sync<T: Sync>() {}
-/// require_sync::<ams_mel::C2MetadataStream>();
+/// require_sync::<ams_mel_ir::C2MetadataStream>();
 /// ```
 #[derive(Debug)]
 pub struct C2MetadataStream {

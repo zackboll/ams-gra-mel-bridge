@@ -4,6 +4,9 @@
 //! This crate does not load providers, link native libraries or own channels.
 #![forbid(unsafe_code)]
 
+mod rf_mfa_state;
+pub use rf_mfa_state::RfMfaState;
+
 use std::error;
 use std::fmt;
 

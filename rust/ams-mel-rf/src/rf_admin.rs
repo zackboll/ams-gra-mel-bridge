@@ -13,126 +13,15 @@ use std::rc::Rc;
 
 use ams_mel_sys as sys;
 
-use crate::{c_path, c_string, call_with_diagnostic, checked_bool, protocol, Error, ErrorKind};
+use crate::{
+    c_path, c_string, call_with_diagnostic, checked_bool, protocol, Error, ErrorKind, RfMfaState,
+};
 
 /// Value placed in the native acceptance output before each command. A
 /// successful native call must overwrite it with exactly 0 or 1; if it does
 /// not, the result is reported as a protocol inconsistency rather than being
 /// mistaken for a provider rejection or acceptance.
 const UNWRITTEN_ACCEPTANCE: u32 = u32::MAX;
-
-/// Published Common MEL `MFA_State` value commanded through
-/// [`RfAdmin::command_state`].
-///
-/// These are MFA *states*, distinct from IR `MfaMode`. Each
-/// variant's discriminant is exactly the corresponding
-/// `AMS_MEL_IR_MFA_STATE_*` value; RF Admin uses the identical Common MEL
-/// domain (`ams_mel_rf_mfa_state_t`). Only the fifteen published values 0..=14
-/// exist, so an out-of-range state cannot be constructed through safe Rust.
-/// Raw values are admitted only through the checked `TryFrom<u32>`
-/// conversion, which rejects `MAX_EXCLUSIVE` (15) and every larger value.
-///
-/// ```
-/// use ams_mel_rf::{ErrorKind, RfMfaState};
-/// assert_eq!(RfMfaState::OperateRxOnly.as_raw(), 8);
-/// assert_eq!(RfMfaState::try_from(6)?, RfMfaState::Standby);
-/// assert_eq!(RfMfaState::try_from(15).unwrap_err().kind(), &ErrorKind::InvalidArgument);
-/// # Ok::<(), ams_mel_rf::Error>(())
-/// ```
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-#[repr(u32)]
-pub enum RfMfaState {
-    /// State has not been set (`0`).
-    NotSet = sys::AMS_MEL_IR_MFA_STATE_NOT_SET,
-    /// Subsystem state is unknown (`1`).
-    Unknown = sys::AMS_MEL_IR_MFA_STATE_UNKNOWN,
-    /// Subsystem is not installed (`2`).
-    NotInstalled = sys::AMS_MEL_IR_MFA_STATE_NOT_INSTALLED,
-    /// Subsystem is not powered up (`3`).
-    Off = sys::AMS_MEL_IR_MFA_STATE_OFF,
-    /// Bootstrap and initial operational flight program (OFP) load (`4`).
-    PreInitialization = sys::AMS_MEL_IR_MFA_STATE_PRE_INITIALIZATION,
-    /// Initialization and mission-data load (`5`).
-    Initialization = sys::AMS_MEL_IR_MFA_STATE_INITIALIZATION,
-    /// Initialization complete; ready to transition to operation (`6`).
-    Standby = sys::AMS_MEL_IR_MFA_STATE_STANDBY,
-    /// Subsystem may perform its enabled capabilities (`7`).
-    Operate = sys::AMS_MEL_IR_MFA_STATE_OPERATE,
-    /// Subsystem may perform its enabled receive-only capabilities (`8`).
-    OperateRxOnly = sys::AMS_MEL_IR_MFA_STATE_OPERATE_RX_ONLY,
-    /// Transmit-only operation state (`9`).
-    OperateTxOnly = sys::AMS_MEL_IR_MFA_STATE_OPERATE_TX_ONLY,
-    /// Performing or having performed the maintenance procedure (`10`).
-    Maintenance = sys::AMS_MEL_IR_MFA_STATE_MAINTENANCE,
-    /// State-commanded calibration that interrupts other functions (`11`),
-    /// distinct from calibration initiated through a BIT command without a state change.
-    Calibration = sys::AMS_MEL_IR_MFA_STATE_CALIBRATION,
-    /// State-commanded initiated built-in test (BIT) that interrupts other
-    /// functions (`12`), distinct from BIT commands that need no state change.
-    InitiatedBit = sys::AMS_MEL_IR_MFA_STATE_INITIATED_BIT,
-    /// Performing or having performed shutdown (`13`); the published state
-    /// definition specifies no subsystem messages once shutdown completes.
-    Shutdown = sys::AMS_MEL_IR_MFA_STATE_SHUTDOWN,
-    /// Subsystem cannot perform all normal activities (`14`).
-    Degraded = sys::AMS_MEL_IR_MFA_STATE_DEGRADED,
-}
-
-impl RfMfaState {
-    /// Every published state, in ascending raw-value order (0..=14).
-    pub const ALL: [RfMfaState; 15] = [
-        Self::NotSet,
-        Self::Unknown,
-        Self::NotInstalled,
-        Self::Off,
-        Self::PreInitialization,
-        Self::Initialization,
-        Self::Standby,
-        Self::Operate,
-        Self::OperateRxOnly,
-        Self::OperateTxOnly,
-        Self::Maintenance,
-        Self::Calibration,
-        Self::InitiatedBit,
-        Self::Shutdown,
-        Self::Degraded,
-    ];
-
-    /// Returns the exact Common MEL `MFA_State` value passed to the C ABI.
-    pub const fn as_raw(self) -> u32 {
-        self as u32
-    }
-}
-
-impl From<RfMfaState> for u32 {
-    fn from(state: RfMfaState) -> Self {
-        state.as_raw()
-    }
-}
-
-impl TryFrom<u32> for RfMfaState {
-    type Error = Error;
-
-    /// Checked raw conversion. Values 15 (`MAX_EXCLUSIVE`) and above return
-    /// [`ErrorKind::InvalidArgument`]; they are never mapped to a state.
-    ///
-    /// # Errors
-    /// Returns [`ErrorKind::InvalidArgument`] for any value outside `0..=14`.
-    fn try_from(raw: u32) -> Result<Self, Error> {
-        Self::ALL
-            .iter()
-            .copied()
-            .find(|state| state.as_raw() == raw)
-            .ok_or_else(|| {
-                Error::new(
-                    ErrorKind::InvalidArgument,
-                    format!(
-                        "RF MFA state {raw} is outside the published range 0..{}",
-                        sys::AMS_MEL_IR_MFA_STATE_MAX_EXCLUSIVE
-                    ),
-                )
-            })
-    }
-}
 
 /// Safe owner of one independent RF `createAdminMEL` provider object
 /// (`ams_mel_rf_admin *`).

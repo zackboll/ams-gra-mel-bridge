@@ -5,13 +5,15 @@
 //! RFMFAInfo snapshots are Rust-owned. This crate does not implement RF C2,
 //! ProductRx, Virtual Aperture, Job, transmit, waveform or DSP APIs.
 
+#[doc(inline)]
+pub use ams_mel_common::RfMfaState;
 pub use ams_mel_common::{Error, ErrorKind, ProviderVersion};
 
 mod rf_admin;
 mod rf_data;
 mod transport;
 
-pub use rf_admin::{RfAdmin, RfMfaState};
+pub use rf_admin::RfAdmin;
 pub use rf_data::{RfData, RfFaceInfo, RfFrequencyRange, RfJobDataFormat, RfMfaInfo};
 
 pub(crate) use transport::{

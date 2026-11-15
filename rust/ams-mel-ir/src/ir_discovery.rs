@@ -18,7 +18,7 @@ impl Session {
     /// cleanup errors never replace the original failure.
     ///
     /// ```no_run
-    /// use ams_mel::{ChannelCapability, ChannelType, Error, Session};
+    /// use ams_mel_ir::{ChannelCapability, ChannelType, Error, Session};
     /// pub fn discover_required(session: &Session)
     ///     -> Result<Vec<ChannelCapability>, Error> {
     ///     let capabilities = session.capabilities()?;

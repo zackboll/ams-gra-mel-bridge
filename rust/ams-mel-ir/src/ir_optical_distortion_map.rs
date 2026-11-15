@@ -1,4 +1,4 @@
-//! Complete owned reception of the conditional Image LineOfSightQuaternion callback.
+//! Complete owned reception of the optional Image OpticalDistortionMap callback.
 //! Native code owns registration, queueing and callback lifetime. The C facade
 //! is the trusted memory-provenance boundary; structural pointer checks cannot
 //! prove arbitrary addresses are mapped. Rust adds no callbacks or workers.
@@ -8,67 +8,77 @@ use std::{ffi::c_char, fmt, ptr, rc::Rc};
 use ams_mel_sys as sys;
 
 use crate::{
-    call_with_diagnostic, checked_span, command_return, protocol, CommandReturn, Error, ErrorKind,
-    ForwardRightDown, ImageMetadataCounters,
+    call_with_diagnostic, checked_span, command_return, copy_mapped, protocol, CommandReturn,
+    Error, ErrorKind, ImageMetadataCounters,
 };
 
-/// Quaternion components in published XYZW getter order, without normalization.
-/// Opposite signs remain distinct; no frame conversion or attitude is inferred.
+/// Untransformed components in published getter order. No units are inferred.
+/// Reusable for other native ForwardRightDown values, without normalization.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Quaternion {
-    /// Quaternion X component in the published XYZW order.
-    pub x: f64,
-    /// Quaternion Y component in the published XYZW order.
-    pub y: f64,
-    /// Quaternion Z component in the published XYZW order.
-    pub z: f64,
-    /// Quaternion W (scalar) component in the published XYZW order.
-    pub w: f64,
+pub struct ForwardRightDown {
+    /// Forward component; units are established only by the containing field.
+    pub forward: f64,
+    /// Right component; units are established only by the containing field.
+    pub right: f64,
+    /// Down component; units are established only by the containing field.
+    pub down: f64,
 }
 
-/// Complete owned callback value. Signed nanoseconds have no inferred epoch.
-/// Components are copied unchanged, including non-unit, zero, signed-zero,
-/// subnormal, extreme and nonfinite values. NaN payload bits are not promised
-/// beyond the native contract. Reception is not attitude estimation or evidence
-/// of physical accuracy. Values outlive every native owner and provider code.
-///
-/// The bridge receives the conditionally supported `LineOfSightQuaternion`
-/// callback through [`crate::ImageStream::open_line_of_sight_quaternion`]. Rust
-/// copies all three published getters before closing the native event. No
-/// quaternion-to-Euler conversion, covariance, validity interpretation or
-/// additional reference-frame convention is supplied by this API.
-///
-/// ```
-/// use ams_mel::{ForwardRightDown, LineOfSightQuaternion, Quaternion};
-/// let value = LineOfSightQuaternion {
-///     system_time_ns: -1,
-///     q_xyzw: Quaternion { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
-///     pqr_rps: ForwardRightDown { forward: 0.0, right: 0.0, down: 0.0 },
-/// };
-/// assert_eq!(value.q_xyzw.w, 1.0); // construction does not normalize or validate
-/// ```
+/// Provider coordinates; no origin, rounding or axis conversion is inferred.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct LineOfSightQuaternion {
-    /// Signed native system-time count in nanoseconds; no clock or epoch is inferred.
-    pub system_time_ns: i64,
-    /// Published aperture LOS quaternion in XYZW order at `system_time_ns`.
-    /// Upstream specifies the navigation frame: North/East/Down relative to
-    /// wander North. Rust neither normalizes it nor converts its frame.
-    pub q_xyzw: Quaternion,
-    /// Rotation rates about the image-coordinate forward/right/down axes,
-    /// in radians per second (P/Q/R respectively), not navigation-frame rates.
-    pub pqr_rps: ForwardRightDown,
+pub struct RowCol {
+    /// Provider row coordinate; no zero/one-based origin or rounding rule is inferred.
+    pub row: f64,
+    /// Provider column coordinate; no zero/one-based origin or rounding rule is inferred.
+    pub column: f64,
 }
 
-/// Conditional registration failure, preserving native status and diagnostic plus
+/// Every published getter, copied without interpreting dimension relationships.
+/// Collections preserve provider order, duplicates and independent lengths.
+/// Doubles retain signed zero, subnormals and nonfinite values; NaN payload bits
+/// are not promised by native code. Values outlive all native owners and code.
+///
+/// The bridge receives the optional `OpticalDistortionMap` callback through
+/// [`crate::ImageStream::open_optical_distortion_map`]. Rust copies all eleven
+/// getters, including both vectors, while the native event is alive. No native
+/// pointers survive. Map interpolation, dimension reconciliation, geometric
+/// calibration and additional reference conventions remain unavailable here.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OpticalDistortionMap {
+    /// Published forward-map sample width (row/column to angles), not a vector-length check.
+    pub width: u32,
+    /// Published forward-map sample height (row/column to angles), not a vector-length check.
+    pub height: u32,
+    /// Published right-axis backward-map sample count (angles to row/column).
+    pub right_size: u32,
+    /// Published down-axis backward-map sample count (angles to row/column).
+    pub down_size: u32,
+    /// Published number of pixels per distortion-map sample; no layout is derived.
+    pub pixels_per_odm: u32,
+    /// Right direction-cosine minimum extent for linear right/down to row/column mapping.
+    /// Copied without range validation or performing the mapping.
+    pub right_min: f64,
+    /// Right direction-cosine maximum extent for linear right/down to row/column mapping.
+    pub right_max: f64,
+    /// Down direction-cosine minimum extent for linear right/down to row/column mapping.
+    pub down_min: f64,
+    /// Down direction-cosine maximum extent for linear right/down to row/column mapping.
+    pub down_max: f64,
+    /// Complete ordered forward/right/down vector; no unit or normalization is inferred.
+    pub frd: Vec<ForwardRightDown>,
+    /// Complete ordered row/column vector, independent of the FRD vector length.
+    pub row_col: Vec<RowCol>,
+}
+
+/// Optional registration failure, preserving native status and diagnostic plus
 /// the provider Return only when native code actually published a known value.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct LineOfSightQuaternionOpenError {
+pub struct OpticalDistortionMapOpenError {
     error: Error,
     registration: Option<CommandReturn>,
 }
 
-impl LineOfSightQuaternionOpenError {
+impl OpticalDistortionMapOpenError {
     pub(crate) fn preflight(error: Error) -> Self {
         Self {
             error,
@@ -88,17 +98,17 @@ impl LineOfSightQuaternionOpenError {
     }
 }
 
-impl fmt::Display for LineOfSightQuaternionOpenError {
+impl fmt::Display for OpticalDistortionMapOpenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} (LineOfSightQuaternion registration: {:?})",
+            "{} (OpticalDistortionMap registration: {:?})",
             self.error, self.registration
         )
     }
 }
 
-impl std::error::Error for LineOfSightQuaternionOpenError {
+impl std::error::Error for OpticalDistortionMapOpenError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&self.error)
     }
@@ -108,60 +118,68 @@ type Close<T> = unsafe extern "C" fn(*mut *mut T, *mut c_char, usize, *mut usize
 
 /// Unique, independent native metadata consumer, not a borrow of Image/Session.
 ///
-/// Queued values drain before StreamStopped or ProviderFailed. Close discards the
+/// Queued maps drain before StreamStopped or ProviderFailed. Close discards the
 /// remaining queue but neither unregisters callbacks nor closes a parent nor
 /// waits for callback quiescence. Native physical teardown must ensure quiescence
 /// before provider unload. Drop is best-effort and does not panic. An uncertain
 /// release is never retried (fail-safe loss of ownership can leak native state).
 ///
-/// Registration is opt-in and independent of ordinary Image metadata, NUC and
-/// optical distortion. Zero capacity fails locally without consuming it; every
-/// actual native attempt, including refusal or failure, consumes this callback's
-/// one-shot. An unsuccessful registration publishes no stream and is not retried.
-/// Native callback state can remain inactive and retained until safe teardown.
-/// Inspect [`LineOfSightQuaternionOpenError::registration`] for a Return only
-/// when native code actually published one; optional support is not guaranteed.
-/// This unique owner is neither `Send` nor `Sync`.
+/// Registration is independent of ordinary Image metadata, NUC and quaternion
+/// LOS. Zero capacity fails locally; every actual native registration attempt,
+/// even refusal or partial failure, consumes this callback's one-shot. Failure
+/// publishes no stream; callback state may stay inactive and retained because
+/// upstream has no unregister operation. The error's `registration()` accessor
+/// exposes a provider Return only when native code actually published one.
+/// The owner is neither `Send` nor `Sync`; no cross-owner concurrency is added.
+///
+/// ```no_run
+/// use ams_mel_ir::{ImageStream, OpticalDistortionMapOpenError};
+/// fn open_map(image: &mut ImageStream) -> Result<(), OpticalDistortionMapOpenError> {
+///     let mut maps = image.open_optical_distortion_map(4)?;
+///     // Receive and Close errors are ordinary ams_mel_ir::Error values.
+///     if let Ok(map) = maps.receive(0) {
+///         println!("{} forward samples, {} row/column samples", map.frd.len(), map.row_col.len());
+///     }
+///     if let Err(error) = maps.close() { eprintln!("{error}"); }
+///     Ok(())
+/// }
+/// ```
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
-/// require_send::<ams_mel::LineOfSightQuaternionStream>();
+/// require_send::<ams_mel_ir::OpticalDistortionMapStream>();
 /// ```
 /// ```compile_fail
 /// fn require_sync<T: Sync>() {}
-/// require_sync::<ams_mel::LineOfSightQuaternionStream>();
-/// ```
-/// ```compile_fail
-/// fn require_clone<T: Clone>() {}
-/// require_clone::<ams_mel::LineOfSightQuaternionStream>();
+/// require_sync::<ams_mel_ir::OpticalDistortionMapStream>();
 /// ```
 #[derive(Debug)]
-pub struct LineOfSightQuaternionStream {
-    raw: *mut sys::AmsMelIrImageLosQuaternionMetadata,
-    close_op: Close<sys::AmsMelIrImageLosQuaternionMetadata>,
+pub struct OpticalDistortionMapStream {
+    raw: *mut sys::AmsMelIrImageOdmMetadata,
+    close_op: Close<sys::AmsMelIrImageOdmMetadata>,
     _not_send_sync: Rc<()>,
 }
 
-impl LineOfSightQuaternionStream {
+impl OpticalDistortionMapStream {
     pub(crate) fn open_with(
         queue_capacity: usize,
         open: impl FnOnce(
-            *mut *mut sys::AmsMelIrImageLosQuaternionMetadata,
+            *mut *mut sys::AmsMelIrImageOdmMetadata,
             *mut u32,
             *mut c_char,
             usize,
             *mut usize,
         ) -> i32,
-    ) -> Result<Self, LineOfSightQuaternionOpenError> {
+    ) -> Result<Self, OpticalDistortionMapOpenError> {
         if queue_capacity == 0 {
-            return Err(LineOfSightQuaternionOpenError::preflight(Error::new(
+            return Err(OpticalDistortionMapOpenError::preflight(Error::new(
                 ErrorKind::InvalidArgument,
-                "LineOfSightQuaternion queue capacity must be nonzero",
+                "OpticalDistortionMap queue capacity must be nonzero",
             )));
         }
         let mut owner = Self {
             raw: ptr::null_mut(),
-            close_op: sys::ams_mel_ir_image_los_quaternion_close,
+            close_op: sys::ams_mel_ir_image_odm_close,
             _not_send_sync: Rc::new(()),
         };
         // Unpublished sentinel, unchanged when native has no known Return.
@@ -175,16 +193,16 @@ impl LineOfSightQuaternionStream {
         self,
         result: Result<(), Error>,
         raw_registration: u32,
-    ) -> Result<Self, LineOfSightQuaternionOpenError> {
+    ) -> Result<Self, OpticalDistortionMapOpenError> {
         let registration = command_return(raw_registration).ok();
         // Drop guards even an unexpectedly published owner on failure.
-        result.map_err(|error| LineOfSightQuaternionOpenError {
+        result.map_err(|error| OpticalDistortionMapOpenError {
             error,
             registration,
         })?;
         if self.raw.is_null() || registration != Some(CommandReturn::Success) {
-            return Err(LineOfSightQuaternionOpenError {
-                error: protocol("LineOfSightQuaternion open succeeded without an owner and successful registration"),
+            return Err(OpticalDistortionMapOpenError {
+                error: protocol("OpticalDistortionMap open succeeded without an owner and successful registration"),
                 registration,
             });
         }
@@ -207,11 +225,11 @@ impl LineOfSightQuaternionStream {
     /// [`ErrorKind::ProviderFailed`]. A locally closed owner reports `ProviderFailed`. Invalid views,
     /// enums or text and copy-allocation failures are errors, not partial values; native event cleanup
     /// is still attempted. Returned values are independent of the stream, parent channel and provider.
-    pub fn receive(&mut self, timeout_ms: u32) -> Result<LineOfSightQuaternion, Error> {
+    pub fn receive(&mut self, timeout_ms: u32) -> Result<OpticalDistortionMap, Error> {
         let raw = self.live()?;
         self.receive_event_with(&EVENT_OPS, |out, d, c, r| {
             // SAFETY: unique live owner, writable guarded output slots.
-            unsafe { sys::ams_mel_ir_image_los_quaternion_receive(raw, timeout_ms, out, d, c, r) }
+            unsafe { sys::ams_mel_ir_image_odm_receive(raw, timeout_ms, out, d, c, r) }
         })
     }
 
@@ -219,12 +237,12 @@ impl LineOfSightQuaternionStream {
         &mut self,
         ops: &'static EventOps,
         receive: impl FnOnce(
-            *mut *mut sys::AmsMelIrImageLosQuaternionEvent,
+            *mut *mut sys::AmsMelIrImageOdmEvent,
             *mut c_char,
             usize,
             *mut usize,
         ) -> i32,
-    ) -> Result<LineOfSightQuaternion, Error> {
+    ) -> Result<OpticalDistortionMap, Error> {
         let mut event = NativeEvent {
             raw: ptr::null_mut(),
             ops,
@@ -243,7 +261,7 @@ impl LineOfSightQuaternionStream {
         let raw = self.live()?;
         self.counters_with(|out, d, c, r| {
             // SAFETY: unique live owner and exact writable counter record.
-            unsafe { sys::ams_mel_ir_image_los_quaternion_get_counters(raw, out, d, c, r) }
+            unsafe { sys::ams_mel_ir_image_odm_get_counters(raw, out, d, c, r) }
         })
     }
 
@@ -271,19 +289,19 @@ impl LineOfSightQuaternionStream {
         close_owned(&mut self.raw, self.close_op)
     }
 
-    fn live(&self) -> Result<*mut sys::AmsMelIrImageLosQuaternionMetadata, Error> {
+    fn live(&self) -> Result<*mut sys::AmsMelIrImageOdmMetadata, Error> {
         if self.is_open() {
             Ok(self.raw)
         } else {
             Err(Error::new(
                 ErrorKind::ProviderFailed,
-                "IR LineOfSightQuaternion stream is closed",
+                "IR OpticalDistortionMap stream is closed",
             ))
         }
     }
 }
 
-impl Drop for LineOfSightQuaternionStream {
+impl Drop for OpticalDistortionMapStream {
     fn drop(&mut self) {
         if !self.raw.is_null() {
             // SAFETY: unique owner; supported null diagnostics, no allocation.
@@ -304,7 +322,7 @@ fn close_owned<T>(raw: &mut *mut T, close: Close<T>) -> Result<(), Error> {
     })?;
     if !released.is_null() {
         return Err(protocol(
-            "LineOfSightQuaternion close succeeded without clearing the handle",
+            "OpticalDistortionMap close succeeded without clearing the handle",
         ));
     }
     Ok(())
@@ -312,33 +330,33 @@ fn close_owned<T>(raw: &mut *mut T, close: Close<T>) -> Result<(), Error> {
 
 struct EventOps {
     view: unsafe extern "C" fn(
-        *const sys::AmsMelIrImageLosQuaternionEvent,
-        *mut *const sys::AmsMelIrLineOfSightQuaternionV1,
+        *const sys::AmsMelIrImageOdmEvent,
+        *mut *const sys::AmsMelIrOpticalDistortionMapV1,
         *mut c_char,
         usize,
         *mut usize,
     ) -> i32,
-    close: Close<sys::AmsMelIrImageLosQuaternionEvent>,
+    close: Close<sys::AmsMelIrImageOdmEvent>,
 }
 
 static EVENT_OPS: EventOps = EventOps {
-    view: sys::ams_mel_ir_image_los_quaternion_event_view,
-    close: sys::ams_mel_ir_image_los_quaternion_event_close,
+    view: sys::ams_mel_ir_image_odm_event_view,
+    close: sys::ams_mel_ir_image_odm_event_close,
 };
 
 struct NativeEvent {
-    raw: *mut sys::AmsMelIrImageLosQuaternionEvent,
+    raw: *mut sys::AmsMelIrImageOdmEvent,
     ops: &'static EventOps,
 }
 
 impl NativeEvent {
     fn copy_with(
         mut self,
-        copy: impl FnOnce(&sys::AmsMelIrLineOfSightQuaternionV1) -> Result<LineOfSightQuaternion, Error>,
-    ) -> Result<LineOfSightQuaternion, Error> {
+        copy: impl FnOnce(&sys::AmsMelIrOpticalDistortionMapV1) -> Result<OpticalDistortionMap, Error>,
+    ) -> Result<OpticalDistortionMap, Error> {
         if self.raw.is_null() {
             return Err(protocol(
-                "LineOfSightQuaternion receive succeeded without an event",
+                "OpticalDistortionMap receive succeeded without an event",
             ));
         }
         let mut view = ptr::null();
@@ -347,7 +365,7 @@ impl NativeEvent {
             unsafe { (self.ops.view)(self.raw, &mut view, d, c, r) }
         })?;
         // SAFETY: facade provenance; validate the outer record before reading it.
-        let record = unsafe { checked_span(view, 1, "LineOfSightQuaternion event view")? };
+        let record = unsafe { checked_span(view, 1, "OpticalDistortionMap event view")? };
         let value = copy(&record[0])?;
         close_owned(&mut self.raw, self.ops.close)?;
         Ok(value)
@@ -364,35 +382,55 @@ impl Drop for NativeEvent {
 }
 
 // Only live facade storage (or backed unit fixtures) enters this private helper.
-fn map_from_raw(
-    raw: &sys::AmsMelIrLineOfSightQuaternionV1,
-) -> Result<LineOfSightQuaternion, Error> {
-    Ok(LineOfSightQuaternion {
-        system_time_ns: raw.system_time_ns,
-        q_xyzw: Quaternion {
-            x: raw.q_xyzw.x,
-            y: raw.q_xyzw.y,
-            z: raw.q_xyzw.z,
-            w: raw.q_xyzw.w,
-        },
-        pqr_rps: ForwardRightDown {
-            forward: raw.pqr_rps.forward,
-            right: raw.pqr_rps.right,
-            down: raw.pqr_rps.down,
-        },
+fn map_from_raw(raw: &sys::AmsMelIrOpticalDistortionMapV1) -> Result<OpticalDistortionMap, Error> {
+    // SAFETY: native event stays alive; both spans checked before copying either.
+    let frd = unsafe { checked_span(raw.frd.data, raw.frd.size, "OpticalDistortionMap FRD")? };
+    // SAFETY: same immutable event lifetime and trusted native provenance.
+    let row_col = unsafe {
+        checked_span(
+            raw.row_col.data,
+            raw.row_col.size,
+            "OpticalDistortionMap RowCol",
+        )?
+    };
+    Ok(OpticalDistortionMap {
+        width: raw.width,
+        height: raw.height,
+        right_size: raw.right_size,
+        down_size: raw.down_size,
+        pixels_per_odm: raw.pixels_per_odm,
+        right_min: raw.right_min,
+        right_max: raw.right_max,
+        down_min: raw.down_min,
+        down_max: raw.down_max,
+        frd: copy_mapped(frd, "OpticalDistortionMap FRD", |v| {
+            Ok(ForwardRightDown {
+                forward: v.forward,
+                right: v.right,
+                down: v.down,
+            })
+        })?,
+        row_col: copy_mapped(row_col, "OpticalDistortionMap RowCol", |v| {
+            Ok(RowCol {
+                row: v.row,
+                column: v.column,
+            })
+        })?,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_allocator::FAIL_SIZE;
     use std::{
         cell::Cell,
         panic::{catch_unwind, AssertUnwindSafe},
     };
 
-    fn empty_record() -> sys::AmsMelIrLineOfSightQuaternionV1 {
-        sys::AmsMelIrLineOfSightQuaternionV1::default()
+    fn empty_record() -> sys::AmsMelIrOpticalDistortionMapV1 {
+        // SAFETY: this C record contains only scalars and nullable raw-pointer spans.
+        unsafe { std::mem::zeroed() }
     }
 
     fn assert_protocol<T: fmt::Debug>(result: Result<T, Error>) {
@@ -403,53 +441,125 @@ mod tests {
     }
 
     #[test]
-    fn full_signed_time_range_and_all_float_fields_are_untransformed() {
-        for time in [i64::MIN, i64::MIN + 1, -1, 0, 1, i64::MAX - 1, i64::MAX] {
-            for bits in [
-                0,
-                1 << 63,
-                1,
-                (1 << 63) | 1,
-                f64::MAX.to_bits(),
-                (-f64::MAX).to_bits(),
-                f64::INFINITY.to_bits(),
-                f64::NEG_INFINITY.to_bits(),
-                f64::NAN.to_bits(),
+    fn every_scalar_preserves_full_width_and_double_bits() {
+        for value in [0, 1, 0x80000001, u32::MAX] {
+            let mut raw = empty_record();
+            raw.width = value;
+            raw.height = value;
+            raw.right_size = value;
+            raw.down_size = value;
+            raw.pixels_per_odm = value;
+            let map = map_from_raw(&raw).unwrap();
+            assert_eq!(
+                [
+                    map.width,
+                    map.height,
+                    map.right_size,
+                    map.down_size,
+                    map.pixels_per_odm
+                ],
+                [value; 5]
+            );
+        }
+        for bits in [
+            0,
+            1,
+            1 << 63,
+            f64::MAX.to_bits(),
+            f64::INFINITY.to_bits(),
+            f64::NEG_INFINITY.to_bits(),
+            f64::NAN.to_bits(),
+        ] {
+            let value = f64::from_bits(bits);
+            let frd = [sys::AmsMelIrForwardRightDownV1 {
+                forward: value,
+                right: value,
+                down: value,
+            }];
+            let rc = [sys::AmsMelIrRowColV1 {
+                row: value,
+                column: value,
+            }];
+            let mut raw = empty_record();
+            raw.right_min = value;
+            raw.right_max = value;
+            raw.down_min = value;
+            raw.down_max = value;
+            raw.frd = sys::AmsMelIrForwardRightDownSpanV1 {
+                data: frd.as_ptr(),
+                size: 1,
+            };
+            raw.row_col = sys::AmsMelIrRowColSpanV1 {
+                data: rc.as_ptr(),
+                size: 1,
+            };
+            let map = map_from_raw(&raw).unwrap();
+            for actual in [
+                map.right_min,
+                map.right_max,
+                map.down_min,
+                map.down_max,
+                map.frd[0].forward,
+                map.frd[0].right,
+                map.frd[0].down,
+                map.row_col[0].row,
+                map.row_col[0].column,
             ] {
-                let f = f64::from_bits(bits);
-                let raw = sys::AmsMelIrLineOfSightQuaternionV1 {
-                    system_time_ns: time,
-                    q_xyzw: sys::AmsMelIrQuaternionV1 {
-                        x: f,
-                        y: f,
-                        z: f,
-                        w: f,
-                    },
-                    pqr_rps: sys::AmsMelIrForwardRightDownV1 {
-                        forward: f,
-                        right: f,
-                        down: f,
-                    },
-                };
-                let value = map_from_raw(&raw).unwrap();
-                assert_eq!(value.system_time_ns, time);
-                for actual in [
-                    value.q_xyzw.x,
-                    value.q_xyzw.y,
-                    value.q_xyzw.z,
-                    value.q_xyzw.w,
-                    value.pqr_rps.forward,
-                    value.pqr_rps.right,
-                    value.pqr_rps.down,
-                ] {
-                    if f.is_nan() {
-                        assert!(actual.is_nan());
-                    } else {
-                        assert_eq!(actual.to_bits(), bits);
-                    }
+                if value.is_nan() {
+                    assert!(actual.is_nan());
+                } else {
+                    assert_eq!(actual.to_bits(), bits);
                 }
             }
         }
+    }
+
+    #[test]
+    fn spans_reject_null_misalignment_and_impossible_lengths_before_dereference() {
+        let frd = [sys::AmsMelIrForwardRightDownV1::default(); 2];
+        let rc = [sys::AmsMelIrRowColV1::default(); 3];
+        for (data, size) in [
+            (ptr::null(), 1),
+            (ptr::without_provenance(1), 1),
+            (frd.as_ptr(), usize::MAX),
+            (
+                frd.as_ptr(),
+                isize::MAX as usize / std::mem::size_of_val(&frd[0]) + 1,
+            ),
+        ] {
+            let mut raw = empty_record();
+            raw.frd = sys::AmsMelIrForwardRightDownSpanV1 { data, size };
+            assert_protocol(map_from_raw(&raw));
+        }
+        for (data, size) in [
+            (ptr::null(), 1),
+            (ptr::without_provenance(1), 1),
+            (rc.as_ptr(), usize::MAX),
+            (
+                rc.as_ptr(),
+                isize::MAX as usize / std::mem::size_of_val(&rc[0]) + 1,
+            ),
+        ] {
+            let mut raw = empty_record();
+            raw.row_col = sys::AmsMelIrRowColSpanV1 { data, size };
+            assert_protocol(map_from_raw(&raw));
+        }
+        let mut raw = empty_record();
+        // Empty spans need no valid pointer, including misaligned sentinels.
+        raw.frd.data = ptr::without_provenance(1);
+        raw.row_col.data = ptr::without_provenance(1);
+        assert!(map_from_raw(&raw).unwrap().frd.is_empty());
+        raw.frd = sys::AmsMelIrForwardRightDownSpanV1 {
+            data: frd.as_ptr(),
+            size: 2,
+        };
+        raw.row_col = sys::AmsMelIrRowColSpanV1 {
+            data: rc.as_ptr(),
+            size: 3,
+        };
+        let value = map_from_raw(&raw).unwrap();
+        assert_eq!((value.frd.len(), value.row_col.len()), (2, 3));
+        assert_eq!(value.row_col[0], value.row_col[2]);
     }
 
     unsafe fn diagnostic(d: *mut c_char, c: usize, r: *mut usize) {
@@ -465,14 +575,14 @@ mod tests {
     }
 
     struct FakeEvent {
-        view: sys::AmsMelIrLineOfSightQuaternionV1,
+        view: sys::AmsMelIrOpticalDistortionMapV1,
         closes: Rc<Cell<usize>>,
         mode: u8,
     }
 
     unsafe extern "C" fn view(
-        raw: *const sys::AmsMelIrImageLosQuaternionEvent,
-        out: *mut *const sys::AmsMelIrLineOfSightQuaternionV1,
+        raw: *const sys::AmsMelIrImageOdmEvent,
+        out: *mut *const sys::AmsMelIrOpticalDistortionMapV1,
         d: *mut c_char,
         c: usize,
         r: *mut usize,
@@ -489,11 +599,6 @@ mod tests {
             if fake.mode == 7 {
                 *r = 0;
             }
-            if fake.mode == 8 {
-                *r = 2;
-                *d = 0xff_u8 as c_char;
-                *d.add(1) = 0;
-            }
             if fake.mode == 5 {
                 sys::AMS_MEL_PROVIDER_EXCEPTION
             } else {
@@ -503,7 +608,7 @@ mod tests {
     }
 
     unsafe extern "C" fn event_close(
-        raw: *mut *mut sys::AmsMelIrImageLosQuaternionEvent,
+        raw: *mut *mut sys::AmsMelIrImageOdmEvent,
         d: *mut c_char,
         c: usize,
         r: *mut usize,
@@ -536,7 +641,10 @@ mod tests {
 
     fn event(mode: u8) -> (NativeEvent, Rc<Cell<usize>>) {
         let closes = Rc::new(Cell::new(0));
-        let view = empty_record();
+        let mut view = empty_record();
+        if mode == 8 {
+            view.row_col.size = 1;
+        }
         let raw = Box::into_raw(Box::new(FakeEvent {
             view,
             closes: closes.clone(),
@@ -557,7 +665,7 @@ mod tests {
             (5, Some(ErrorKind::ProviderException)),
             (6, Some(ErrorKind::ProtocolInconsistency)),
             (7, Some(ErrorKind::ProtocolInconsistency)),
-            (8, Some(ErrorKind::InvalidUtf8)),
+            (8, Some(ErrorKind::ProtocolInconsistency)),
         ] {
             let (event, closes) = event(mode);
             let result = event.copy_with(map_from_raw);
@@ -574,31 +682,40 @@ mod tests {
         ))
         .is_err());
         assert_eq!(closes.get(), 1);
-        let (event, closes) = self::event(0);
-        assert_protocol(event.copy_with(|_| Err(protocol("conversion rejected"))));
-        assert_eq!(closes.get(), 1);
     }
 
     #[test]
-    fn receive_unwind_after_publishing_an_event_releases_once() {
-        let (mut stream, _) = fake_stream();
-        let (mut event, closes) = event(0);
-        assert!(catch_unwind(AssertUnwindSafe(|| {
-            let _ = stream.receive_event_with(&OPS, |out, _, _, _| {
-                // SAFETY: writable guarded slot, transferring unique fake ownership.
-                unsafe {
-                    *out = event.raw;
-                }
-                event.raw = ptr::null_mut();
-                panic!("receive unwind after publishing");
-            });
-        }))
-        .is_err());
-        assert_eq!(closes.get(), 1);
+    fn allocation_failure_in_either_collection_releases_event_and_recovers() {
+        let frd = [sys::AmsMelIrForwardRightDownV1::default(); 4];
+        let rc = [sys::AmsMelIrRowColV1::default(); 3];
+        for size in [std::mem::size_of_val(&frd), std::mem::size_of_val(&rc)] {
+            let (event, closes) = event(0);
+            // SAFETY: private boxed fake, not currently borrowed or shared.
+            unsafe {
+                let raw = &mut *event.raw.cast::<FakeEvent>();
+                raw.view.frd = sys::AmsMelIrForwardRightDownSpanV1 {
+                    data: frd.as_ptr(),
+                    size: 4,
+                };
+                raw.view.row_col = sys::AmsMelIrRowColSpanV1 {
+                    data: rc.as_ptr(),
+                    size: 3,
+                };
+            }
+            FAIL_SIZE.with(|v| v.set(size));
+            let result = event.copy_with(map_from_raw);
+            let remaining = FAIL_SIZE.with(|v| v.replace(0));
+            assert_eq!(remaining, 0, "selected allocation must actually fail");
+            assert_eq!(result.unwrap_err().kind(), &ErrorKind::InternalError);
+            assert_eq!(closes.get(), 1);
+            let (event, closes) = self::event(0);
+            assert!(event.copy_with(map_from_raw).is_ok());
+            assert_eq!(closes.get(), 1);
+        }
     }
 
     unsafe extern "C" fn stream_close(
-        raw: *mut *mut sys::AmsMelIrImageLosQuaternionMetadata,
+        raw: *mut *mut sys::AmsMelIrImageOdmMetadata,
         d: *mut c_char,
         c: usize,
         r: *mut usize,
@@ -613,10 +730,10 @@ mod tests {
         sys::AMS_MEL_OK
     }
 
-    fn fake_stream() -> (LineOfSightQuaternionStream, Rc<Cell<usize>>) {
+    fn fake_stream() -> (OpticalDistortionMapStream, Rc<Cell<usize>>) {
         let closes = Rc::new(Cell::new(0));
         (
-            LineOfSightQuaternionStream {
+            OpticalDistortionMapStream {
                 raw: Box::into_raw(Box::new(closes.clone())).cast(),
                 close_op: stream_close,
                 _not_send_sync: Rc::new(()),
@@ -647,16 +764,15 @@ mod tests {
     }
 
     unsafe extern "C" fn uncertain_stream_close(
-        raw: *mut *mut sys::AmsMelIrImageLosQuaternionMetadata,
+        raw: *mut *mut sys::AmsMelIrImageOdmMetadata,
         d: *mut c_char,
         c: usize,
         r: *mut usize,
     ) -> i32 {
-        // SAFETY: backed counter retained by the test until all release attempts
-        // finish. Deliberately stale output models an uncertain native release.
+        // SAFETY: same fake ownership as stream_close, deliberately stale output.
         unsafe {
             diagnostic(d, c, r);
-            let counter = &*(*raw).cast::<Rc<Cell<usize>>>();
+            let counter = Box::from_raw((*raw).cast::<Rc<Cell<usize>>>());
             counter.set(counter.get() + 1);
         }
         sys::AMS_MEL_INTERNAL_ERROR
@@ -665,23 +781,15 @@ mod tests {
     #[test]
     fn uncertain_stream_close_is_attempted_exactly_once() {
         let (mut stream, closes) = fake_stream();
-        let backing = stream.raw;
         stream.close_op = uncertain_stream_close;
         assert_eq!(
             stream.close().unwrap_err().kind(),
             &ErrorKind::InternalError
         );
-        let second_close = stream.close();
-        let still_open = stream.is_open();
+        stream.close().unwrap();
+        assert!(!stream.is_open());
         drop(stream);
-        // SAFETY: fake retained its backing to detect retries without dangling
-        // pointer access. No operation can use it after the stream is dropped.
-        unsafe {
-            drop(Box::from_raw(backing.cast::<Rc<Cell<usize>>>()));
-        }
         assert_eq!(closes.get(), 1);
-        assert_eq!(second_close, Ok(()));
-        assert!(!still_open);
     }
 
     #[test]
@@ -796,7 +904,6 @@ mod tests {
     #[test]
     fn failed_open_preserves_status_and_registration_and_drops_unexpected_owner() {
         for registration in [
-            sys::AMS_MEL_IR_RETURN_BAD_POINTER,
             sys::AMS_MEL_IR_RETURN_FAIL,
             sys::AMS_MEL_IR_RETURN_NOT_SUPPORTED,
             sys::AMS_MEL_IR_RETURN_NOT_IMPLEMENTED,
@@ -815,7 +922,7 @@ mod tests {
 
     #[test]
     fn open_validates_outputs_and_local_preflight() {
-        for registration in [0, 1, 2, 3, 4, u32::MAX] {
+        for registration in [0, 1, 2, 3, u32::MAX] {
             let (stream, closes) = fake_stream();
             let result = stream.finish_open(Ok(()), registration);
             if command_return(registration).ok() == Some(CommandReturn::Success) {
@@ -829,7 +936,7 @@ mod tests {
             }
             assert_eq!(closes.get(), 1);
         }
-        let error = LineOfSightQuaternionStream::open_with(1, |_, reg, d, c, r| {
+        let error = OpticalDistortionMapStream::open_with(1, |_, reg, d, c, r| {
             // SAFETY: writable slots, deliberately no owner on success.
             unsafe {
                 diagnostic(d, c, r);
@@ -840,7 +947,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.error().kind(), &ErrorKind::ProtocolInconsistency);
         assert_eq!(
-            LineOfSightQuaternionStream::open_with(0, |_, _, _, _, _| panic!("must not register"))
+            OpticalDistortionMapStream::open_with(0, |_, _, _, _, _| panic!("must not register"))
                 .unwrap_err()
                 .registration(),
             None
@@ -850,7 +957,7 @@ mod tests {
             _not_send_sync: Rc::new(()),
         };
         for capacity in [0, 1] {
-            let error = image.open_line_of_sight_quaternion(capacity).unwrap_err();
+            let error = image.open_optical_distortion_map(capacity).unwrap_err();
             assert_eq!(error.error().kind(), &ErrorKind::ProviderFailed);
             assert_eq!(error.registration(), None);
         }
