@@ -208,3 +208,77 @@ available during preflight.
 Exact final-source commands/results and hosted evidence are recorded below and
 in the delivery PR. Independent technical review remains required; no self-approval
 or merge is authorized. Hosted pending/failing gates are not readiness.
+
+### Reproducible commands and observed results
+
+Run from `/home/zboll/git/ams-py-mel-017`. Native/Ada/Rust builds are sequential.
+For GNAT/GPRbuild-dependent commands the environment adds the installed
+`/home/zboll/.local/share/alire/toolchains/gnat_native_16.1.0_9f74f58a/bin` and
+`/home/zboll/.local/share/alire/toolchains/gprbuild_26.0.1_e3f27f25/bin` to PATH.
+No source warning policy is relaxed. Final committed-source repetitions and
+hosted commit/run links belong in the PR, including any final-source failure
+instead of treating this table as a waiver.
+
+| Command | Observed local result |
+| --- | --- |
+| `make test-native` | PASS, 799/799 CTest tests, including existing compiled-C11 ODM contract/layout/teardown tests |
+| `make test-python` | PASS, 684 tests, zero failures/skips; includes 21 new ODM tests and package compilation |
+| `make test-rust` | PASS, 604 tests, 15 existing ignored subprocess entry functions; parent scenarios exercise those entries |
+| `make test-policy` | PASS, 263 tests across ten suites |
+| `make check` | PASS, production/test build isolation, 799 CTests, Ada formatting, 70 structured-coverage controls, 52 Ada smoke PASS groups, final-newline and whitespace checks |
+| `make test-ada` | Executed separately as well as through `make check`; final result recorded in PR |
+| `python3 -W error -m unittest test_ir_image_optical_distortion_map test_package_layout test_import_identity test_abi -v` | PASS, 92 tests; includes 26 isolated ODM provider/lifecycle scenarios as subtests |
+| `python3 -W error -m compileall -q python/ams_mel python/tests/test_ir_image_optical_distortion_map.py` | PASS |
+| `python3 scripts/check_doc_source_integrity.py` | PASS, 825 vendor files and four workflows |
+| `python3 scripts/check_ir_api_coverage.py` | PASS, 127 headers / 148 operations; classifications unchanged |
+| `python3 docs/tools/feature_source.py --root /home/zboll/git/ams-py-mel-017` | PASS on clean committed source; commit/tree and six-file delta recorded |
+| `python3 scripts/check_final_newlines.py`; `git diff --check` | PASS |
+| Production `nm -D --defined-only native/build/lib/libams_mel_c.so.0` compared to `native/src/exports.map` | PASS, 326 exports, zero missing/unexpected, all six ODM exports present; test-only facade intentionally has additional probes |
+
+The focused command uses these explicit environment variables (also supplied by
+`make test-python` for full discovery):
+
+```sh
+export PYTHONPATH=/home/zboll/git/ams-py-mel-017/python:/home/zboll/git/ams-py-mel-017/python/tests
+export AMS_MEL_NATIVE_LIB=/home/zboll/git/ams-py-mel-017/native/build-tests/lib/libams_mel_c.so.0
+export AMS_MEL_TEST_PROVIDER_DIR=/home/zboll/git/ams-py-mel-017/native/build-tests/test-providers
+```
+
+Local normal documentation build passed on commit
+`4117f6abcbcc1325f0620e33fb46aadfceca28f1` with the pinned GNATdoc 26.0.0,
+GNAT 16.1.0, GPRbuild 26.0.0 and already-installed enhancer 0.1.5:
+
+```sh
+/home/zboll/git/mel-gnatdoc-015-002-evidence/enhancer/bin/python \
+  docs/tools/docs_ci.py build \
+  --root /home/zboll/git/ams-py-mel-017 \
+  --directory /home/zboll/git/ams-py-mel-017/.doc-tools/py-mel-017-corrected \
+  --gnatdoc-prefix /home/zboll/git/ams-mel-ada/.doc-tools/gnatdoc-26.0.0
+```
+
+Result: source-derived coverage 5,116/5,117, 101 informational GNATdoc warnings;
+locked/offline Rustdoc 1.98.1 produced 1,475 HTML and 638 assets. Final-source
+build uses a fresh output directory and is recorded in PR. This is local,
+non-deployable evidence, not hosted final-head documentation acceptance.
+
+Earlier unsuccessful attempts are not counted as passes: fixture/scenario test
+expectations, the obsolete no-public-ODM assertion, missing final newlines in new
+files, and one focused invocation during a native tree rebuild were corrected or
+rerun. The first local docs environment failed its pinned enhancer-version check;
+the corrected run reused an existing 0.1.5 installation whose wheel SHA-256 equals
+the repository pin `d712d330f213fc1909a66c47bc2c7e5e15d5ec687222bea3c4922f5243db4247`.
+An initial export-audit script incorrectly applied the production-only allowlist
+to the test facade; the corrected audit targets only the production DSO.
+No failing check was bypassed and no upstream/provider behavior was modified.
+
+### Limitations and outstanding review
+
+Qualification is Linux/compatible compiled mock only. No hardware, Squall,
+arbitrary-provider ABI compatibility, native pointer mapping proof, automatic
+acquisition, optical correction, unit inference, LOS quaternion Python reception,
+callback unregister or immediate quiescence is claimed. The deliberately
+uncertain ownership cases favor retention over unsafe retry. All safe owners
+still require external serialization. Hosted Bootstrap/documentation checks and
+independent review must be evaluated on the final PR commit; pending hosted jobs
+mean `HOSTED_CI_PENDING`, not merge readiness. Auto-merge stays disabled, and the
+author does not approve or merge this PR.
