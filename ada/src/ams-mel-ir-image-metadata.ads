@@ -24,8 +24,8 @@ package AMS.MEL.IR.Image.Metadata is
       Line_Of_Sight_Report_Event,
       Line_Of_Sight_Euler_Event,
       Navigation_Response_Event);
-   --  The four image callback families bound by this package; other optional upstream metadata
-   --  callbacks are not exposed.
+   --  The four callback alternatives in Metadata_Stream. NUC, camera response, optical distortion
+   --  map and quaternion line-of-sight metadata use separate opt-in owners in this package.
    --  @enum Bad_Pixel_List_Event Owned bad-pixel defect list.
    --  @enum Line_Of_Sight_Report_Event Owned sensor-relative pointing report.
    --  @enum Line_Of_Sight_Euler_Event Owned aperture line-of-sight Euler data.

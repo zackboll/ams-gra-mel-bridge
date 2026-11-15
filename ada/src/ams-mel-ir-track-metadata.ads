@@ -3,11 +3,11 @@ private with Ada.Finalization;
 with Interfaces;
 private with AMS.MEL_C_API;
 
---  Bounded owned polling of the conditionally required IRSTTrackReport
---  metadata callback (@RequiredIfTrack). The provider callback never invokes
---  Ada: it validates and copies a complete report into a bounded native
---  DROP-INCOMING queue that this package polls. Receive returns a wholly
---  Ada-owned value; no native event handle is ever exposed.
+--  Bounded owned polling of four Track metadata callback families. Provider
+--  callbacks never invoke Ada: they validate and copy complete events into one
+--  bounded native DROP-INCOMING queue. Receive_Event returns a wholly Ada-owned
+--  value; no native event handle is ever exposed. IRSTTrackReport is
+--  conditionally required by @RequiredIfTrack.
 --
 --  Registration lifetime: upstream has no unregister operation, so
 --  registration is one-shot per Track channel and the callback state belongs
@@ -18,17 +18,15 @@ private with AMS.MEL_C_API;
 --  The @Optional RequestSystemTrackData request is also delivered here. It is
 --  an inbound request from the provider, not a send: the published
 --  TrackChannel declares it only as a registerMetadataCallback overload and
---  declares no send(RequestSystemTrackData). Both kinds share the one bounded
---  queue, capacity, and counter set, and arrive in strict FIFO order.
+--  declares no send(RequestSystemTrackData).
 --
 --  The @RequiredIfDetectCandidateObjects CandidateObjectMessage is also
 --  delivered here. Upstream declares no send(CandidateObjectMessage) and no
 --  RequestFor<CandidateObjectMessage>, so it too is inbound callback metadata
 --  rather than an asynchronous request. It is registered only when the channel
 --  advertises ChannelMetadataCapabilityType::CandidateObjectMessage; when the
---  capability IS advertised, a refused registration fails Open closed, because
---  the channel promised the type. All three kinds share the one bounded queue,
---  capacity, and counter set and arrive in strict FIFO order.
+--  capability is advertised, a refused registration fails Open closed, because
+--  the channel promised the type.
 --
 --  The @Optional CandidateObjectPreProcMessage is also delivered here.
 --  Upstream declares no send(CandidateObjectPreProcMessage) and no
@@ -36,7 +34,7 @@ private with AMS.MEL_C_API;
 --  metadata. Because the callback itself is @Optional, a provider that answers
 --  NotSupported simply loses this one kind and Open still succeeds; any other
 --  non-Success answer fails Open closed. All four kinds share the one bounded
---  queue, capacity, and counter set and arrive in strict FIFO order.
+--  queue, capacity, and counter set in successful-enqueue order.
 --
 --  Every published TrackChannel-specific metadata callback is now represented.
 --  TrackDataUpdate and SystemTrackDataResponse are outbound sends and live in
@@ -392,7 +390,7 @@ package AMS.MEL.IR.Track.Metadata is
    --  @field Candidates Owned fixed-array candidate prefix and associated metadata.
    --  @field Candidate_PreProcs Owned independently sized PreProc vector and associated metadata.
 
-   --  Receives the next event of either kind. A positive timeout blocks until
+   --  Receives the next event of any supported kind. A positive timeout blocks until
    --  an event arrives, the stream stops, or the timeout expires; a zero
    --  timeout is a nonblocking poll. No Ada thread spins: the native adapter
    --  waits on a condition variable.

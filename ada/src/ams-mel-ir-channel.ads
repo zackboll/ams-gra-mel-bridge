@@ -400,12 +400,13 @@ package AMS.MEL.IR.Channel is
    --  @param Index One-based position in the navigation-frame vector.
    --  @return Reported coordinate-system category at that position.
 
-   --  Safe common Channel facade (Task 032B2).
+   --  Safe common Channel facade.
    --
    --  A View is created only by a typed family's As_Channel conversion:
    --  C2.As_Channel, Image.As_Channel, Health_Status.As_Channel,
-   --  Instrumentation.As_Channel, or Track.As_Channel. It is a controlled
-   --  owner of exactly one native weak common Channel view. It does NOT own
+   --  Instrumentation.As_Channel, Track.As_Channel, Scheduling.As_Channel or
+   --  Stacked_Image.As_Channel. It is a controlled owner of exactly one native
+   --  weak common Channel view. It does not own
    --  the typed family state, Session, provider Channel, Control, or provider
    --  library: after the typed owner and its Session close, common operations
    --  on a still-open View raise Provider_Error, while Close still succeeds.
@@ -468,8 +469,8 @@ package AMS.MEL.IR.Channel is
    --  @enum Not_Implemented Upstream Return::NotImplemented, native value 4.
 
    --  Submissions are valid while the family's common lifecycle admits
-   --  requests (C2/Health/Instrumentation/Track: Attached or Enabled; Image:
-   --  Attached or Running). Session admission refusal raises
+   --  requests (C2/Health/Instrumentation/Track/Scheduling/StackedImage:
+   --  Attached or Enabled; Image: Attached or Running). Session admission refusal raises
    --  AMS.MEL.Resource_Exhausted; any other submission failure, including an
    --  expired or closed View, raises Provider_Error. An admitted request owns
    --  the native family graph independently of the View, typed owner, and
@@ -484,8 +485,9 @@ package AMS.MEL.IR.Channel is
    --  explicit Close against Wait on the same request.
    function Send_Keep_Alive (Channel : View) return Return_Request;
    --  Submit the inherited keep-alive operation, not a typed mode command.
-   --  C2, Health, Instrumentation and Track admit it while Attached or Enabled;
-   --  Image admits it while Attached or Running. Expired targets or ineligible
+   --  C2, Health, Instrumentation, Track, Scheduling and StackedImage admit it
+   --  while Attached or Enabled; Image admits it while Attached or Running.
+   --  Expired targets or ineligible
    --  states raise a provider error. Session-wide admission refusal raises
    --  the resource-exhaustion exception; other submission failures raise a provider error.
    --  Successful submission does not establish future or command success.
@@ -547,8 +549,9 @@ package AMS.MEL.IR.Channel is
       Command_ID : AMS.MEL.IR.Channel.Command_ID;
       Request_ID : Comms_Request_ID) return Comms_Request;
    --  Submit the inherited communications test while the typed family admits
-   --  common operations: Attached/Enabled for C2, Health, Instrumentation and
-   --  Track; Attached/Running for Image. Session admission exhaustion raises
+   --  common operations: Attached/Enabled for C2, Health, Instrumentation,
+   --  Track, Scheduling and StackedImage; Attached/Running for Image.
+   --  Session admission exhaustion raises
    --  the resource-exhaustion exception. Closed/expired views, ineligible resources and other
    --  native failures raise a provider error. Submission is not completion.
    --  @param Channel Open weak view of an eligible typed channel.

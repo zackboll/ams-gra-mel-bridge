@@ -24,6 +24,31 @@ RECORD = '''   type Counters (Enabled : Boolean := True) is record
    --  @field Dropped Dropped event count.
 '''
 
+# Public shapes used by Discovery and Health_Status.Metadata. Generic actuals
+# are not local formal declarations; a private event exposes its discriminant
+# while the variant payload fields remain private.
+PACKAGE_INSTANCE = '''   package Capability_Vectors is new
+     Ada.Containers.Vectors
+       (Index_Type   => Positive,
+        Element_Type => AMS.MEL.IR.Channel.Channel_Capability,
+        "="          => AMS.MEL.IR.Channel."=");
+   --  Owned capability values in provider enumeration order.
+'''
+PRIVATE_EVENT = '''   type Metadata_Event
+     (Event_Kind : Metadata_Kind := MFA_Status_Event) is private;
+   --  Owned event whose discriminant selects its payload.
+   --  @field Event_Kind Selects the active payload.
+'''
+PRIVATE_EVENT_COMPLETION = '''private
+   type Metadata_Event
+     (Event_Kind : Metadata_Kind := MFA_Status_Event) is record
+      case Event_Kind is
+         when MFA_Status_Event => MFA : Natural;
+         when others => null;
+      end case;
+   end record;
+'''
+
 # Synthetic equivalent of PR #202's original public surface; deliberately prose
 # only. This does not import or change that PR's branch or corrected source.
 PR202 = '''package AMS.MEL.IR.Channel.Metadata is
@@ -319,6 +344,39 @@ class DeltaTests(unittest.TestCase):
         self.write('   function Read is new Generic_Read (Natural);\n')
         self.fails('Read unsupported generic subprogram instantiation')
 
+    def test_generic_package_named_actuals_and_next_declaration(self):
+        self.write(PACKAGE_INSTANCE + FUNCTION)
+        self.passes(2)
+
+    def test_generic_package_positional_actuals(self):
+        for declaration in (
+                'package Name_Vectors is new Ada.Containers.Indefinite_Vectors (Positive, String);',
+                'package ID_Vectors is new Ada.Containers.Vectors (Positive, UCI_ID);',
+                'package Temp_Point_Vectors is new Ada.Containers.Vectors (Positive, Temp_Point);'):
+            with self.subTest(declaration=declaration):
+                self.write('   ' + declaration + '\n   --  Owned ordered values.\n')
+                self.passes()
+
+    def test_generic_package_does_not_accept_subprogram_or_field_tags(self):
+        for tag, expected in (
+                ('@param Element_Type Element actual.', 'unexpected @param Element_Type'),
+                ('@return Owned container.', 'unexpected @return'),
+                ('@field Item Container element.', 'unexpected @field Item'),
+                ('@params Element_Type Typo.', 'malformed or unsupported structured tag @params')):
+            with self.subTest(tag=tag):
+                self.write(PACKAGE_INSTANCE + '   --  ' + tag + '\n')
+                self.fails(expected)
+
+    def test_generic_package_legacy_tags_checked_only_when_selected(self):
+        self.write(PACKAGE_INSTANCE + '   --  @param Item Legacy misplaced tag.\n')
+        self.commit()
+        self.base = self.git('rev-parse', 'HEAD').strip()
+        self.source.write_text(self.source.read_text().replace('end Demo;', FUNCTION + 'end Demo;'))
+        self.passes()
+        self.source.write_text(self.source.read_text().replace('Owned capability values',
+                                                             'Copied capability values'))
+        self.fails('Capability_Vectors unexpected @param Item')
+
     def test_inline_package_declaration_fails_closed(self):
         self.source.write_text('package Demo is function Inline return Boolean;\nend Demo;\n')
         self.fails('unsupported code on package header line')
@@ -327,10 +385,70 @@ class DeltaTests(unittest.TestCase):
         self.write('   package Nested is\n      function Hidden return Boolean;\n   end Nested;\n')
         self.fails('Nested unsupported nested public package')
 
+    def test_nested_package_with_instance_still_fails_closed(self):
+        self.write('   package Nested is\n' + PACKAGE_INSTANCE + '   end Nested;\n')
+        self.fails('Nested unsupported nested public package')
+
     def test_private_record_completion_does_not_require_fields(self):
         self.write('   type Owner is private;\n',
                    'private\n   type Owner is record\n      Hidden : Natural;\n   end record;\n')
         self.passes()
+
+    def test_private_event_visible_discriminant_and_private_variant_completion(self):
+        self.write(PRIVATE_EVENT, PRIVATE_EVENT_COMPLETION)
+        self.passes()
+
+    def test_private_event_missing_discriminant_description(self):
+        self.write(PRIVATE_EVENT.replace('   --  @field Event_Kind Selects the active payload.\n', ''),
+                   PRIVATE_EVENT_COMPLETION)
+        self.fails('Metadata_Event missing @field Event_Kind')
+
+    def test_private_event_duplicate_and_stale_discriminant_tags(self):
+        self.write(PRIVATE_EVENT + '   --  @field EVENT_KIND Duplicate discriminator.\n'
+                   '   --  @field Old_Kind Stale discriminator.\n', PRIVATE_EVENT_COMPLETION)
+        self.fails('duplicate @field EVENT_KIND', 'unexpected @field Old_Kind')
+
+    def test_private_event_empty_placeholder_and_malformed_tags(self):
+        for content in ('', 'TODO', 'TBD.', 'FIXME: describe', '...'):
+            with self.subTest(content=content):
+                self.write(PRIVATE_EVENT.replace('Selects the active payload.', content),
+                           PRIVATE_EVENT_COMPLETION)
+                self.fails('empty or placeholder @field Event_Kind')
+        self.write(PRIVATE_EVENT.replace('@field Event_Kind', '@fields Event_Kind'),
+                   PRIVATE_EVENT_COMPLETION)
+        self.fails('malformed or unsupported structured tag @fields', 'missing @field Event_Kind')
+
+    def test_private_event_does_not_expose_completion_fields(self):
+        self.write(PRIVATE_EVENT + '   --  @field MFA Hidden payload.\n', PRIVATE_EVENT_COMPLETION)
+        self.fails('unexpected @field MFA')
+
+    def test_private_type_grouped_visible_discriminants(self):
+        self.write('''   type Owner
+     (First, Second : Natural := 0;
+      Enabled : Boolean := True) is limited private;
+   --  @field First First selector.
+   --  @field Second Second selector.
+   --  @field Enabled Whether this owner is enabled.
+''')
+        self.passes()
+
+    def test_private_type_unknown_discriminants_declare_no_fields(self):
+        self.write('   type Owner (<>) is limited private;\n   --  Opaque owner.\n')
+        self.passes()
+        self.source.write_text(self.source.read_text().replace('end Demo;',
+                                                              '   --  @field Hidden Unknown field.\nend Demo;'))
+        self.fails('unexpected @field Hidden')
+
+    def test_private_discriminant_legacy_gap_checked_only_when_selected(self):
+        self.write(PRIVATE_EVENT.replace('   --  @field Event_Kind Selects the active payload.\n', ''),
+                   PRIVATE_EVENT_COMPLETION)
+        self.commit()
+        self.base = self.git('rev-parse', 'HEAD').strip()
+        self.source.write_text(self.source.read_text().replace('private\n   type Metadata_Event',
+                                                              FUNCTION + 'private\n   type Metadata_Event'))
+        self.passes()
+        self.source.write_text(self.source.read_text().replace('Owned event whose', 'Copied event whose'))
+        self.fails('Metadata_Event missing @field Event_Kind')
 
     def test_new_committed_file(self):
         self.source = self.source.with_name('new.ads')

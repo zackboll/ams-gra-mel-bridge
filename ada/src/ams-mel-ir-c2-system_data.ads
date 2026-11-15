@@ -35,15 +35,19 @@ package AMS.MEL.IR.C2.System_Data is
    --  Wait so no native pointer escapes. Its own Rejected state is still a
    --  Success future outcome. Reuses the shared enumeration types above.
    function Command_ID (Status : Command_Status) return Interfaces.Unsigned_32;
+   --  Read the command identifier copied from the provider's status response.
    --  @param Status Owned command status.
    --  @return Provider-reported unsigned command identifier, all 32 bits.
    function State (Status : Command_Status) return Command_State;
+   --  Read the command messaging state without inferring physical completion.
    --  @param Status Owned command status.
    --  @return Reported command messaging state, not physical completion.
    function Reason (Status : Command_Status) return Cannot_Comply;
+   --  Read the provider's reported inability category.
    --  @param Status Owned command status.
    --  @return Reported inability category; Not_Set denotes no reason.
    function Reason_Description (Status : Command_Status) return String;
+   --  Copy the complete provider reason text from the owned status value.
    --  @param Status Owned command status.
    --  @return Complete reason text, validated natively as UTF-8 without NUL.
 
@@ -53,18 +57,22 @@ package AMS.MEL.IR.C2.System_Data is
    --  null/malformed payloads, unknown codes and cleanup failures raise
    --  Provider_Error instead. Distinct from the Track overload's result type.
    function Status (Result : Response_Result) return Response_Outcome;
+   --  Read whether the future returned a CommandStatus or an explicit MEL rejection.
    --  @param Result Owned terminal result.
    --  @return Success or Rejected.
    function Command (Result : Response_Result) return Command_Status
    with Pre => Status (Result) = AMS.MEL.IR.Track.System_Data.Success;
+   --  Copy the CommandStatus payload of a successful future result.
    --  @param Result Successful result.
    --  @return Owned CommandStatus; its own state may be Rejected.
    function Rejection_Code (Result : Response_Result) return Response_Error_Code
    with Pre => Status (Result) = AMS.MEL.IR.Track.System_Data.Rejected;
+   --  Read the MEL error category of an explicitly rejected future result.
    --  @param Result Explicitly rejected result.
    --  @return Known upstream error code, not bridge admission exhaustion.
    function Description (Result : Response_Result) return String
    with Pre => Status (Result) = AMS.MEL.IR.Track.System_Data.Rejected;
+   --  Copy the complete rejection diagnostic from the owned result.
    --  @param Result Explicitly rejected result.
    --  @return Complete owned diagnostic, including long descriptions.
 
@@ -83,6 +91,7 @@ package AMS.MEL.IR.C2.System_Data is
    --  @exception Provider_Error Closed/Attached-only C2, refusal or send failure.
    --  @exception Resource_Exhausted This Session has no free completion permit.
    function Is_Open (Request : Response_Request) return Boolean;
+   --  Test public request-handle presence without polling the provider future.
    --  @param Request Observer to inspect.
    --  @return Local handle presence, not completion state.
    function Wait
