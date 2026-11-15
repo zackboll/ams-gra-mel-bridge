@@ -66,6 +66,12 @@ impl ControlChannel {
     /// [`crate::ReturnResult::Rejected`] retains an explicit MEL code and description.
     /// CommandStatus/BIT metadata is independent and not implicitly registered.
     /// Success is not proof of physical BIT execution, cancellation or fault clearance.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::InvalidArgument`] for an empty non-NoOp collection or embedded NUL,
+    /// and [`ErrorKind::InternalError`] if fallible payload allocation fails. Native lifecycle, admission
+    /// and provider failures retain their categories and diagnostics. A missing successful owner is
+    /// a protocol error. Submission success only creates a request; inspect its terminal result.
     pub fn submit_bit(&mut self, command: &BitCommand) -> Result<ReturnRequest, Error> {
         submit_with(command, |command, out| {
             call_with_diagnostic(|diagnostic, capacity, required| {

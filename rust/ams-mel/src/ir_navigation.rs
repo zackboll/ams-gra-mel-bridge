@@ -14,16 +14,26 @@ use crate::{
 /// a solution. No quality ordering or interpretation is imposed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PositionSolutionState {
+    /// Position solution has not been set (published value 0).
     NotSet,
+    /// Published aligning solution (1); upstream defines no accuracy threshold or quality rank.
     Aligning,
+    /// Published free-inertial solution (2); upstream defines no accuracy threshold or quality rank.
     FreeInertial,
+    /// Published GPS solution (3); upstream specifies no fix class, accuracy threshold or quality rank.
     Gps,
+    /// Published blended solution (4); upstream does not specify the blend algorithm or a quality rank.
     Blended,
 }
 
 impl TryFrom<u32> for PositionSolutionState {
     type Error = Error;
 
+    /// Converts exactly the five published solution values, without ranking them.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::InvalidArgument`] for the MaxExclusive sentinel (5)
+    /// or any other unpublished numeric value.
     fn try_from(value: u32) -> Result<Self, Error> {
         match value {
             sys::AMS_MEL_POSITION_SOLUTION_NOT_SET => Ok(Self::NotSet),
@@ -55,8 +65,11 @@ impl PositionSolutionState {
 /// none are inferred by this representation and no frame transform is applied.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NorthEastDown {
+    /// North component; units follow the containing navigation field.
     pub north: f64,
+    /// East component; units follow the containing navigation field.
     pub east: f64,
+    /// Down component; units are established only by the containing field.
     pub down: f64,
 }
 
@@ -64,7 +77,9 @@ pub struct NorthEastDown {
 /// The pinned declaration does not specify rate units or a timestamp epoch.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AttitudeRate {
+    /// Euler rate components; the pinned report does not explicitly establish rate units.
     pub attitude_rate: Euler,
+    /// Independent signed attitude-rate timestamp in nanoseconds, with no inferred epoch.
     pub attitude_rate_time_ns: i64,
 }
 
@@ -72,47 +87,116 @@ pub struct AttitudeRate {
 /// Covariance units are not stated upstream. No missing terms are synthesized.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PositionVelocityCovariance {
+    /// Published `position position pn pn` covariance term; units are unspecified and no symmetry completion is performed.
     pub position_position_pn_pn: f64,
+    /// Published `position position pn pe` covariance term; units are unspecified and no symmetry completion is performed.
     pub position_position_pn_pe: f64,
+    /// Published `position position pn pd` covariance term; units are unspecified and no symmetry completion is performed.
     pub position_position_pn_pd: f64,
+    /// Published `position position pe pe` covariance term; units are unspecified and no symmetry completion is performed.
     pub position_position_pe_pe: f64,
+    /// Published `position position pe pd` covariance term; units are unspecified and no symmetry completion is performed.
     pub position_position_pe_pd: f64,
+    /// Published `position position pd pd` covariance term; units are unspecified and no symmetry completion is performed.
     pub position_position_pd_pd: f64,
+    /// Published `position velocity pn vn` covariance term; units are unspecified and no symmetry completion is performed.
     pub position_velocity_pn_vn: f64,
+    /// Published `position velocity pn ve` covariance term; units are unspecified and no symmetry completion is performed.
     pub position_velocity_pn_ve: f64,
+    /// Published `position velocity pn vd` covariance term; units are unspecified and no symmetry completion is performed.
     pub position_velocity_pn_vd: f64,
+    /// Published `position velocity pe ve` covariance term; units are unspecified and no symmetry completion is performed.
     pub position_velocity_pe_ve: f64,
+    /// Published `position velocity pe vd` covariance term; units are unspecified and no symmetry completion is performed.
     pub position_velocity_pe_vd: f64,
+    /// Published `position velocity pd vd` covariance term; units are unspecified and no symmetry completion is performed.
     pub position_velocity_pd_vd: f64,
+    /// Published `velocity velocity vn vn` covariance term; units are unspecified and no symmetry completion is performed.
     pub velocity_velocity_vn_vn: f64,
+    /// Published `velocity velocity vn ve` covariance term; units are unspecified and no symmetry completion is performed.
     pub velocity_velocity_vn_ve: f64,
+    /// Published `velocity velocity vn vd` covariance term; units are unspecified and no symmetry completion is performed.
     pub velocity_velocity_vn_vd: f64,
+    /// Published `velocity velocity ve ve` covariance term; units are unspecified and no symmetry completion is performed.
     pub velocity_velocity_ve_ve: f64,
+    /// Published `velocity velocity ve vd` covariance term; units are unspecified and no symmetry completion is performed.
     pub velocity_velocity_ve_vd: f64,
+    /// Published `velocity velocity vd vd` covariance term; units are unspecified and no symmetry completion is performed.
     pub velocity_velocity_vd_vd: f64,
 }
 
 /// Complete published NavigationReport. Every numeric value is copied without
 /// normalization, range restriction, rounding, or coordinate/unit conversion.
+///
+/// This input becomes a complete native `NavigationReport` during
+/// [`ImageStream::submit_navigation_report`]; the native call copies it before
+/// returning, so the Rust value need not outlive the request. The bridge does
+/// not estimate navigation quality, validate physical consistency, fill missing
+/// covariance terms or turn the report into a metadata subscription. Timestamps
+/// have no established epoch; attitude-rate and covariance units and additional
+/// geodetic/reference conventions remain unspecified where upstream is silent.
+///
+/// ```
+/// use ams_mel::{AttitudeRate, Euler, NavigationReport, NorthEastDown,
+///               PositionSolutionState, PositionVelocityCovariance};
+/// let report = NavigationReport {
+///     system_time_ns: -10,
+///     state: PositionSolutionState::FreeInertial,
+///     latitude_rad: 0.5,
+///     longitude_rad: -1.0,
+///     altitude_m: 1200.0,
+///     attitude: Euler { roll: 0.0, pitch: 0.0, yaw: 0.0 },
+///     attitude_rate: AttitudeRate {
+///         attitude_rate: Euler { roll: 0.0, pitch: 0.0, yaw: 0.0 },
+///         attitude_rate_time_ns: -11,
+///     },
+///     speed: NorthEastDown { north: 20.0, east: 0.0, down: 0.0 },
+///     acceleration: NorthEastDown { north: 0.0, east: 0.0, down: 0.0 },
+///     wander_angle_rad: 0.0,
+///     magnetic_heading: 0.0,
+///     altitude_msl: 0.0,
+///     position_velocity_covariance_uncertainty: PositionVelocityCovariance {
+///         position_position_pn_pn: 1.0, position_position_pn_pe: 0.0,
+///         position_position_pn_pd: 0.0, position_position_pe_pe: 1.0,
+///         position_position_pe_pd: 0.0, position_position_pd_pd: 1.0,
+///         position_velocity_pn_vn: 0.0, position_velocity_pn_ve: 0.0,
+///         position_velocity_pn_vd: 0.0, position_velocity_pe_ve: 0.0,
+///         position_velocity_pe_vd: 0.0, position_velocity_pd_vd: 0.0,
+///         velocity_velocity_vn_vn: 1.0, velocity_velocity_vn_ve: 0.0,
+///         velocity_velocity_vn_vd: 0.0, velocity_velocity_ve_ve: 1.0,
+///         velocity_velocity_ve_vd: 0.0, velocity_velocity_vd_vd: 1.0,
+///     },
+/// };
+/// assert_eq!(report.attitude_rate.attitude_rate_time_ns, -11);
+/// // The numeric example is not a statement of sensor quality or valid flight data.
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NavigationReport {
     /// Signed nanoseconds; no clock or epoch is inferred.
     pub system_time_ns: i64,
+    /// Reported state in the containing record's published domain.
     pub state: PositionSolutionState,
+    /// Published latitude in radians; no geodetic datum or range validation is added.
     pub latitude_rad: f64,
+    /// Published longitude in radians; no wrapping or datum conversion is performed.
     pub longitude_rad: f64,
+    /// Published altitude in metres; no altitude datum is inferred.
     pub altitude_m: f64,
+    /// Published Euler attitude; see [`Euler`] for sequence and reference conventions.
     pub attitude: Euler,
+    /// Euler rate components; the pinned report does not explicitly establish rate units.
     pub attitude_rate: AttitudeRate,
     /// North/East/Down speed, metres per second.
     pub speed: NorthEastDown,
     /// North/East/Down acceleration, metres per second squared.
     pub acceleration: NorthEastDown,
+    /// Published wander angle in radians, copied without normalization.
     pub wander_angle_rad: f64,
     /// Upstream does not explicitly document units.
     pub magnetic_heading: f64,
     /// Barometric altitude; upstream does not explicitly document units.
     pub altitude_msl: f64,
+    /// All 18 published covariance terms, without inferred units or synthesized terms.
     pub position_velocity_covariance_uncertainty: PositionVelocityCovariance,
 }
 
@@ -182,11 +266,16 @@ impl NavigationReport {
 /// future. Only Success contains a valid NavigationReportResp.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NavigationResult {
+    /// Cached successful future completion carrying the provider response; not proof of sensor effects.
     Success {
+        /// Complete provider NavigationReportResp, copied into Rust-owned storage.
         response: NavigationResponse,
     },
+    /// Explicit provider MEL rejection, distinct from timeout or a failed future.
     Rejected {
+        /// Provider MEL error code; unknown codes retain their numeric value.
         code: MelErrorCode,
+        /// Complete provider rejection description, copied as UTF-8.
         description: String,
     },
 }
@@ -232,6 +321,27 @@ impl ImageStream {
     /// Valid while Attached (before Start) or Running, not after Stop/Close.
     /// Metadata callback delivery is separate from this request's completion.
     /// Image Close consumes its Rust owner, preventing any later submission.
+    /// The returned unique request is neither `Send` nor `Sync` and may outlive
+    /// Image and Session. A successful call is admission/submission, not future
+    /// completion or physical acceptance of the navigation state by a sensor.
+    ///
+    /// ```no_run
+    /// use ams_mel::{Error, ErrorKind, ImageStream, NavigationReport, NavigationResult};
+    /// fn submit(image: &mut ImageStream, report: &NavigationReport) -> Result<(), Error> {
+    ///     let mut request = image.submit_navigation_report(report)?;
+    ///     match request.wait(0) {
+    ///         Ok(NavigationResult::Success { response }) => println!("{response:?}"),
+    ///         Ok(NavigationResult::Rejected { code, description }) => {
+    ///             eprintln!("rejected: {code:?}: {description}");
+    ///         }
+    ///         Err(error) if error.kind() == &ErrorKind::Timeout => {
+    ///             // This timeout did not cancel work. Wait again or relinquish the owner.
+    ///         }
+    ///         Err(error) => return Err(error),
+    ///     }
+    ///     request.close() // nonblocking owner release, not cancellation
+    /// }
+    /// ```
     ///
     /// ```compile_fail
     /// fn after_close(mut image: ams_mel::ImageStream, report: &ams_mel::NavigationReport) {
@@ -239,6 +349,12 @@ impl ImageStream {
     ///     image.submit_navigation_report(report).unwrap();
     /// }
     /// ```
+    ///
+    /// # Errors
+    /// Native lifecycle, Session admission, provider exceptions and failed submission retain
+    /// their native error categories and diagnostics. Invalid solution states are rejected during
+    /// checked conversion; malformed successful output is a protocol error. Future MEL rejection
+    /// is returned by [`NavigationRequest::wait`] as [`NavigationResult::Rejected`], not inferred here.
     pub fn submit_navigation_report(
         &mut self,
         report: &NavigationReport,
@@ -285,6 +401,12 @@ impl NavigationRequest {
 
     /// Finite native wait; zero polls. Terminal outcomes are cached natively
     /// and repeatable. Timeout returns ErrorKind::Timeout, without cancellation.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::Timeout`] if the future is not ready within `timeout_ms` milliseconds.
+    /// This does not cancel work: polling with zero or waiting again is allowed. Provider/future
+    /// failures retain native categories; malformed responses, changing cached outcomes or invalid
+    /// UTF-8 are rejected rather than partially returned. Explicit MEL rejection is an `Ok` result.
     pub fn wait(&mut self, timeout_ms: u32) -> Result<NavigationResult, Error> {
         self.wait_with(timeout_ms, sys::ams_mel_ir_navigation_request_wait)
     }
@@ -379,6 +501,12 @@ impl NavigationRequest {
 
     /// Nonblocking release of the public owner only. A release is attempted
     /// once, even if the native status or output pointer is inconsistent.
+    ///
+    /// # Errors
+    /// Native cleanup failures retain their categories and diagnostics; inconsistent successful
+    /// owner output is a protocol error. See the owner's lifecycle contract for whether a failed
+    /// release retains a retryable handle or consumes the one release attempt. No outcome implies
+    /// cancellation of pending work or immediate callback quiescence.
     pub fn close(mut self) -> Result<(), Error> {
         self.close_inner()
     }
