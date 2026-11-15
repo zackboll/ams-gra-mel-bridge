@@ -285,8 +285,41 @@ rerun above, with preserved separate exit codes and no semantic script edits
 during execution, supersedes it. Final-newline checks also caught and corrected
 missing trailing newlines in the new scripts/report before final qualification.
 
-Final sequential repository results follow once actual runs finish;
-planned/ongoing checks are not passing evidence.
+### Sequential repository qualification
+
+Commands run from the absolute bridge root with pinned GNAT/GPRbuild on PATH,
+without concurrent native/Ada builds in its output directories. Logs live at
+`/tmp/irmel-minimal-qualification`:
+
+| Actual command | Observed result |
+| --- | --- |
+| `make format-ada` | PASS, exit 0; no Ada changes |
+| `make check-ada-format` | PASS, exit 0 |
+| `make check-ada-docs-changed` | PASS, exit 0; zero changed public declarations |
+| `make test-native` | PASS, exit 0; 821/821 |
+| `make test-python` | PASS, exit 0; 686 tests |
+| `make test-rust` | PASS, exit 0; 612 passed, 15 existing ignored, including doctests and isolated child runs |
+| `make test-ada` | PASS, exit 0; full existing smoke suite plus 14 new provider-free negative controls |
+| `make check-ir-api-coverage` | PASS, exit 0; 70 controls, unchanged coverage |
+
+Aggregate `make check`, pinned Alire build/run, Rust formatting/Clippy and final
+integrity checks follow sequentially. Results are recorded after completion,
+not inferred from individual earlier gates.
+
+## Delivery
+
+Non-draft PR: <https://github.com/zackboll/ams-gra-mel-bridge/pull/231>.
+Auto-merge is disabled; no self-approval or merge. Exact final HEAD/tree and
+final-HEAD hosted conclusions are recorded in the delivery comment to avoid
+self-referential identities. The initial base and integrated main identities
+are above. Hosted runs at source/report commit `9a6a1a1`:
+
+- Bootstrap: <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/43743201279>.
+- Documentation: <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/43743201287>.
+
+These superseded-HEAD results are not substituted for subsequent report
+commits' own exact-HEAD checks. Local full qualification must complete before
+the disposition can become HOSTED_CI_PENDING or READY_FOR_INDEPENDENT_REVIEW.
 
 ## Limitations
 
