@@ -47,6 +47,8 @@ class ControlChannel:
 
     @property
     def is_open(self) -> bool:
+        """Local C2 handle ownership, independent of enablement or provider health."""
+
         return bool(self._owner.value)
 
     def _require_open(self) -> None:
@@ -273,10 +275,14 @@ class ControlChannel:
         )
 
     def __enter__(self) -> ControlChannel:
+        """Return this existing open owner without starting or enabling provider work."""
+
         self._require_open()
         return self
 
     def __exit__(self, exception_type: object, exception: object, traceback: object) -> bool:
+        """Close on context exit, preserving an exception raised by the with body."""
+
         if exception_type is None:
             self.close()
         else:

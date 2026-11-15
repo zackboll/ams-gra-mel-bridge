@@ -33,7 +33,11 @@ _WAIT_DIAGNOSTIC_CAPACITY = 512
 
 
 class ModeRequest:
-    """Unique asynchronous mode request; close does not cancel provider work."""
+    """Unique Mode request from submit_mode or submit_operate.
+
+    Close releases the public observer without cancelling provider work.
+    This owner has no context-manager protocol; explicitly close it.
+    """
 
     def __init__(self) -> None:
         raise TypeError("ModeRequest objects must be created by ControlChannel.submit_operate")
@@ -48,6 +52,8 @@ class ModeRequest:
 
     @property
     def is_open(self) -> bool:
+        """Whether this object still owns its request handle, independent of completion."""
+
         return bool(self._owner.value)
 
     def _require_open(self) -> None:
@@ -89,10 +95,12 @@ class ModeRequest:
 class ReturnRequest:
     """Unique asynchronous Return request; close does not cancel provider work.
 
-    Created by :meth:`ControlChannel.submit_bit_noop` (C2 BIT) and
-    :meth:`ChannelView.send_keepalive` (common KeepAlive). Behavior is
-    identical for both: cached Wait, timeout is not cancellation, and the
+    Created by :meth:`ControlChannel.submit_bit_noop` (C2 BIT),
+    :meth:`ControlChannel.submit_config_set` (C2 ConfigSet), and
+    :meth:`ChannelView.send_keepalive` (common KeepAlive). All use cached
+    Wait; timeout is not cancellation, and the
     request owns the admitted native family graph independently of its parents.
+    This owner has no context-manager protocol; explicitly close it.
     """
 
     def __init__(self) -> None:
@@ -111,6 +119,8 @@ class ReturnRequest:
 
     @property
     def is_open(self) -> bool:
+        """Whether this object still owns its request handle, independent of completion."""
+
         return bool(self._owner.value)
 
     def _require_open(self) -> None:
@@ -155,6 +165,7 @@ class CommsRequest:
     Created by :meth:`ChannelView.submit_comms_test`. Owns the admitted native
     family graph independently of the View, typed owner, and Session. Wait and
     close on one request require external serialization.
+    This owner has no context-manager protocol; explicitly close it.
     """
 
     def __init__(self) -> None:
@@ -172,6 +183,8 @@ class CommsRequest:
 
     @property
     def is_open(self) -> bool:
+        """Whether this object still owns its request handle, independent of completion."""
+
         return bool(self._owner.value)
 
     def _require_open(self) -> None:

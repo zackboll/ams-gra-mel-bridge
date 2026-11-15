@@ -26,6 +26,8 @@ from ._validation import (
 
 @dataclass(frozen=True)
 class AbiVersion:
+    """Major and minor version of the loaded C facade, independent of a provider."""
+
     major: int
     minor: int
 
@@ -46,6 +48,8 @@ class ConfigSetCommand:
 
 @dataclass(frozen=True)
 class ProviderVersion:
+    """Owned provider API/library numbers and complete UTF-8 vendor and description text."""
+
     api_version: int
     library_version: int
     vendor: str
@@ -54,6 +58,8 @@ class ProviderVersion:
 
 @dataclass(frozen=True)
 class UciId:
+    """Identifier containing exactly 16 UUID bytes and a UTF-8 descriptive label."""
+
     uuid: bytes
     descriptive_label: str
 
@@ -67,6 +73,8 @@ class UciId:
 
 @dataclass(frozen=True)
 class ComponentLocation:
+    """Attachment offsets in metres with the provider-defined location key and system name."""
+
     offset_x_m: float
     offset_y_m: float
     offset_z_m: float
@@ -137,6 +145,8 @@ class ImageControlConfig:
 
 @dataclass(frozen=True)
 class ImageConfig:
+    """Image attachment identities and positive host-buffer/FIFO capacities for Mono8 acquisition."""
+
     channel_id: UciId
     platform_id: UciId
     sensor_location: ComponentLocation
@@ -182,6 +192,8 @@ class ImageConfig:
         buffer_size: int = 1_048_576,
         queue_capacity: int = 4,
     ) -> ImageConfig:
+        """Construct validated Image attachment identities and host-buffer/FIFO capacities."""
+
         return cls(
             channel_id,
             platform_id,
@@ -194,6 +206,8 @@ class ImageConfig:
 
 @dataclass(frozen=True)
 class ControlConfig:
+    """C2 attachment identities; constructing the record performs no provider operation."""
+
     channel_id: UciId
     platform_id: UciId
     sensor_location: ComponentLocation
@@ -216,6 +230,8 @@ class ControlConfig:
         platform_id: UciId,
         sensor_location: ComponentLocation,
     ) -> ControlConfig:
+        """Construct validated attachment identities without opening or enabling C2."""
+
         return cls(channel_id, platform_id, sensor_location)
 
 
@@ -235,6 +251,8 @@ class InstrumentationConfig:
         cls, channel_id: UciId, platform_id: UciId,
         sensor_location: ComponentLocation,
     ) -> InstrumentationConfig:
+        """Construct validated Instrumentation attachment identities without invoking a provider."""
+
         return cls(channel_id, platform_id, sensor_location)
 
 
@@ -254,6 +272,8 @@ class HealthConfig:
         cls, channel_id: UciId, platform_id: UciId,
         sensor_location: ComponentLocation,
     ) -> HealthConfig:
+        """Construct validated Health attachment identities without invoking a provider."""
+
         return cls(channel_id, platform_id, sensor_location)
 
 
@@ -278,6 +298,8 @@ def _validate_attachment_config(config: InstrumentationConfig | HealthConfig) ->
 
 
 class InstrumentationPriority(IntEnum):
+    """Published NORMAL and DEBUG recording priorities accepted by Instrumentation commands."""
+
     NORMAL = _native.AMS_MEL_IR_PRIORITY_NORMAL
     DEBUG = _native.AMS_MEL_IR_PRIORITY_DEBUG
 
@@ -294,6 +316,8 @@ def _instrumentation_priority(value: int) -> InstrumentationPriority:
 
 @dataclass(frozen=True)
 class InstrumentationLevelCommand:
+    """Recording-level command with an exact uint32 command ID and a published priority."""
+
     command_id: int
     priority: InstrumentationPriority
 
@@ -332,6 +356,8 @@ class InstrumentationMetadataCounters:
 
 @dataclass(frozen=True)
 class InstrumentationCompleted:
+    """Terminal Instrumentation result containing the owned provider report."""
+
     report: InstrumentationReport
 
     def __post_init__(self) -> None:
@@ -341,6 +367,8 @@ class InstrumentationCompleted:
 
 @dataclass(frozen=True)
 class InstrumentationRejected:
+    """Terminal Instrumentation MEL rejection with a published code and complete description."""
+
     code: MelErrorCode
     description: str
 
@@ -373,6 +401,8 @@ class MFAState(IntEnum):
 
 
 class MfaMode(IntEnum):
+    """Published mode identifiers used by ModeCommand and ModeSuccess; no scheduling owner is implied."""
+
     UNUSED = _native.AMS_MEL_IR_MFA_MODE_UNUSED
     TASK_SCHED = _native.AMS_MEL_IR_MFA_MODE_TASK_SCHED
     SCAN_VOLUME_SCHED = _native.AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED
@@ -380,11 +410,15 @@ class MfaMode(IntEnum):
 
 
 class CoordinateFrameReference(IntEnum):
+    """Inertial or aircraft reference for the corresponding scan-centre angle."""
+
     INERTIAL = _native.AMS_MEL_IR_COORD_FRAME_INERTIAL
     AIRCRAFT = _native.AMS_MEL_IR_COORD_FRAME_AIRCRAFT
 
 
 class DegradationMethod(IntEnum):
+    """Published capacity, volume, range or revisit choice carried in scan parameters."""
+
     CAPACITY = _native.AMS_MEL_IR_DEGRADATION_CAPACITY
     VOLUME = _native.AMS_MEL_IR_DEGRADATION_VOLUME
     RANGE = _native.AMS_MEL_IR_DEGRADATION_RANGE
@@ -470,6 +504,8 @@ class ModeCommand:
 
 
 class CommandReturn(IntEnum):
+    """Provider Return values; FAIL is a completed result, distinct from a bridge exception."""
+
     SUCCESS = _native.AMS_MEL_IR_RETURN_SUCCESS
     BAD_POINTER = _native.AMS_MEL_IR_RETURN_BAD_POINTER
     FAIL = _native.AMS_MEL_IR_RETURN_FAIL
@@ -478,6 +514,8 @@ class CommandReturn(IntEnum):
 
 
 class MelErrorCode(IntEnum):
+    """MEL rejection codes, preserving unknown uint32 values as UNKNOWN_0xXXXXXXXX members."""
+
     NONE = _native.AMS_MEL_ERROR_NONE
     INVALID_ID = _native.AMS_MEL_ERROR_INVALID_ID
     INVALID_STATE = _native.AMS_MEL_ERROR_INVALID_STATE
@@ -500,22 +538,30 @@ class MelErrorCode(IntEnum):
 
 @dataclass(frozen=True)
 class ModeSuccess:
+    """Terminal Mode response containing the provider-returned mode, not proof of a physical transition."""
+
     mode: MfaMode
 
 
 @dataclass(frozen=True)
 class ModeRejected:
+    """Terminal Mode MEL rejection with its exact code and complete UTF-8 description."""
+
     code: MelErrorCode
     description: str
 
 
 @dataclass(frozen=True)
 class ReturnCompleted:
+    """Terminal Return result, including normal non-success values such as CommandReturn.FAIL."""
+
     value: CommandReturn
 
 
 @dataclass(frozen=True)
 class ReturnRejected:
+    """Terminal MEL rejection from a Return request, separate from its completed Return values."""
+
     code: MelErrorCode
     description: str
 
@@ -544,11 +590,15 @@ class CommsTestReport:
 
 @dataclass(frozen=True)
 class CommsCompleted:
+    """Terminal CommsTest result carrying the returned command and request IDs."""
+
     report: CommsTestReport
 
 
 @dataclass(frozen=True)
 class CommsRejected:
+    """Terminal CommsTest MEL rejection with its exact code and complete description."""
+
     code: MelErrorCode
     description: str
 
@@ -571,12 +621,16 @@ class _Uint32PreservingEnum(IntEnum):
 
 
 class PixelFormat(_Uint32PreservingEnum):
+    """Advertised pixel-format vocabulary; unknown uint32 values are preserved, while receive supports Mono8."""
+
     MONO = _native.AMS_MEL_IR_PIXEL_MONO
     RGB = _native.AMS_MEL_IR_PIXEL_RGB
     BAYER = _native.AMS_MEL_IR_PIXEL_BAYER
 
 
 class SensorType(_Uint32PreservingEnum):
+    """Advertised sensor classifications, preserving unknown uint32 values."""
+
     UNSPECIFIED = _native.AMS_MEL_IR_SENSOR_UNSPECIFIED
     GIMBAL_HORIZONTAL = _native.AMS_MEL_IR_SENSOR_GIMBAL_HORIZONTAL
     GIMBAL_VERTICAL = _native.AMS_MEL_IR_SENSOR_GIMBAL_VERTICAL
@@ -585,6 +639,8 @@ class SensorType(_Uint32PreservingEnum):
 
 
 class ChannelType(_Uint32PreservingEnum):
+    """Advertised channel vocabulary, preserving unknown uint32 values without implying Python owner support."""
+
     IRST_TRACK = _native.AMS_MEL_IR_CHANNEL_IRST_TRACK
     IRST_IMAGE = _native.AMS_MEL_IR_CHANNEL_IRST_IMAGE
     COMMAND_AND_CONTROL = _native.AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL
@@ -597,6 +653,8 @@ class ChannelType(_Uint32PreservingEnum):
 
 
 class MetadataCapability(_Uint32PreservingEnum):
+    """Advertised metadata vocabulary; unknown uint32 values survive even for families without Python receivers."""
+
     BAD_PIXEL_LIST = _native.AMS_MEL_IR_METADATA_BAD_PIXEL_LIST
     OPTICAL_DISTORTION_MAP = _native.AMS_MEL_IR_METADATA_OPTICAL_DISTORTION_MAP
     LF_STATUS = _native.AMS_MEL_IR_METADATA_LF_STATUS
@@ -634,6 +692,8 @@ class MetadataCapability(_Uint32PreservingEnum):
 
 
 class BandType(_Uint32PreservingEnum):
+    """Published spectral-band identifiers; capability snapshots also preserve unknown uint32 values."""
+
     INVALID = _native.AMS_MEL_IR_BAND_INVALID
     MULTIBAND = _native.AMS_MEL_IR_BAND_MULTIBAND
     IR_FAR = _native.AMS_MEL_IR_BAND_IR_FAR
@@ -652,6 +712,8 @@ class BandType(_Uint32PreservingEnum):
 
 
 class CoordinateSystem(_Uint32PreservingEnum):
+    """Advertised navigation coordinate systems, preserving unknown uint32 values."""
+
     LLA = _native.AMS_MEL_IR_COORDINATE_LLA
     ECEF = _native.AMS_MEL_IR_COORDINATE_ECEF
     NED_PLATFORM = _native.AMS_MEL_IR_COORDINATE_NED_PLATFORM
@@ -660,6 +722,8 @@ class CoordinateSystem(_Uint32PreservingEnum):
 
 @dataclass(frozen=True)
 class BandInfo:
+    """Owned spectral-band classification and reported minimum/maximum wavelengths in metres."""
+
     kind: BandType
     min_wavelength_m: float
     max_wavelength_m: float
@@ -667,6 +731,8 @@ class BandInfo:
 
 @dataclass(frozen=True)
 class ImageBand:
+    """Owned band index and ordered spectral descriptions from a capability snapshot."""
+
     band_index: int
     bands: tuple[BandInfo, ...]
 
@@ -702,11 +768,15 @@ class ChannelCapability:
 
 
 class ImageType(Enum):
+    """Staring or scanning image classification carried by an owned Frame."""
+
     STARING = "staring"
     SCANNING = "scanning"
 
 
 class ImageFlip(Enum):
+    """Provider-reported image flip; the binding does not apply this orientation to pixel bytes."""
+
     NONE = "none"
     VERTICAL = "vertical"
     HORIZONTAL = "horizontal"
@@ -715,6 +785,12 @@ class ImageFlip(Enum):
 
 @dataclass(frozen=True)
 class Frame:
+    """Owned Mono8 frame with tightly packed pixel bytes and copied image metadata.
+
+    Timestamps and metadata retain the provider values; receiving a frame does
+    not apply flips, offsets, optical correction or a clock-domain conversion.
+    """
+
     system_time_ns: int
     integration_time_ns: int
     width: int
@@ -739,6 +815,8 @@ class Frame:
 
 @dataclass(frozen=True)
 class StreamCounters:
+    """Cumulative frame-callback counts, including incoming overflow drops and malformed/unsupported frames."""
+
     frames_received: int
     frames_dropped_queue_full: int
     malformed_or_unsupported: int

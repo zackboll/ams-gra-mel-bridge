@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Python API — AMS GRA MEL Bridge</title>
+  <link rel="stylesheet" href="assets/reference.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header>
+  <p>AMS MEL Python documentation</p>
+  {{navigation}}
+</header>
+<main id="main">
+  <h1>Python API</h1>
+  <p>The <code>ams_mel</code> package provides owned Python values, explicit native owners,
+  asynchronous requests and polling receivers over the bridge's C facade. Import
+  public names from <code>ams_mel</code>. The package uses the Python standard library;
+  importing it also requires the separately built native facade.</p>
+  <p>Start with <a href="getting-started.html">setup and a first session</a>, then read
+  <a href="ownership-and-errors.html">ownership and errors</a> before integrating a
+  provider. The <a href="api-index.html">searchable API index</a> contains the public
+  exports, signatures, value fields, enum members and owner methods. Implementation
+  source views are provided for inspection and do not define an additional public API.</p>
+
+  <section id="guides">
+    <h2>Choose a guide</h2>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Task</th><th>Guide</th></tr></thead>
+      <tbody>
+        <tr><td>Load the facade, open a provider and inspect its advertisements</td><td><a href="getting-started.html">Getting started</a></td></tr>
+        <tr><td>Manage owners, timeouts, close failures and result variants</td><td><a href="ownership-and-errors.html">Ownership and errors</a></td></tr>
+        <tr><td>Acquire Mono8 frames, use control-only Image, send commands or receive metadata</td><td><a href="ir-workflows.html">IR workflows</a></td></tr>
+        <tr><td>Open independent RF Admin and request a state</td><td><a href="rf-admin.html">RF Admin</a></td></tr>
+        <tr><td>Look up a public class, field, enum or method</td><td><a href="api-index.html">API index</a></td></tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section id="implemented-surface">
+    <h2>Implemented Python surface</h2>
+    <p>The following table describes the safe Python interface. A provider may expose
+    fewer capabilities or reject an operation. An advertised enum value alone does
+    not establish that the Python package has a matching typed owner or receiver.</p>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Area</th><th>Public entry points</th><th>Behavior and boundaries</th></tr></thead>
+      <tbody>
+        <tr><td>Session and discovery</td><td>{{api:Session}}, {{api:abi_version}}</td><td>Provider lifecycle, complete version strings and ordered, owned capability snapshots. Discovery attaches no channel.</td></tr>
+        <tr><td>Image acquisition and control</td><td>{{api:ImageStream}}, {{api:ImageConfig}}, {{api:ImageControlConfig}}</td><td>Host-memory Mono8 frames, or a control-only attachment with commands and metadata but no acquisition buffers. Start is explicit.</td></tr>
+        <tr><td>StackedImage foundation</td><td>{{api:StackedChannel}}, {{api:StackedConfig}}</td><td>Attach, explicitly enable, inspect capabilities and use common channel services. No stacked-frame acquisition or stack geometry API.</td></tr>
+        <tr><td>C2 commands</td><td>{{api:ControlChannel}}, {{api:ModeCommand}}, {{api:ConfigSetCommand}}</td><td>Complete published Mode/scan input, ConfigSet, Operate convenience and empty BIT submission. Payload-bearing BIT execution is absent.</td></tr>
+        <tr><td>Navigation</td><td>{{api:NavigationReport}}, {{api:NavigationRequest}}</td><td>Complete Image navigation input and an independently observed request result. A NavigationResponse callback is a separate event.</td></tr>
+        <tr><td>Health and Instrumentation</td><td>{{api:HealthStatusChannel}}, {{api:InstrumentationChannel}}</td><td>Six Health metadata families; recording-level commands and Instrumentation reports. Enable and callback registration are explicit.</td></tr>
+        <tr><td>Common channel services</td><td>{{api:ChannelView}}, {{api:CommsTestRequest}}</td><td>Weak views, KeepAlive, CommsTest and complete capability snapshots. Common callback reception is supported on Health, Image and StackedImage.</td></tr>
+        <tr><td>Image and C2 callbacks</td><td>{{api:ImageMetadataStream}}, {{api:C2MetadataStream}}</td><td>Four ordinary Image families and C2 CommandStatus/BIT configuration/BIT status, with separately enabled C2 CommsTest events.</td></tr>
+        <tr><td>Separate optional callbacks</td><td>{{api:NucStream}}, {{api:CameraResponseStream}}, {{api:OpticalDistortionMapStream}}</td><td>NUC temperature data on Image/Health; CameraCommandResp and complete ODM snapshots on Image.</td></tr>
+        <tr><td>RF Admin</td><td>{{api:RFAdmin}}</td><td>Independent AdminMEL factory, state-command acceptance and shutdown. RF data/product/job APIs are not exposed in safe Python.</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section id="scope">
+    <h2>Reading the reference accurately</h2>
+    <p>Python currently has no safe Track or Scheduling owner, generic buffer
+    registration or checkout API, CameraCommand submission, or LineOfSightQuaternion
+    receiver. Names such as <code>ChannelType.SCHEDULING</code> and
+    <code>MetadataCapability.LINE_OF_SIGHT_QUATERNION</code> belong to the advertised
+    value vocabulary. They do not expand the implemented feature set.</p>
+    <p>Returned frames, metadata and capabilities contain Python-owned data. Native
+    owners have separate lifecycle rules: a weak view does not keep a channel alive,
+    closing a request does not cancel it, and closing a metadata consumer does not
+    unregister the callback. The guides explain these distinctions and point to the
+    corresponding method contracts.</p>
+    <p>These pages describe the checked-in Python interface and its native contracts.
+    They do not establish hardware readiness, universal provider configuration or
+    qualification of a particular provider. For other languages, return to the
+    <a href="../index.html">documentation portal</a>.</p>
+  </section>
+</main>
+<footer><p>AMS MEL Python documentation. Provider support remains runtime-specific.</p></footer>
+</body>
+</html>

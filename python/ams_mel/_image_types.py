@@ -10,6 +10,8 @@ from ._health_types import Euler
 
 
 class ImageMetadataKind(IntEnum):
+    """The four ordinary Image families; NUC, CameraCommandResp and ODM use separate receivers."""
+
     BAD_PIXEL_LIST = 1
     LINE_OF_SIGHT_REPORT = 2
     LINE_OF_SIGHT_EULER = 3
@@ -17,6 +19,8 @@ class ImageMetadataKind(IntEnum):
 
 
 class BadPixelReason(IntEnum):
+    """Published bad-pixel reason domain, currently containing only UNKNOWN."""
+
     UNKNOWN = 0
 
 
@@ -90,6 +94,8 @@ _ImagePayload = Union[BadPixelList, LineOfSightReport, LineOfSightEuler, Navigat
 
 @dataclass(frozen=True)
 class ImageMetadataEvent:
+    """Owned ordinary Image callback with an exact matching kind/payload pair."""
+
     kind: ImageMetadataKind
     payload: _ImagePayload
 
@@ -104,6 +110,8 @@ class ImageMetadataEvent:
 
 @dataclass(frozen=True)
 class ImageMetadataCounters:
+    """Cumulative uint64 callback counts for Image metadata, also reused by the ODM receiver."""
+
     events_received: int
     events_dropped_queue_full: int
     malformed_or_unsupported: int
