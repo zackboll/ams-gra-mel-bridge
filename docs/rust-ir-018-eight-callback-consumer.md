@@ -409,3 +409,239 @@ The parity gaps below remain despite these successful communications observation
 No binding defect or unresolved upstream semantic was worked around. The remaining
 gaps require separate tasks; this application does not claim full C++ parity or
 hardware functionality.
+
+---
+
+## RUST-IR-018-R1 — corrected-main integration (2026-11-15)
+
+### Source integration and historical blocker
+
+This section records fresh integration evidence; the earlier counts, artifacts,
+review and failed hosted run are historical, not current qualification. Existing
+PR [#224](https://github.com/zackboll/ams-gra-mel-bridge/pull/224), branch
+`feature/rust-ir-018-eight-callback-consumer`, and clean worktree
+`/home/zboll/git/ams-rust-ir-018` were reused. All remote references were fetched
+before integration. Main had advanced beyond the task-preparation snapshot to
+`43f8acc8843a907dd91150961bc94023ec23c414`; the feature was one commit ahead and
+49 behind. No newer feature work or unrelated worktree was overwritten.
+
+Ordinary merge `c21cabc470c4a0c0b06f333400c179fe10de69b0` has parents
+`55a5d19673a2a1044cf9c54a364c6af3cd631638` and
+`43f8acc8843a907dd91150961bc94023ec23c414`. Git's ordinary `ort` merge completed
+without conflicts. No consumer compatibility correction was necessary: all three
+consumer implementation/test files remain byte-identical to the original PR
+HEAD. The final diff against main remains the original four consumer-owned paths
+listed above; this R1 adds only evidence to this task document.
+
+The historical Bootstrap failure
+[43677846726](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/43677846726)
+on `55a5d19673a2a1044cf9c54a364c6af3cd631638` remains a **failure**. Its private
+native-test lifetime-log cleanup blocker was corrected separately by merged
+PR [#229](https://github.com/zackboll/ams-gra-mel-bridge/pull/229), merge
+`5b8ec76bc7a5ce27558988c619e96e5dce6159e7`. That merge is an ancestor of this
+integration. The canonical
+`rust/ams-mel-ir/src/ir_comms_metadata/tests.rs` is byte-identical to integrated
+main (Git blob `7f828319f96ff23f54f271f44912718f4837e2ed`). The retired
+`rust/ams-mel/src/ir_comms_metadata` module is absent; no duplicate fix was added.
+
+`ams-mel-ir` remains the canonical IR implementation, depending only on Common
+and sys. `ams-mel` retains exact concrete-type compatibility re-exports; the
+consumer deliberately retains `use ams_mel::*`. Direct IR, IR/RF crate-boundary,
+Common identity, raw ABI/drift and existing compatibility tests are part of the
+fresh five-crate workspace run. No production native source, ABI, exported symbol,
+binding, provider fixture, vendor source, workflow, policy or shared inventory is
+changed by R1. Application-only integration has no native/Ada inventory coverage
+delta; the current authoritative inventory is checked, not replaced by prose.
+
+### Corrected process-isolated completion controls
+
+The focused canonical IR parent was executed normally and with single-CPU
+affinity against the contract-test facade:
+
+```sh
+cd /home/zboll/git/ams-rust-ir-018
+export AMS_MEL_NATIVE_LIB_DIR="$PWD/native/build-tests/lib"
+export AMS_MEL_TEST_PROVIDER_DIR="$PWD/native/build-tests/test-providers"
+export CARGO_TARGET_DIR=/home/zboll/git/ams-rust-ir-018-r1-evidence/cargo-contract
+cargo test --manifest-path rust/Cargo.toml --locked -p ams-mel-ir --lib \
+  ir_comms_metadata::tests::native::isolated_native_controls -- --exact --nocapture
+CPU=$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')
+taskset -c "$CPU" cargo test --manifest-path rust/Cargo.toml --locked \
+  -p ams-mel-ir --lib ir_comms_metadata::tests::native::isolated_native_controls \
+  -- --exact --nocapture
+```
+
+Both passed, **one parent / eight successful child processes per invocation**.
+CPU 0 was selected from the observed allowed mask `0-31`, not assumed. The
+parent checks whole child-process exit status as well as the completion marker.
+Reviewed assertions remain active: exact worker/created/final-owner counts
+(saturation 4, C2 and parked completion 1, other controls 0), bounded native
+owner-notification waiting, lifetime-log use before provider DSO pin release,
+positive unload before directory removal, deterministic parked-completion strict
+waiter, saturation full-width counters and original FIFO assertions. No retries,
+ignored parent, disabled probe, timeout change or assertion weakening was used.
+This verifies the narrow last-log-use/owner-notification boundary, not a detached
+thread join or general provider callback-quiescence guarantee.
+
+### Fresh production/reference interoperability
+
+The actual upstream checkout at `/home/zboll/git/ams-rust-ir-018-reference` has
+remote `https://github.com/zackboll/minimal-mel-example.git`, a clean tree and
+unchanged pinned HEAD `cf22a80ec98398eb361df758ada7bfb4024710a3` after fetching.
+No reference source was modified. Fresh isolated build and C++ consumer:
+
+```sh
+E=/home/zboll/git/ams-rust-ir-018-r1-evidence
+cmake -S /home/zboll/git/ams-rust-ir-018-reference -B "$E/reference-build" \
+  -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+cmake --build "$E/reference-build" --parallel 2
+ctest --test-dir "$E/reference-build" --output-on-failure
+"$E/reference-build/minimal_ir_mel_consumer" \
+  "$E/reference-build/libminimal_ir_mel_provider.so"
+cmake -S /home/zboll/git/ams-rust-ir-018/native -B "$E/production" \
+  -DCMAKE_BUILD_TYPE=Debug -DAMS_MEL_BUILD_TESTS=OFF
+cmake --build "$E/production" --parallel 2
+```
+
+Reference CTest **4/4 passed**; C++ consumer exited 0 with empty stderr and
+reported eight callbacks, 17 registrations, no frames/sensor telemetry and
+successful cleanup. The isolated production facade cache confirms tests **OFF**;
+`nm -D` finds no `ams_mel_test_*` exports. Its build tree and Cargo target are
+separate from all mock-provider/contract testing and aggregate tree switching.
+
+With `AMS_MEL_NATIVE_LIB_DIR="$E/production/lib"`,
+`CARGO_TARGET_DIR="$E/cargo-production"`,
+`AMS_MEL_REFERENCE_PROVIDER="$E/reference-build/libminimal_ir_mel_provider.so"`
+and mock-negative fixtures selected only through
+`AMS_MEL_TEST_PROVIDER_DIR=/home/zboll/git/ams-rust-ir-018/native/build-tests/test-providers`,
+the following ran in both Debug and Release (adding `--release` for Release):
+
+```sh
+cargo build --manifest-path rust/Cargo.toml --locked -p ams-mel \
+  --example minimal_ir_consumer
+export AMS_MEL_CONSUMER_EXE="$CARGO_TARGET_DIR/debug/examples/minimal_ir_consumer"
+"$AMS_MEL_CONSUMER_EXE" "$AMS_MEL_REFERENCE_PROVIDER"
+cargo test --manifest-path rust/Cargo.toml --locked -p ams-mel \
+  --test minimal_ir_consumer
+cargo test --manifest-path rust/Cargo.toml --locked -p ams-mel \
+  --test minimal_ir_consumer reference_executable -- --ignored --nocapture
+cargo test --manifest-path rust/Cargo.toml --locked -p ams-mel \
+  --test ir_common_comms_reference -- --ignored --nocapture
+cargo test --manifest-path rust/Cargo.toml --locked -p ams-mel \
+  --test ir_stacked_reference -- --ignored --nocapture
+LD_DEBUG=libs "$AMS_MEL_CONSUMER_EXE" "$AMS_MEL_REFERENCE_PROVIDER"
+```
+
+For Release, `AMS_MEL_CONSUMER_EXE` selects `release/examples/minimal_ir_consumer`.
+Each direct executable run exited **0**, with **empty stderr**. Debug and Release
+stdout are byte-identical; comparison with the historical qualified output is
+identical after normalizing only the supplied provider path. Each reports:
+
+- All **17** mandatory registrations before enablement/submission.
+- **Eight** exact correlated futures, followed independently by **eight** actual
+  destination receiver dequeues, using the unchanged direct/routed ID table.
+- Four exact receiver counters **(2,0,0)** and four active nonblocking empty
+  **Timeout** observations.
+- Existing BIT/Config `NotImplemented`, Mode/Navigation `InvalidState` diagnostic
+  checks, zero acquisition and explicit successful cleanup.
+
+The actual executable, not its printed summary, performs every future wait,
+request-owner close, destination receive and correlation check. Existing
+failure-semantic policy tests remain unchanged: **18 passed** per profile, with
+the opt-in executable initially ignored and then explicitly run (**1 passed**).
+That opt-in run includes wrong-profile mock rejection, lifetime-log cleanup,
+usage and absent-provider controls. Common eight-callback and Stacked reference
+tests each additionally passed (**1 per profile per test**). No mock run is
+substituted for reference-provider interoperability.
+
+Both loader traces show `calling init` for exactly the intended facade
+`$E/production/lib/libams_mel_c.so.0` and pinned provider
+`$E/reference-build/libminimal_ir_mel_provider.so`, and corresponding finalizers.
+`readelf -d` confirms the executable's production-only RUNPATH. Loader-enabled
+stdout equals the ordinary run; loader diagnostics are kept separate from the
+ordinary empty-stderr requirement. SHA-256 identities:
+
+| Artifact | SHA-256 |
+|---|---|
+| Isolated production facade | `eae29432e3f4f26db7aabe4616fa7cb1dcc45d8c8b16293259fa2d2a9dcfb76f` |
+| Pinned reference DSO | `b82c723eb26ecedf09a81563efaedb6496649ca0c5c2dfc1c6fd1de448bd8516` |
+| Debug executable | `a179570a179a76c4bfcfa104f27457df40787caf392bca7cf1b97eb988c0a2a5` |
+| Release executable | `5f0aa50a580689a9d4f4212e62734d38a38d5a36ecb3d617ff0be8bed8fc6664` |
+| Debug and Release stdout, each | `467879ba80bd2b610bc07c45a980073f10f444642988258227e503b8788f9827` |
+
+### Local and hosted qualification ledger
+
+Qualification scripts, logs, binaries, loader traces, source identities and
+machine-readable counts are outside the repository at
+`/home/zboll/git/ams-rust-ir-018-r1-evidence`. Initial integrated-source native
+qualification passed **821/821** and Debug workspace qualification passed
+**616 passed / 0 failed / 15 expected ignored**, across 51 result groups including
+doctests. These are fresh counts, not the earlier 799/608 totals.
+
+The required sequence ran from `/home/zboll/git/ams-rust-ir-018`, with conflicting
+native/loader overrides cleared, external `cargo-contract` target, and pinned
+GNAT **16.1.0** / GPRbuild **26.0.1 package** (reports **26.0.0**) prepended to
+PATH. Rust was **1.98.1**, Cargo **1.98.1**, Alire **2.1.1**. Commands/results:
+
+| Command | Fresh result |
+|---|---|
+| `make native` | Passed, production tests OFF. |
+| `make test-native` | **821/821 passed**, including C-compiled translation units. |
+| `cargo test --manifest-path rust/Cargo.toml --workspace --locked` | **616 passed / 0 failed / 15 ignored**, 51 result groups; test facade/provider paths explicitly selected. |
+| `cargo check --manifest-path rust/Cargo.toml --workspace --all-targets --locked` | Passed against production default. |
+| `cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --locked -- -D warnings` | Passed against production default. |
+| `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` | Passed. |
+| `RUSTDOCFLAGS="-D warnings" cargo doc --manifest-path rust/Cargo.toml --workspace --locked --no-deps` | Passed, five crates. |
+| `make check` | Passed: build isolation, native **821/821**, pinned GNATformat, **70/70** IR inventory regressions, **53 Ada smoke PASS groups**, separate minimal-consumer **14 negative controls**, newline/whitespace. |
+| `make native`, then `make test-native` after aggregate | Both passed; complete provider/test tree restored, **821/821** native. |
+| Post-restoration workspace Debug test | **616 passed / 0 failed / 15 ignored**, 51 groups. |
+| `cargo test --manifest-path rust/Cargo.toml --workspace --release --locked` | **616 passed / 0 failed / 15 ignored**, 51 groups against test facade. |
+| Release single-CPU canonical native-control parent | **1 passed**, all eight child cases, no retries. Ordinary Release parent also passes in workspace. |
+| `make test-python` | **686/686 passed**, package compileall passed; prerequisite native **821/821** passed. |
+| `make test-policy` | **302/302 passed in 13 suites**, including expected deliberate failing-CTest negative controls. |
+| `make check-ir-api-coverage` | Passed: **127 headers / 148 operations**, **70/70** regressions; safe_ada=57, partial=11, missing=16, provider_only=64, native_only=0. |
+| `python3 scripts/check_doc_source_integrity.py` | Passed: **825 vendor files / 4 workflows**. |
+| `python3 scripts/check_final_newlines.py`; `git diff --check`; `git diff --cached --check` | Passed. |
+| Additional `cargo test --manifest-path rust/Cargo.toml --workspace --all-targets --locked` against test facade | **578 passed / 0 failed / 15 ignored**, 47 groups (includes example targets, excludes doctests). |
+
+The 15 default Rust ignores are **12 subprocess helper entries** (exercised by
+their parents) and **three real-provider opt-ins**: common eight-callback,
+Stacked foundation, and consumer executable. All three provider opt-ins were
+explicitly executed successfully in both profiles above. Ignored entries are not
+counted as passed. Crate-boundary evidence includes IR identity **2**, direct IR
+API **2**, RF compatibility **1**, Common boundary **2**, and checkout ABI **1**
+passing tests; these are included in, not added to, workspace totals. The
+canonical IR unit group is **155 passed / 1 helper ignored**. Consumer policy is
+also executed as the actual example test target: **18/18** in each profile.
+
+Three existing imported-native-GPR metadata warnings about no C sources appeared
+in aggregate; there was no first-party compiled-source warning suppression. No
+Ada source changed and no formatting rewrite was made. Aggregate toolchain
+switching was followed by full production/test-tree restoration before workspace
+Debug/Release and Python qualification. The reference production tree is separate
+and was never reconfigured by aggregate.
+
+An additional, non-required `cargo test --workspace --all-targets --locked --no-run`
+probe against the production facade failed to link private native tests because
+production intentionally omits `ams_mel_test_*` probes (including completion,
+Comms, Health, quaternion and ODM controls). This is **not a passed test** or a
+reason to add probes to production: complete contract tests run against the
+test facade; production all-target check/Clippy and actual consumer tests pass.
+The production example was rebuilt and rerun afterward: exit 0, empty stderr,
+stdout identical. Required qualification did not fail or require a source fix.
+
+Final production Debug/Release executable runs were repeated after all aggregate
+and restoration work: both exit 0, empty stderr and unchanged stdout. The
+production all-target check was also repeated successfully. Hosted identities
+are recorded in the qualification follow-up. Hosted qualification and independent final-head
+review remain pending at source commit time. Final commit/tree and synthetic
+merge identities must be recorded outside their own hashed source, in the PR
+qualification comment. The old COMMENTED review is not final-head approval.
+PR #224 must remain open and non-draft, unmerged, with auto-merge disabled. Only
+the author was returned as an available collaborator; no self-review request or
+fabricated approval substitutes for independent review. The review request must
+cover all four receiver owners, eight independent future/callback checks, routing,
+missing/duplicate/extra/misrouted failures, error propagation, cleanup order,
+extracted-crate compatibility, real-provider evidence and corrected lifetime
+controls. The unchanged stub cannot qualify image acquisition, physical hardware,
+complete C++ parity or general callback quiescence.
