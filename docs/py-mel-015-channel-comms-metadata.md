@@ -17,6 +17,12 @@ The initial freshly fetched base is commit
 was closed unmerged. No overlapping Python feature PR was open at preparation.
 The base already had the four private ctypes bindings, but neither this public
 method nor the new safe classes; a fresh-interpreter archive test proves this.
+Run that history-dependent qualification explicitly (with this worktree's
+`PYTHONPATH`, `AMS_MEL_NATIVE_LIB` and `AMS_MEL_TEST_PROVIDER_DIR` set):
+`python3 -W error python/tests/test_ir_common_comms_metadata.py --baseline`.
+It fails rather than skips when fetched history is unavailable. Ordinary
+provider-free package tests work in shallow checkouts and release archives;
+they do not download history to perform this delivery-specific comparison.
 
 The canonical C Open has seven arguments: channel, size_t capacity, output
 owner, output provider Return, diagnostic, diagnostic capacity, required length.

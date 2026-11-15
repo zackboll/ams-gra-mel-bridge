@@ -227,7 +227,12 @@ class CommsMetadataTests(health._HealthTestCase):
                 with channel.channel_view() as view:
                     self.error(m.ErrorKind.PROVIDER_FAILED, view.open_comms_metadata)
 
-    def test_baseline_negative_control(self):
+    def qualify_fetched_base_negative_control(self):
+        """Explicit history qualification; ordinary shallow builds need no Git history.
+
+        Run this file with --baseline after fetching the pinned preparation base.
+        This control fails (never skips) if the required history is unavailable.
+        """
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as directory:
             archive = subprocess.check_output(["git", "-C", str(root), "archive", BASE, "python"])
@@ -583,4 +588,8 @@ class IsolatedLifetimes(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    child(sys.argv[1], sys.argv[2])
+    if sys.argv[1:] == ["--baseline"]:
+        CommsMetadataTests().qualify_fetched_base_negative_control()
+        print("PASS: fetched-base public API negative control")
+    else:
+        child(sys.argv[1], sys.argv[2])
