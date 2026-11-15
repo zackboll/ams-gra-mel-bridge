@@ -325,3 +325,57 @@ C signature/layout, export, or coverage classification changed. Only the
 reviewed implementation digest and its checker anchor are refreshed for the
 corrected native bytes; the coverage report remains unchanged at 57 safe-Ada
 operations. Real-provider qualification remains outside this correction.
+
+### Corrective qualification
+
+Corrective commit: `8f47a74eacc71e8fc336efef6731c867b0eaa6e6`. Main advanced
+with PR #211 (Rust StackedImage), #213 (Ada documentation) and #212 (documentation
+portal); ordinary merge commits incorporated each without rewriting history.
+Latest integrated main: `8a6c07589a4ac0e9095bfb97d53b664916ab9383`.
+The correction itself changes exactly five files: this report,
+`native/src/ir_buffer.cpp`, `native/tests/test_ir_buffer.c`,
+`docs/reference/irmel-reviewed-bindings.json`, and
+`scripts/check_ir_api_coverage.py`. Main's disjoint changes are merge provenance,
+not extensions to this correction.
+
+Actual sequential qualification (logs `/tmp/irmel018-r1-*.log`):
+
+- `make test-native`: **658/658 passed**.
+- `make test-python`: **586 passed**, including raw inventory/layout checks.
+- `make test-rust`: **570 passed**, including **53 doctests**, with 12 existing
+  opt-in ignored cases after PR #211; raw ABI inventory/signatures passed.
+- `make test-ada`: full smoke suite passed.
+- `make check-ir-api-coverage`: **66 controls passed**, safe-Ada count **57**.
+- `make check`: passed, including both build-tree isolation directions, repeated
+  native suites and Ada validation after the Ada documentation integration.
+- `alr -C ada build` and `alr -C ada/tests run`: passed in the pinned GNAT
+  16.1.0/GPRbuild 26.0.1 environment, without pin/dependency changes.
+- Separate `/tmp/irmel018-r1-{gcc,clang}-{Debug,Release}` trees, configured with
+  `cmake -S native -B TREE -DAMS_MEL_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=CONFIG`
+  and explicit compiler paths, built warning-clean with `-Werror`; **658/658
+  passed in each of the four configurations**, including the compiled-C live
+  output-slot regression and existing allocation/Mono8 contracts. GCC 14.2.0,
+  Clang 19.1.7; Release checks remain active under NDEBUG.
+- GCC and Clang strict `-std=c11 -pedantic-errors -Wall -Wextra -Werror`
+  `buffer_layout_probe.c`: signatures/layout passed, unchanged LP64 layout
+  `40 8 0 8 16 24 32 36 0 1 2`.
+- `cargo fmt --all -- --check`, workspace/all-target Clippy `-D warnings`, and
+  workspace rustdoc `-D warnings`: passed.
+- `make test-policy` passed again after documentation portal integration;
+  source integrity (825 vendor files/four workflows), GNATdoc annotation
+  checker (16 declarations, zero gaps), 68 annotation controls, Ada formatting,
+  final-newline and Git whitespace checks passed. A preliminary Alire exec of
+  Make used the crate working directory and found no Make target; the corrected
+  root-level formatting commands passed with no source changes.
+- Production and contract DSOs match the unchanged **323-name** production
+  export map exactly: zero exports added/removed. ABI version remains 0.1.
+  Coverage classifications and the generated coverage report are unchanged.
+
+Native/Python/Rust validation was repeated after PR #211. PR #213 changes Ada
+documentation only; formatting, annotations, `make check` and pinned Alire
+build/tests were repeated on that combined tree. PR #212 changes documentation
+tooling only; policy/source checks were repeated, and the isolated native matrix
+completed on the same compiled bytes. Final report-only changes do not alter
+qualified implementation/tests. Exact final HEAD/tree and final-HEAD hosted URLs
+are recorded in the PR delivery comment; running checks are explicitly
+`HOSTED_CI_PENDING`, never substituted with superseded-HEAD successes.
