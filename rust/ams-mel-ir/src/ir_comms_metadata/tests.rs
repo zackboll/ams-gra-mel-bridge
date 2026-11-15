@@ -298,6 +298,13 @@ mod native {
             operation: u32,
             hook: Option<extern "C" fn()>,
         ) -> i32;
+        fn ams_mel_test_completion_boundary(
+            family: u32,
+            operation: u32,
+            target: u64,
+            values: *mut u64,
+        ) -> i32;
+        fn ams_mel_test_completion_owner(family: u32, target: u64, observed: *mut u64) -> i32;
         fn ams_mel_test_completion_snapshot(family: u32, values: *mut u64) -> i32;
         fn ams_mel_test_completion_owner_notify(
             family: u32,
@@ -305,6 +312,41 @@ mod native {
             target: u64,
             observed: *mut u64,
         ) -> i32;
+    }
+
+    const COMMS: u32 = 2;
+
+    fn completion_cleanup(expected: u64) {
+        let mut counts = [0; 4];
+        let mut observed = 0;
+        // SAFETY: established test-facade probes with exact writable output slots.
+        unsafe {
+            let mut snapshot = [0; 6];
+            assert_eq!(
+                ams_mel_test_completion_snapshot(COMMS, snapshot.as_mut_ptr()),
+                1
+            );
+            assert_eq!(snapshot[0], expected);
+            assert_eq!(
+                ams_mel_test_completion_boundary(COMMS, 3, 0, counts.as_mut_ptr()),
+                1
+            );
+            assert_eq!(counts[2], expected);
+            assert_eq!(
+                ams_mel_test_completion_owner(COMMS, expected, &mut observed),
+                1
+            );
+            assert_eq!(observed, expected);
+            assert_eq!(
+                ams_mel_test_completion_owner_notify(COMMS, 0, 0, &mut observed),
+                1
+            );
+            assert_eq!(observed, expected);
+        }
+        // FinalOwner records its last lifetime event BEFORE publishing its count.
+        // Thus every admitted worker has released its graph/permit and finished
+        // using the log. This is not a thread join: shared native notifications
+        // may still return, using the facade's process-lifetime probe storage.
     }
     static BARRIER: OnceLock<(Mutex<(bool, bool)>, Condvar)> = OnceLock::new();
     extern "C" fn hold_callback() {
@@ -347,6 +389,7 @@ mod native {
             "async",
             "async-typed",
             "c2",
+            "completion-cleanup",
         ] {
             let output = Command::new("timeout")
                 .arg("30s")
@@ -388,7 +431,7 @@ mod native {
         let pin = unsafe { dlopen(path.as_ptr(), 2) };
         assert!(!pin.is_null());
         let scenario = match case.as_str() {
-            "blocked" | "allocation" | "c2" => "parity",
+            "blocked" | "allocation" | "c2" | "completion-cleanup" => "parity",
             _ => &case,
         };
         let session = Session::open(&provider, format!("common-meta-{scenario}"), "").unwrap();
@@ -424,6 +467,67 @@ mod native {
             REENTER.with(|owner| {
                 owner.borrow_mut().take();
             });
+        } else if case == "completion-cleanup" {
+            // Park a real completion after future.get(), before claim release.
+            // Public request Close remains non-cancelling and typed Close defers
+            // teardown. The strict owner waiter must block before we release it.
+            // SAFETY: established process-local test probe, no output requested.
+            unsafe {
+                assert_eq!(
+                    ams_mel_test_completion_boundary(COMMS, 0, 0, ptr::null_mut()),
+                    1
+                );
+            }
+            let mut request = view
+                .submit_comms_test(CommsTestRequest {
+                    command_id: u32::MAX,
+                    channel_id: 4,
+                    request_id: 0x80000000,
+                })
+                .unwrap();
+            // SAFETY: same test-only probe; the request remains live while parked.
+            unsafe {
+                assert_eq!(
+                    ams_mel_test_completion_boundary(COMMS, 1, 1, ptr::null_mut()),
+                    1
+                );
+            }
+            assert_eq!(request.wait(0).unwrap_err().kind(), &ErrorKind::Timeout);
+            request.close().unwrap();
+            health.close().unwrap();
+            let waiter = thread::spawn(|| {
+                let mut observed = 0;
+                // SAFETY: strict test-only notification wait; no Rust owner is shared.
+                assert_eq!(
+                    unsafe { ams_mel_test_completion_owner_notify(COMMS, 1, 1, &mut observed) },
+                    1
+                );
+                assert_eq!(observed, 1);
+            });
+            let mut observed = 0;
+            // SAFETY: op 2 proves the strict waiter is armed under the native mutex.
+            unsafe {
+                assert_eq!(
+                    ams_mel_test_completion_owner_notify(COMMS, 2, 0, &mut observed),
+                    1
+                );
+            }
+            assert_eq!(observed, 0);
+            assert!(!waiter.is_finished());
+            assert!(!fs::read_to_string(directory.join("events"))
+                .unwrap()
+                .contains("health_channel_destroyed"));
+            // SAFETY: release the established boundary only after proving the wait.
+            unsafe {
+                assert_eq!(
+                    ams_mel_test_completion_boundary(COMMS, 2, 0, ptr::null_mut()),
+                    1
+                );
+            }
+            waiter.join().unwrap();
+            assert!(fs::read_to_string(directory.join("events"))
+                .unwrap()
+                .contains("health_channel_destroyed"));
         } else if case == "c2" {
             let mut c2 = session
                 .open_control_channel(&crate::ControlConfig::new(
@@ -580,26 +684,17 @@ mod native {
         }
         view.close().unwrap();
         session.close().unwrap();
-        // Explicit observer Close is not worker reclamation. Keep the event
-        // directory and DSO pin until every admitted Comms completion has
-        // finished its final-owner notification; otherwise a late worker can
-        // log after remove_dir_all and abort during process exit.
-        let mut counts = [0_u64; 6];
-        let mut observed = 0;
-        // SAFETY: established test-only probes, process-isolated native facade;
-        // family 2 is Comms and no further submissions occur in this child.
-        unsafe {
-            assert_eq!(ams_mel_test_completion_snapshot(2, counts.as_mut_ptr()), 1);
-            assert_eq!(
-                ams_mel_test_completion_owner_notify(2, 0, counts[0], &mut observed),
-                1
-            );
-        }
-        assert_eq!(observed, counts[0]);
-        // SAFETY: unique test DSO pin. Callback/control operations finished above.
+        completion_cleanup(match case.as_str() {
+            "saturation" => 4,
+            "c2" | "completion-cleanup" => 1,
+            _ => 0,
+        });
+        // SAFETY: unique test DSO pin. Callback/control operations and completion
+        // graph release finished above; no native lifetime event can use the log.
         assert_eq!(unsafe { dlclose(pin) }, 0);
-        // Completion reclamation is independently qualified in integration tests;
-        // these private controls don't infer immediate unload from public Close.
+        assert!(fs::read_to_string(directory.join("events"))
+            .unwrap()
+            .contains("library_unloaded"));
         fs::remove_dir_all(directory).unwrap();
         println!("PRIVATE_CONTROL_COMPLETE {case}");
     }
