@@ -18,6 +18,8 @@ check-ada-docs-changed:
 
 test-docs-ci:
 	@python3 -W error -m unittest discover -s docs/tests -p test_docs_ci.py -v
+	@python3 -W error -m unittest discover -s docs/tests -p test_rustdoc_publication.py -v
+	@python3 -W error -m unittest discover -s scripts -p test_rustdoc_001_foundation.py -v
 	@python3 -W error -m unittest discover -s docs/tests -p test_static_subtype_audit.py -v
 	@python3 -W error -m unittest discover -s scripts -p test_doc_coverage.py -v
 
