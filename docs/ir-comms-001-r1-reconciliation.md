@@ -192,10 +192,29 @@ A third conflict-free normal merge integrated main
 `99d7f11bc3e5b19c10c6d9daf0e7fe1c89b6fd41`, tree
 `03dd5f736e05f422a8952778b18617842f3345a6` (RF Rustdoc only), as
 `c7a8ba9c39e5c1c0893bc8b3e2baada1f4e84ad5`, tree
-`62b75a6fefcf98fbc32ff3addc64ae48b3787a61`. Native inputs remained byte-identical
-during the isolated matrix. All aggregate/language gates are being rerun in
+Native inputs remained byte-identical
+during the isolated matrix. All aggregate/language gates were rerun in
 sequence after matrix completion to qualify that final integrated source.
 Earlier interrupted qualification runs are not counted as passes.
+
+Final-source confirmation at `8768c6ce781e81ac39556d9f7583971855c22ecd`, tree
+`401c99ebcec076c73458663e7c7e7ffb61f5e96d` (only task documentation changed
+after the preceding merge):
+
+- `make test-native`: **688/688**; `make test-python`: **584**;
+  `make test-rust`: **529 passed / 10 ignored**, including latest mainline
+  Rustdoc tests. All three invoked sequentially, including native prerequisites.
+- `make test-policy`, `make check-ir-api-coverage` (**62/62**),
+  `make test-build-isolation`, integrity/newline/whitespace commands: **PASS**.
+- Installed-Alire `make test-ada`, `alr -n -C ada build`,
+  `alr -n -C ada/tests run`: **PASS**, sequentially.
+- Installed-Alire `make check`: **PASS**, completed 2026-11-14 20:19:34 -05:00;
+  final normalized production ABI comparison: **PASS** immediately afterward.
+- Exact-HEAD hosted checks: **all passed** (GCC/Clang Debug/Release, Ada, Rust,
+  Python, policy, build isolation, docs build; deploy/live correctly skipped).
+  Independent review is still required and has not been fabricated or performed
+  by this agent. Final evidence-only HEAD/tree and its fresh hosted status are
+  recorded in the PR, avoiding a self-referential document hash.
 
 The first repeat invocation targeted the mutable `native/build-tests` tree after
 Ada's provider-only pre-build had recreated it without C test executables. CTest
@@ -229,7 +248,8 @@ deliberate, not leak-free cleanup. The three base C2 registrations retain their
 existing implementation; this correction qualifies only CommsTest registration
 reentry, not arbitrary reentry through every provider method.
 
-Not yet READY_FOR_INDEPENDENT_REVIEW: final-source local/hosted qualification and
-independent review remain pending. After corrective review/merge, recommend
+Implementation and final-source qualification are complete:
+**READY_FOR_INDEPENDENT_REVIEW**, subject to the PR's exact final evidence-commit
+hosted checks. This is not approval or merge authorization. After corrective review/merge, recommend
 closing #204 as superseded rather than merging its duplicate foundation. Do not
 close #204 automatically.
