@@ -39,8 +39,10 @@ def check(root):
                       'Test current documentation build controls',
                       'Generate once from Git and verify source-derived publication'},
             'deploy': {'Install immutable reviewed enhancer',
+                       'Install pinned Rustdoc for independent output reconstruction',
                        'Verify bundle, source, run, presentation and main-only authority'},
             'verify-live': {'Install immutable reviewed enhancer', 'Verify deployed artifact authority',
+                            'Install pinned Rustdoc for independent output reconstruction',
                             'Compare every live entity with the verified artifact'},
         }
         run_steps = [step for step in sequence if re.search(r'^        run:', step, re.M)]
@@ -53,6 +55,8 @@ def check(root):
                 'Check dependency integrity and deployment boundaries': [['python3', 'scripts/check_doc_source_integrity.py']],
                 'Test current documentation build controls': [['make', 'test-docs-ci']],
                 'Install immutable reviewed enhancer': [['sh', 'docs/tools/install_enhancer.sh', '.doc-tools/enhancer']],
+                'Install pinned Rustdoc for independent output reconstruction': [
+                    ['rustup', 'toolchain', 'install', '1.98.1', '--profile', 'minimal', '--no-self-update']],
             }.get(label)
             if expected is not None:
                 require(commands(step) == expected, 'replaced required workflow command')

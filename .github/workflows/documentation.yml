@@ -93,6 +93,8 @@ jobs:
           merge-multiple: true
       - name: Install immutable reviewed enhancer
         run: sh docs/tools/install_enhancer.sh .doc-tools/enhancer
+      - name: Install pinned Rustdoc for independent output reconstruction
+        run: rustup toolchain install 1.98.1 --profile minimal --no-self-update
       - name: Verify bundle, source, run, presentation and main-only authority
         run: |
           .doc-tools/enhancer/bin/python docs/tools/docs_ci.py unpack --deployment \
@@ -130,6 +132,8 @@ jobs:
           merge-multiple: true
       - name: Install immutable reviewed enhancer
         run: sh docs/tools/install_enhancer.sh .doc-tools/enhancer
+      - name: Install pinned Rustdoc for independent output reconstruction
+        run: rustup toolchain install 1.98.1 --profile minimal --no-self-update
       - name: Verify deployed artifact authority
         run: |
           .doc-tools/enhancer/bin/python docs/tools/docs_ci.py unpack --deployment \

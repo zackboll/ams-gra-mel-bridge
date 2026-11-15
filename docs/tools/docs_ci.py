@@ -145,6 +145,10 @@ def verify(root, directory, manifest_sha, deployment=False):
         rust_record = json.loads(rust_raw)
         require(rust_raw == epoch.canonical(rust_record), 'noncanonical/duplicate Rustdoc record')
         rustdoc.verify_assembly(directory, context, rust_record)
+        rust_files = {n.removeprefix('rust/'): d for n, d in
+                      presentation.files(directory / 'published').items() if n.startswith('rust/')}
+        rustdoc.verify_regenerated(rust_files, rust_record, exported, Path(temp) / 'rust-generation',
+                                  context, Path(temp) / 'rustdoc.log')
     return manifest
 
 
