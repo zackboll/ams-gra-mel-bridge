@@ -426,11 +426,11 @@ fn raw_health_config(value: &HealthConfig) -> sys::AmsMelIrHealthConfigV1 {
         channel_type: sys::AMS_MEL_IR_CHANNEL_HEALTH_AND_STATUS,
         platform_id: raw_uci_id(&value.platform_id),
         sensor_location: sys::AmsMelComponentLocationV1 {
-            offset_x_m: value.sensor_location.offset_x_m,
-            offset_y_m: value.sensor_location.offset_y_m,
-            offset_z_m: value.sensor_location.offset_z_m,
-            key: string_view(&value.sensor_location.key),
-            system_name: string_view(&value.sensor_location.system_name),
+            offset_x_m: value.sensor_location.offset_x_m(),
+            offset_y_m: value.sensor_location.offset_y_m(),
+            offset_z_m: value.sensor_location.offset_z_m(),
+            key: string_view(value.sensor_location.key()),
+            system_name: string_view(value.sensor_location.system_name()),
         },
     }
 }
