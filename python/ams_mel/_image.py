@@ -9,6 +9,7 @@ from ._navigation import NavigationRequest, _submit_navigation_report
 from ._navigation_types import NavigationReport
 from ._camera_response import CameraResponseStream, _open_camera_response
 from ._image_metadata import ImageMetadataStream, _open_metadata
+from ._optical_distortion_map import OpticalDistortionMapStream, _open_optical_distortion_map
 from ._nuc import NucStream, _open_nuc
 from ._errors import (
     ErrorKind,
@@ -64,6 +65,10 @@ class ImageStream:
     def open_camera_response(self, queue_capacity: int = 16) -> CameraResponseStream:
         """Opt into one-shot CameraCommandResp reception, without starting Image."""
         return _open_camera_response(self, queue_capacity)
+
+    def open_optical_distortion_map(self, queue_capacity: int = 16) -> OpticalDistortionMapStream:
+        """Opt into optional one-shot ODM reception, without starting acquisition."""
+        return _open_optical_distortion_map(self, queue_capacity)
 
     def start(self) -> None:
         self._require_open()

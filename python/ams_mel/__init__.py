@@ -62,6 +62,13 @@ from ._image_types import (
     NavigationResponse,
 )
 from ._image_metadata import ImageMetadataStream
+from ._optical_distortion_map import (
+    ForwardRightDown,
+    RowCol,
+    OpticalDistortionMap,
+    OpticalDistortionMapOpenError,
+    OpticalDistortionMapStream,
+)
 from ._navigation import NavigationRequest
 from ._navigation_types import (
     AttitudeRate,
@@ -263,6 +270,11 @@ for _public_symbol in (
     CameraResponseOpenError,
     CameraResponseStream,
     AzimuthElevation,
+    ForwardRightDown,
+    RowCol,
+    OpticalDistortionMap,
+    OpticalDistortionMapOpenError,
+    OpticalDistortionMapStream,
     BadPixel,
     BadPixelList,
     BadPixelReason,
@@ -401,6 +413,11 @@ del _public_symbol
 
 
 __all__ = [
+    "ForwardRightDown",
+    "RowCol",
+    "OpticalDistortionMap",
+    "OpticalDistortionMapOpenError",
+    "OpticalDistortionMapStream",
     "AttitudeRate",
     "NavigationCompleted",
     "NavigationRejected",
