@@ -108,6 +108,57 @@ trailing-style HTML generation succeeded and the Disable parameter/exception
 sections were inspected. Final integrated commands/results are recorded below
 after execution; incomplete checks are not claimed as passed.
 
+### Integrated qualification
+
+Main reconciliation: `da98ae6` merges main `e00369f`; both test additions and
+both mock detach-failure scenarios were preserved when resolving the two
+ordinary content conflicts. C2 registration hardening came from merged main,
+not an unresolved branch. #208 is merged and #204 was subsequently closed by
+its existing workflow; this feature did not change either PR or branch.
+
+Compiled lifecycle source was finalized in `54afdcf`; reviewed inventory/report
+refresh is `f277aa7`. The ordinary qualification chain is sequential, never
+concurrent against mutable native/Ada build trees. Logs are under
+`/tmp/irmel019-*` in the qualification workspace.
+
+- `make format-ada`, `make check-ada-format`, `make check-ada-docs-changed`:
+  passed; three changed public declarations inspected, zero annotation gaps.
+- `make test-native`: 743/743 passed before the last additional failed-Stop
+  case; aggregate build-isolation run on final compiled bytes: **744/744**.
+- `make test-python`: **586 passed**, including exact private ABI inventory.
+- `make test-rust`: **570 passed**, including **53 doctests**, **12 existing
+  opt-in ignored**. Exact sys inventory/signature checks passed.
+- `alr -n -C ada exec -- make -C /home/zboll/git/ams-gra-mel-bridge test-ada`:
+  passed, including safe common Disable and genuinely pending KeepAlive tests.
+- `make check-ir-api-coverage`: **67 controls passed**, **57** safe-Ada unique
+  operations; report generated and matching.
+- GCC 14.2.0 and Clang 19.1.7 `-std=c11 -pedantic-errors -Wall -Wextra -Werror`:
+  both new compiled-C tests and every existing layout probe passed syntax and
+  exact function-pointer type checks.
+- `cargo fmt --manifest-path rust/Cargo.toml --all -- --check`, workspace
+  all-target Clippy `-D warnings`, workspace rustdoc `-D warnings`: passed.
+- `make test-policy`: passed, including source-integrity/security and current
+  documentation controls. Direct integrity check: **825 vendor files**, four
+  workflows. `git diff --check` and final-newline checks passed.
+- Pinned documentation generation from Git at `f277aa7` passed via
+  `alr -n -C docs/toolchain exec -- ... docs/tools/docs_ci.py build
+  --directory .doc-tools/irmel019-api --gnatdoc-prefix
+  /home/zboll/.alire/gnatdoc_bin_26.0.0_6e6e0320` with the existing enhancer
+  interpreter. Public HTML Disable parameter and Provider_Error sections were
+  verified. Source-derived coverage **5104/5105**, 101 informational GNATdoc
+  warnings; no claim of zero documentation warnings.
+
+Final aggregate `make check`, direct pinned Alire build/tests and isolated
+GCC/Clang Debug/Release matrix are running/queued at this report revision;
+results will be appended after completion. A premature export audit ran while
+build isolation was intentionally replacing production artifacts and found no
+DSO; it is not a passed export check and is rerun after the build completes.
+Hosted status: **HOSTED_CI_PENDING** until exact-head workflow results exist.
+
+The Python regression caught an unintended alteration to Health's existing
+Close-only failed-detach retry behavior. That behavior is preserved; only an
+*explicit standalone Disable* consumes its own attempt. No test was weakened.
+
 ## Limits
 
 No application-owned registration/unregistration or callback checkout/release
