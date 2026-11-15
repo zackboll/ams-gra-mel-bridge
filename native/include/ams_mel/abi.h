@@ -3367,6 +3367,33 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_from_stacked(
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
+/* Complete outgoing TaskInfo; action is Normal=0, Next=1, Immediate=2, Abort=3.
+ * All signed nanoseconds and unsigned identifiers/priorities are preserved.
+ * No epoch, normalization, priority inversion or correlation is inferred. */
+typedef struct ams_mel_ir_task_info_v1 {
+    int64_t system_time_ns;
+    uint32_t request_id;
+    uint32_t action;
+    uint32_t precedence_within_priority;
+    uint32_t priority;
+} ams_mel_ir_task_info_v1;
+
+/* Submit the actual SchedulingChannel::exec(AbortTask) on an Enabled owner.
+ * Borrows and copies task during this call; does not rewrite action to Abort.
+ * Uses the existing Return request wait/close API. Output must point to NULL.
+ * Attached/Failed/Closed return PROVIDER_FAILED before provider dispatch;
+ * invalid pointers/action/output slot return INVALID_ARGUMENT. Provider exec
+ * exceptions return PROVIDER_EXCEPTION. Submission invokes provider code without
+ * the lifecycle mutex. Serialize handle access against Close until admission.
+ * Admitted work independently retains the Scheduling graph across public owner,
+ * Session, view and observer closure. Timeout never cancels/consumes the future.
+ * A successful future preserves its actual Return payload, including Fail and
+ * NotSupported; it proves neither physical abortion nor metadata delivery. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_exec_abort(
+    ams_mel_ir_scheduling *scheduling, const ams_mel_ir_task_info_v1 *task,
+    ams_mel_ir_return_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* IRMEL-ADA-011 SchedulingChannel foundation.
  *
  * Open requires that some Control::getCapabilities() entry publishes

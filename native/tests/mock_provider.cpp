@@ -60,15 +60,15 @@ struct C2SendBarrier {
  * IRMEL-ADA-005 CalibrationConfigurationCmd send, and family 10 is the
  * IRMEL-ADA-006 CalibrationStatusCmd send. IRMEL-ADA-007 appends EraseCommand (11).
  * IRMEL-ADA-008 appends C2 SystemTrackDataResponse (12). */
-C2SendBarrier c2_send_barriers[15];
-unsigned send_entries[15]{};
+C2SendBarrier c2_send_barriers[16];
+unsigned send_entries[16]{};
 std::mutex c2_send_mutex;
 std::condition_variable c2_send_ready;
 
 extern "C" __attribute__((visibility("default"))) int mock_c2_send_barrier(
     unsigned family, unsigned operation, unsigned throws)
 {
-    if (family >= 15U || operation > 3U) return 0;
+    if (family >= 16U || operation > 3U) return 0;
     std::unique_lock lock{c2_send_mutex};
     if (operation == 3U) return static_cast<int>(send_entries[family]);
     auto& barrier = c2_send_barriers[family];
@@ -215,7 +215,7 @@ extern "C" __attribute__((visibility("default"))) int mock_completion_gate(
 extern "C" __attribute__((visibility("default"))) int mock_completion_release_family(
     unsigned family, unsigned amount)
 {
-    if (family >= 15U) return 0;
+    if (family >= 16U) return 0;
     for (unsigned index = 0; index < amount; ++index) {
         std::function<void()> complete;
         {
@@ -5759,7 +5759,8 @@ public:
         record("scheduling_execute_task_ack_registration_attempted");
         /* IRMEL-ADA-013: "sched-both-*" also offers ExecuteTaskAck, so both
          * families can be active on one Scheduling channel. */
-        if (scenario.rfind("sched-ack-", 0U) != 0U && scenario.rfind("sched-both-", 0U) != 0U)
+        if (scenario.rfind("sched-ack-", 0U) != 0U && scenario.rfind("sched-both-", 0U) != 0U &&
+            scenario != "sched-abort-delayed")
             return Return::NotSupported;
         callback_ = std::move(callback);
         if (scenario == "sched-ack-register-throw")
@@ -5911,7 +5912,8 @@ std::thread rep_detached_producer;
 
 bool rep_scenario(const std::string& scenario)
 {
-    return scenario.rfind("sched-rep-", 0U) == 0U || scenario.rfind("sched-both-", 0U) == 0U;
+    return scenario.rfind("sched-rep-", 0U) == 0U || scenario.rfind("sched-both-", 0U) == 0U ||
+        scenario == "sched-abort-delayed";
 }
 
 bool rep_sync_scenario(const std::string& scenario)
@@ -6050,6 +6052,12 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_scheduling_rep_r
  * upstream operation; the native tests prove the bridge never reaches any of
  * them. */
 std::atomic<unsigned> scheduling_specific_calls{};
+std::atomic<unsigned> scheduling_abort_calls{};
+void (*scheduling_abort_reentry)(){};
+extern "C" __attribute__((visibility("default"))) unsigned mock_scheduling_abort_calls(void)
+{ return scheduling_abort_calls.load(); }
+extern "C" __attribute__((visibility("default"))) void mock_scheduling_abort_reentry(void (*callback)())
+{ scheduling_abort_reentry = callback; }
 
 class MockSchedulingChannel final : public irmel::SchedulingChannel {
 public:
@@ -6156,7 +6164,39 @@ public:
         std::function<void(irmel::Channel&, const irmel::ScanPerformanceReport *const)>) override
     { return unsupported_registration("scheduling_scan_performance_registered"); }
     mel::RequestFor<Return> exec(irmel::AbortTask) override
-    { return unsupported<Return>("scheduling_abort_task_exec"); }
+    {
+        if (scenario_.rfind("sched-abort-", 0) != 0)
+            return unsupported<Return>("scheduling_abort_task_exec");
+        ++scheduling_abort_calls;
+        record("scheduling_abort_task_exec");
+        if (auto callback = std::exchange(scheduling_abort_reentry, nullptr)) callback();
+        c2_send_boundary(15);
+        if (scenario_ == "sched-abort-exec-throw")
+            throw std::runtime_error("mock AbortTask exec exception");
+        if (scenario_ == "sched-abort-delayed")
+            return held_request(std::make_shared<Return>(Return::Success), 15);
+        if (scenario_ == "sched-abort-unsupported" || scenario_ == "sched-abort-invalid-state") {
+            std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
+            auto future = promise.get_future();
+            promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{mel::Error{
+                scenario_ == "sched-abort-unsupported" ? mel::ErrorCode::Unsupported :
+                    mel::ErrorCode::InvalidState,
+                "AbortTask rejection: " + std::string(1024, 'x')}});
+            return future;
+        }
+        if (scenario_ == "sched-abort-future-throw") {
+            std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
+            auto future = promise.get_future();
+            promise.set_exception(std::make_exception_ptr(std::runtime_error("mock AbortTask future exception")));
+            return future;
+        }
+        if (scenario_ == "sched-abort-null") return ready_request<Return>(nullptr);
+        const auto value = scenario_ == "sched-abort-fail" ? Return::Fail :
+            scenario_ == "sched-abort-not-supported" ? Return::NotSupported :
+            scenario_ == "sched-abort-not-implemented" ? Return::NotImplemented :
+            scenario_ == "sched-abort-invalid-return" ? static_cast<Return>(UINT32_MAX) : Return::Success;
+        return ready_request(std::make_shared<Return>(value));
+    }
     mel::RequestFor<Return> exec(irmel::IRSTScanTask) override
     { return unsupported<Return>("scheduling_scan_task_exec"); }
     mel::RequestFor<Return> exec(irmel::IRSTStareTask) override

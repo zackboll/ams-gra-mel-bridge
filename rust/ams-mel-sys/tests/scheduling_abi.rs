@@ -79,3 +79,55 @@ fn scheduling_abi() {
     // Same convention as the Track configuration it mirrors.
     assert_eq!(size_of::<S>(), size_of::<AmsMelIrTrackConfigV1>());
 }
+
+#[test]
+fn scheduling_abort_abi() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrScheduling,
+        *const AmsMelIrTaskInfoV1,
+        *mut *mut AmsMelIrReturnRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_scheduling_exec_abort;
+    type S = AmsMelIrTaskInfoV1;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable = std::env::temp_dir().join(format!("ams-abort-sys-{}", std::process::id()));
+    assert!(
+        Command::new(std::env::var("CC").unwrap_or_else(|_| "cc".into()))
+            .args([
+                "-std=c11",
+                "-pedantic-errors",
+                "-Wall",
+                "-Wextra",
+                "-Werror"
+            ])
+            .arg(format!("-I{}", root.join("native/include").display()))
+            .arg(root.join("native/tests/scheduling_abort_layout_probe.c"))
+            .arg("-o")
+            .arg(&executable)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    assert_eq!(
+        actual,
+        vec![
+            size_of::<S>(),
+            align_of::<S>(),
+            offset_of!(S, system_time_ns),
+            offset_of!(S, request_id),
+            offset_of!(S, action),
+            offset_of!(S, precedence_within_priority),
+            offset_of!(S, priority)
+        ]
+    );
+}

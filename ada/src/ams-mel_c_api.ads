@@ -2474,6 +2474,20 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_stacked_close";
+   type IR_Task_Info_V1 is record
+      System_Time_NS                                           : Interfaces.Integer_64;
+      Request_ID, Action, Precedence_Within_Priority, Priority : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   function IR_Scheduling_Exec_Abort
+     (Handle              : Scheduling_Handle;
+      Info                : access constant IR_Task_Info_V1;
+      Output              : access Return_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_exec_abort";
+
    --  IRMEL-ADA-011 SchedulingChannel foundation (private raw imports only).
    function IR_Scheduling_Open
      (Session             : Session_Handle;

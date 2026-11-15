@@ -1328,6 +1328,33 @@ if(AMS_MEL_BUILD_TESTS)
     add_test(NAME ir_stacked_layout COMMAND test_ir_stacked_layout)
 
     # IRMEL-ADA-011 SchedulingChannel foundation; one process per scenario.
+    add_executable(test_ir_scheduling_abort tests/test_ir_scheduling_abort.c)
+    target_compile_features(test_ir_scheduling_abort PRIVATE c_std_11)
+    set_target_properties(test_ir_scheduling_abort PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_scheduling_abort PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_scheduling_abort PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_scheduling_abort mock_ir_provider)
+    ams_mel_warnings(test_ir_scheduling_abort)
+    foreach(case IN ITEMS success fail not-supported not-implemented unsupported invalid-state
+            null invalid-return exec-throw future-throw delayed reentry closure observer-close concurrent-close failed
+            post-allocation post-worker-launch)
+        add_test(NAME ir_scheduling_abort_${case} COMMAND test_ir_scheduling_abort ${case})
+        set_tests_properties(ir_scheduling_abort_${case} PROPERTIES TIMEOUT 60)
+    endforeach()
+    add_executable(test_ir_scheduling_abort_layout tests/scheduling_abort_layout_probe.c)
+    target_compile_features(test_ir_scheduling_abort_layout PRIVATE c_std_11)
+    set_target_properties(test_ir_scheduling_abort_layout PROPERTIES C_EXTENSIONS OFF)
+    target_link_libraries(test_ir_scheduling_abort_layout PRIVATE ams_mel::ams_mel_c)
+    ams_mel_warnings(test_ir_scheduling_abort_layout)
+    add_test(NAME ir_scheduling_abort_layout COMMAND test_ir_scheduling_abort_layout)
+    add_executable(test_task_info_conversion tests/test_task_info_conversion.cpp)
+    target_compile_features(test_task_info_conversion PRIVATE cxx_std_20)
+    target_include_directories(test_task_info_conversion PRIVATE src include
+        vendor/ir-mel/include vendor/common-mel/include vendor/ams-math/include)
+    ams_mel_warnings(test_task_info_conversion)
+    add_test(NAME ir_scheduling_abort_conversion COMMAND test_task_info_conversion)
+
     add_executable(test_ir_scheduling_foundation tests/test_ir_scheduling_foundation.c)
     target_compile_features(test_ir_scheduling_foundation PRIVATE c_std_11)
     set_target_properties(test_ir_scheduling_foundation PROPERTIES C_EXTENSIONS OFF)
