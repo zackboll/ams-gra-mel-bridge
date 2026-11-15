@@ -1,4 +1,4 @@
-name: Ada API Documentation
+name: Ada and Rust API Documentation
 
 on:
   pull_request:
