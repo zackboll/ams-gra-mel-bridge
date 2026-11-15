@@ -45,6 +45,18 @@ package body AMS.MEL.IR.Channel is
    type Cap_Access is access all C.IR_Channel_Capability_V1;
    function To_Cap is new Ada.Unchecked_Conversion (System.Address, Cap_Access);
 
+   procedure Disable (Channel : View) is
+      D      : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R      : aliased C.Size_T := 0;
+      Result : aliased Interfaces.Unsigned_32 := Interfaces.Unsigned_32'Last;
+   begin
+      if C.IR_Channel_Disable (Channel.Handle, Result'Access, D'Address, D'Length, R'Access)
+        /= C.Success
+      then
+         raise Provider_Error with Failure_Message (D);
+      end if;
+   end Disable;
+
    function Is_Open (Channel : View) return Boolean
    is (Channel.Handle /= C.Null_Channel);
 

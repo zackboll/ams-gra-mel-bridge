@@ -79,6 +79,7 @@ struct ImageStreamState {
     bool comms_metadata_attempted{};
     /* Immutable operating mode; enabling control is not acquisition. */
     bool control_only{false};
+    bool disable_failed{false};
     std::shared_ptr<SessionState> session;
     std::shared_ptr<CallbackState> callback;
     std::shared_ptr<Listener> listener;

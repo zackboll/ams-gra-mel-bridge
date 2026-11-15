@@ -241,6 +241,21 @@ struct ams_mel_ir_channel {
 };
 static_assert(sizeof(ams_mel_ir_channel) == sizeof(ams_mel_common::CommonChannelAccess));
 
+extern "C" ams_mel_status_t ams_mel_ir_channel_disable(
+    const ams_mel_ir_channel *view, ams_mel_ir_return_t *result,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("channel is expired, ineligible, or standalone Disable is unsupported",
+               out, capacity, required);
+    if (result) *result = UINT32_MAX;
+    if (!view || !result || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    // Copy before provider entry: reentrant Close may consume the weak wrapper.
+    const auto access = view->access;
+    const auto state = access.lock();
+    if (!state) return AMS_MEL_PROVIDER_FAILED;
+    return access.disable(state, result, out, capacity, required);
+}
+
 extern "C" ams_mel_status_t ams_mel_ir_channel_comms_metadata_open(
     const ams_mel_ir_channel *view, std::size_t queue_capacity,
     ams_mel_ir_channel_comms_metadata **output, ams_mel_ir_return_t *registration,

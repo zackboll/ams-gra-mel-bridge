@@ -4421,6 +4421,13 @@ extern "C" {
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_disable(
+        channel: *const AmsMelIrChannel,
+        out_return: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
     pub fn ams_mel_ir_channel_get_capabilities(
         channel: *const AmsMelIrChannel,
         out_capability: *mut *mut AmsMelIrChannelCapability,

@@ -949,6 +949,10 @@
         {
           "path": "native/src/ir_stacked.cpp",
           "symbol": "ams_mel_ir_stacked_close"
+        },
+        {
+          "path": "native/src/common_channel_requests.cpp",
+          "symbol": "ams_mel_ir_channel_disable"
         }
       ],
       "ada": [
@@ -959,6 +963,10 @@
         {
           "path": "ada/src/ams-mel-ir-stacked_image.ads",
           "symbol": "Close"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-channel.ads",
+          "symbol": "Disable"
         }
       ],
       "tests": [
@@ -977,10 +985,20 @@
         {
           "path": "ada/tests/src/ams_mel_ir_stacked_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_channel_disable.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_disable_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Image Stop explicitly disables; other families disable only during Close. No reusable standalone common Disable. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only.",
-      "limitations": [],
+      "notes": "IRMEL-ADA-019: common non-terminal Disable supports C2, HealthStatus, StackedImage and control-only Image. Image acquisition Stop remains terminal. Unique operation stays partial: Instrumentation, Track and Scheduling standalone Disable are explicitly rejected.",
+      "limitations": [
+        "No callback quiescence or request cancellation is implied. Failed Disable consumes the attempt, fails the lifecycle and requires cleanup; no silent retry. No application buffer registration."
+      ],
       "representation": []
     },
     {
@@ -14317,9 +14335,9 @@
   "inherited": [
     {
       "id": "C2Channel|ir:operation:ams::iface::irmel::Channel::disable()",
-      "status": "partial",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::disable()",
-      "notes": "Image has explicit Stop; other owners only disable as part of Close."
+      "notes": "IRMEL-ADA-019: Channel.Disable is non-terminal, idempotent and reusable after successful Enable; family-local temporary claims defer Close. Failure requires cleanup without duplicate Disable."
     },
     {
       "id": "C2Channel|ir:operation:ams::iface::irmel::Channel::enable()",
@@ -14367,7 +14385,7 @@
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::disable()",
       "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::disable()",
-      "notes": "Image has explicit Stop; other owners only disable as part of Close."
+      "notes": "IRMEL-ADA-019: control-only Image supports non-terminal Channel.Disable and subsequent Start, with zero buffers. Acquisition standalone Disable is rejected; existing terminal Stop and retained-frame safety are unchanged."
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::enable()",
@@ -14413,9 +14431,9 @@
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::disable()",
-      "status": "partial",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::disable()",
-      "notes": "Image has explicit Stop; other owners only disable as part of Close."
+      "notes": "IRMEL-ADA-019: Channel.Disable is non-terminal, idempotent and reusable after successful Enable; family-local temporary claims defer Close. Failure requires cleanup without duplicate Disable."
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::enable()",
@@ -14463,7 +14481,7 @@
       "id": "InstrumentationChannel|ir:operation:ams::iface::irmel::Channel::disable()",
       "status": "partial",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::disable()",
-      "notes": "Image has explicit Stop; other owners only disable as part of Close."
+      "notes": "Standalone Channel.Disable explicitly rejects this family; inherited disable remains Close-only. No standalone coverage claim."
     },
     {
       "id": "InstrumentationChannel|ir:operation:ams::iface::irmel::Channel::enable()",
@@ -14511,7 +14529,7 @@
       "id": "TrackChannel|ir:operation:ams::iface::irmel::Channel::disable()",
       "status": "partial",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::disable()",
-      "notes": "Image has explicit Stop; other owners only disable as part of Close."
+      "notes": "Standalone Channel.Disable explicitly rejects this family; inherited disable remains Close-only. No standalone coverage claim."
     },
     {
       "id": "TrackChannel|ir:operation:ams::iface::irmel::Channel::enable()",
@@ -14559,7 +14577,7 @@
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::disable()",
       "status": "partial",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::disable()",
-      "notes": "Scheduling invokes the inherited disable() only inside Close, and only after Enable was attempted; no standalone Disable is exposed."
+      "notes": "Standalone Channel.Disable explicitly rejects this family; inherited disable remains Close-only. No standalone coverage claim."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::enable()",
@@ -14605,9 +14623,9 @@
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::disable()",
-      "status": "partial",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::disable()",
-      "notes": "IRMEL-ADA-016: inherited disable is attempted during Close iff Enable was attempted; no standalone public Disable. Disable success does not imply callback quiescence."
+      "notes": "IRMEL-ADA-019: Channel.Disable is non-terminal, idempotent and reusable after successful Enable; family-local temporary claims defer Close. Failure requires cleanup without duplicate Disable."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::enable()",

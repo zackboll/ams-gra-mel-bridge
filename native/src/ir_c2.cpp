@@ -2,6 +2,7 @@
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
 #include "internal/common_channel_requests.hpp"
+#include "internal/channel_disable.hpp"
 #include "internal/completion_probe.hpp"
 #include "internal/ir_camera_command.hpp"
 #include "internal/ir_erase.hpp"
@@ -382,7 +383,7 @@ std::unique_ptr<EventData> copy_bit_status(const mel::BIT_Status *input)
     } build_views(*event); return event;
 }
 
-enum class C2Lifecycle { Attached, Enabled, Failed, Closed };
+enum class C2Lifecycle { Attached, Enabling, Enabled, Disabling, Failed, Closed };
 
 struct ChannelState {
     std::mutex mutex;
@@ -392,6 +393,7 @@ struct ChannelState {
     C2Lifecycle lifecycle{C2Lifecycle::Attached};
     bool enabled{};
     bool enable_attempted{};
+    bool disable_failed{};
     std::size_t requests{};
     bool cleanup_started{};
     std::shared_ptr<ChannelState> emergency_self;
@@ -447,6 +449,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
         calibration = state->calibration_configuration;
         calibration_status = state->calibration_status;
         disable = state->enable_attempted;
+        state->enable_attempted = false;
     }
     if (metadata) {
         std::lock_guard lock{metadata->mutex};
@@ -456,11 +459,12 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
     if (protect) protect->deactivate();
     if (calibration) calibration->deactivate();
     if (calibration_status) calibration_status->deactivate();
-    bool ok = true;
+    bool ok = !state->disable_failed;
     if (channel && disable) {
         try { if (channel->disable() != irmel::Return::Success) ok = false; }
         catch (...) { ok = false; }
     }
+    state->disable_failed = !ok;
     bool detached = !channel;
     if (channel) {
         try {
@@ -594,6 +598,12 @@ bool finish_c2_request(const std::shared_ptr<void>& erased) noexcept
         retain_failed(state);
         return false;
     }
+}
+
+bool finish_c2_operation(const std::shared_ptr<ChannelState>& state) noexcept
+{
+    try { return finish_channel(state); }
+    catch (...) { retain_failed(state); return false; }
 }
 
 void complete(const std::shared_ptr<Completion>& state,
@@ -750,6 +760,17 @@ CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *owner)
            char *out, std::size_t capacity, std::size_t *required) noexcept {
             return c2_capability(std::static_pointer_cast<ChannelState>(erased),
                                  output, out, capacity, required);
+        }, nullptr,
+        [](const std::shared_ptr<void>& erased, ams_mel_ir_return_t *result,
+           char *out, std::size_t capacity, std::size_t *required) noexcept {
+            auto state = std::static_pointer_cast<ChannelState>(erased);
+            const auto status = disable_attached(state, state->mutex, state->lifecycle,
+                C2Lifecycle::Attached, C2Lifecycle::Enabled, C2Lifecycle::Disabling,
+                C2Lifecycle::Failed, true, state->enable_attempted, state->disable_failed,
+                state->requests, state->channel, finish_c2_operation, retain_failed, result);
+            diagnostic(status == AMS_MEL_OK ? "" : "C2 Disable failed or unavailable",
+                       out, capacity, required);
+            return status;
         }};
 }
 } // namespace ams_mel_common
@@ -1134,30 +1155,32 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_enable(
 {
     diagnostic("", out, capacity, required);
     if (!c2 || !c2->state || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
-    try {
-        std::lock_guard lock{c2->state->mutex};
-        if (c2->state->lifecycle == C2Lifecycle::Enabled) return AMS_MEL_OK;
-        if (c2->state->lifecycle != C2Lifecycle::Attached) {
-            diagnostic("C2 channel is not attachable", out, capacity, required);
-            return AMS_MEL_PROVIDER_FAILED;
-        }
-        c2->state->enable_attempted = true;
-        if (c2->state->channel->enable() != irmel::Return::Success) {
-            c2->state->lifecycle = C2Lifecycle::Failed;
-            diagnostic("C2 enable failed", out, capacity, required);
-            return AMS_MEL_PROVIDER_FAILED;
-        }
-        c2->state->lifecycle = C2Lifecycle::Enabled;
-        c2->state->enabled = true;
-        return AMS_MEL_OK;
-    } catch (const std::bad_alloc&) {
-        diagnostic("allocation failed", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    } catch (...) {
-        c2->state->lifecycle = C2Lifecycle::Failed;
-        diagnostic("provider exception during C2 enable", out, capacity, required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
+    auto state = c2->state;
+    std::shared_ptr<irmel::Channel> channel;
+    {
+        std::lock_guard lock{state->mutex};
+        if (state->lifecycle == C2Lifecycle::Enabled) return AMS_MEL_OK;
+        if (state->lifecycle != C2Lifecycle::Attached) return AMS_MEL_PROVIDER_FAILED;
+        state->enable_attempted = true;
+        state->lifecycle = C2Lifecycle::Enabling;
+        ++state->requests;
+        channel = state->channel;
     }
+    ams_mel_status_t status = AMS_MEL_OK;
+    try {
+        if (channel->enable() != irmel::Return::Success) status = AMS_MEL_PROVIDER_FAILED;
+    } catch (...) { status = AMS_MEL_PROVIDER_EXCEPTION; }
+    {
+        std::lock_guard lock{state->mutex};
+        if (state->lifecycle == C2Lifecycle::Enabling) {
+            state->lifecycle = status == AMS_MEL_OK ? C2Lifecycle::Enabled : C2Lifecycle::Failed;
+            state->enabled = status == AMS_MEL_OK;
+        }
+    }
+    channel.reset();
+    if (!finish_c2_operation(state) && status == AMS_MEL_OK) status = AMS_MEL_PROVIDER_FAILED;
+    diagnostic(status == AMS_MEL_OK ? "" : "C2 enable failed", out, capacity, required);
+    return status;
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_c2_submit_operate(

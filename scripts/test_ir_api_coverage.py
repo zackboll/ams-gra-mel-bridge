@@ -131,13 +131,32 @@ class CoverageTests(unittest.TestCase):
     def test_stacked_foundation_not_acquisition(self):
         upstream, coverage = audit.validate(self.root)
         exposures = [e for e in coverage["inherited"] if e["id"].startswith("StackedImageChannel|")]
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in exposures), 5)
-        self.assertEqual(sum(e["status"] == "partial" for e in exposures), 1)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in exposures), 6)
+        self.assertEqual(sum(e["status"] == "partial" for e in exposures), 0)
         self.assertEqual(sum(e["status"] == "missing" for e in exposures), 2)
         self.assertEqual(next(e for e in coverage["types"] if e["id"].endswith("::StackedImageChannel"))["status"], "partial")
         self.assertEqual(next(e for e in coverage["image_capabilities"] if e["name"] == "StackedImage")["status"], "partial")
         self.assertEqual(self.operation("StackedImageChannel", "registerMetadataCallback(")["status"], "missing")
         self.assertEqual(sum(e["status"] == "safe_ada" for e in coverage["operations"]), 57)
+
+    def test_common_disable_required_profiles_not_all_families(self):
+        operation = self.operation("Channel", "disable()")
+        self.assertEqual(operation["status"], "partial")
+        self.assertIn({"path": "native/src/common_channel_requests.cpp",
+                       "symbol": "ams_mel_ir_channel_disable"}, operation["native"])
+        self.assertIn({"path": "ada/src/ams-mel-ir-channel.ads", "symbol": "Disable"},
+                      operation["ada"])
+        self.assertIn({"path": "native/tests/test_channel_disable.c", "symbol": "main"},
+                      operation["tests"])
+        self.assertIn({"path": "ada/tests/src/ams_mel_ir_disable_tests.adb", "symbol": "Run"},
+                      operation["tests"])
+        for entry in self.coverage["inherited"]:
+            if entry["id"].endswith("::Channel::disable()"):
+                family = entry["id"].split("|")[0]
+                self.assertEqual(entry["status"], "safe_ada" if family in
+                                 {"C2Channel", "HealthStatusChannel", "StackedImageChannel",
+                                  "ImageChannel"} else "partial")
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
     def test_common_comms_metadata_four_families_not_seven(self):
         operation = self.operation("Channel", "ChannelCommsTestRep")

@@ -1,0 +1,117 @@
+# IRMEL-ADA-019 — standalone required-channel Disable
+
+## Scope and preparation
+
+Prepared from freshly fetched main `1a3f3efbd5ff2520697fed0c924f9e4eb1c76ebd`
+on `feature/irmel-ada-019-common-disable`. Reviewed open PR #204 at
+`0cde3ca3935de32b2348a29b32cb3817ae8dce0e` and #208 at
+`34d0e4e3f2b3bce4d32dd9e842e6168e3a47eaca`, including diffs, descriptions
+and review comments. #204 has an unresolved callback ABI conflict and is not
+copied. #208 hardens C2 callback registration without changing the ABI; main
+merged it during development at `e00369f`. Reconciliation uses ordinary merge
+commits, not rewritten published history. Neither existing branch is modified.
+
+The pinned `Channel.h` declares distinct `enable()` and `disable()` operations
+and explicitly permits buffer registration before Enable or after Disable.
+There is no upstream callback-quiescence, cancellation, buffer registration,
+or guaranteed successful re-enable promise inferred from Disable.
+
+## Implementation and lifecycle
+
+One additive C export, `ams_mel_ir_channel_disable`, under `AMS_MEL_0.1`:
+323 → 324 production exports, no record-layout changes. Private Python ctypes
+and raw Rust sys mirror it; neither safe language API grows a Disable method.
+Safe Ada exposes only `AMS.MEL.IR.Channel.Disable (Channel : View)` using the
+existing typed `As_Channel` conversions. Trailing GNATdoc describes eligibility,
+failure, lifetime and callback boundaries.
+
+`CommonChannelAccess` adds one optional static family function, defaulting to
+unsupported. The idle view remains weak. Disable copies that adapter before
+provider entry, temporarily resolves the family state, reserves the existing
+family request count, and transitions Enabled/Running → Disabling under the
+family mutex. The actual inherited provider call runs without lifecycle or
+metadata locks. Publication changes Disabling → Attached on success or Failed
+on refusal/exception, but never overwrites a terminal Close. The final operation
+claim uses the existing family deferred cleanup. No second request engine,
+metadata registration, callback destruction, queue drain, or request cancellation
+is introduced. Attached covers never-enabled and successfully disabled states.
+Both are successful no-ops without provider invocation. Transient or failed
+lifecycle refuses deterministically rather than waiting on reentrant work.
+
+An actual upstream Return is separately published, including Fail and
+NotSupported. `UINT32_MAX` means **no Return obtained**, including no-op,
+unsupported/expired target and provider exception. Bridge status remains
+independent. Disable consumes one enable-cycle obligation before provider
+entry, even on failure: Close must detach, not silently retry Disable. Failure
+remains sticky for cleanup reporting. A failed detach retains the caller's
+owner for retry or permanently retains an orphaned graph; successful detach
+can consume the owner while still reporting the earlier Disable failure.
+
+C2 and Health Enable use the same claim/call/publish shape instead of calling
+the provider under the lifecycle mutex. Stacked already had this shape.
+Control-only Image Start now similarly retains its graph across provider entry.
+The operation attempts the actual provider again on each new cycle and does
+not manufacture re-enable success.
+
+Only control-only Image is eligible: zero layout is preserved, and no image
+buffers, registration, frames or acquisition activity are introduced. It never
+routes through Stop. Existing Image Stop remains terminal, including for
+control-only owners. Acquisition Disable is explicitly rejected. Mono8 queues,
+frame leases, registered host ranges and uncertain-release retention are not
+generalized. A failed control-only standalone Disable waits for explicit cleanup
+rather than causing the ordinary final-child cleanup loop to spin.
+
+Instrumentation, Track and Scheduling reject standalone Disable, including
+through their common views. Their Close-only inherited use is unchanged.
+Public-wrapper lifetime still requires external serialization of operations
+against Close on that same wrapper; distinct weak views can race typed Close.
+
+## Regression evidence
+
+Compiled C11 tests use active checks in Release, condition-variable barriers
+and mock future gates, not sleeps. They exercise all four required profiles:
+never-enabled no-op, repeated views/idempotence, Enable/Disable/re-enable,
+provider Success/Fail/NotSupported/exception, actual synchronous metadata delivery,
+recursive operation refusal, reentrant Close consuming both typed and weak
+wrappers, concurrent Close during a blocked provider call, pending KeepAlive and
+CommsTest futures unaffected by Disable, callback queue survival, exact call
+accounting, failed-detach retries, provider graph destruction and DSO unload.
+Event order requires provider entry → callback return → provider return → detach.
+Separate C tests reject all unsupported profiles while Attached and Enabled.
+Safe Ada consumers call no private C interfaces: all required families exercise
+the common API, capabilities, idempotence, re-enable, independently pending
+KeepAlive completion and expired views; unsupported families are also tested.
+
+The mock's Ada pending future is deterministically fulfilled by its provider
+after the Disable call returns its lifecycle result; C tests independently hold
+both future kinds *after* Disable and release them explicitly to prove no forced
+cancellation. This is mock scheduling, not a generic provider completion promise.
+
+## Coverage delta
+
+Authoritative mapping and independently anchored review inventory update C2,
+HealthStatus and StackedImage inherited Disable: `partial → safe_ada`.
+Image keeps `safe_ada`, explicitly distinguishing control-only non-terminal
+Disable from acquisition terminal Stop. Other families stay partial. Unique
+Channel Disable remains partial overall; unique safe-Ada operations stay **57**.
+The generated report is regenerated. Historical `docs/coverage.md` is unchanged.
+
+## Qualification record
+
+Development feedback (not final qualification): native 699/699 and safe Ada
+passed. Earlier development failures exposed transient cleanup-loop handling,
+request-only failpoint interaction, metadata FIFO expectations and stale
+coverage counts; these were corrected without weakening existing contracts.
+Bare `make test-ada` lacks GPRbuild on PATH; the existing pinned Alire environment
+supplies GNAT 16.1.0 and GPRbuild 26.0.1 for the same Make target. GNATdoc public
+trailing-style HTML generation succeeded and the Disable parameter/exception
+sections were inspected. Final integrated commands/results are recorded below
+after execution; incomplete checks are not claimed as passed.
+
+## Limits
+
+No application-owned registration/unregistration or callback checkout/release
+is implemented. No local `minimal-mel-example` checkout was found; real-provider
+Disable/Enable is **PRIVATE_PROVIDER_INTEGRATION_UNTESTED**. Mock results do not
+qualify hardware. Provider C++ ABI compatibility remains necessary. Failed
+ownership proof can retain resources until process exit. No blanket SPARK claim.

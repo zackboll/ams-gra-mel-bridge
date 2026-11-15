@@ -1367,6 +1367,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_channel_send_keepalive",
                 "ams_mel_ir_channel_submit_comms_test",
                 "ams_mel_ir_channel_get_capabilities",
+                "ams_mel_ir_channel_disable",
                 "ams_mel_ir_channel_comms_metadata_open",
                 "ams_mel_ir_channel_comms_metadata_receive",
                 "ams_mel_ir_channel_comms_metadata_get_counters",
@@ -1469,8 +1470,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 323)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 323)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 324)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 324)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1478,7 +1479,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 323)
+        self.assertEqual(len(exported), 324)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -1535,10 +1536,15 @@ class AbiTests(unittest.TestCase):
             _native.ams_mel_ir_channel_close.argtypes,
             [ctypes.POINTER(handle), *diagnostic],
         )
+        self.assertEqual(
+            _native.ams_mel_ir_channel_disable.argtypes,
+            [handle, ctypes.POINTER(ctypes.c_uint32), *diagnostic],
+        )
         for name in (
             "ams_mel_ir_channel_send_keepalive",
             "ams_mel_ir_channel_submit_comms_test",
             "ams_mel_ir_channel_get_capabilities",
+            "ams_mel_ir_channel_disable",
             "ams_mel_ir_channel_close",
         ):
             self.assertIs(getattr(_native, name).restype, ctypes.c_int32)

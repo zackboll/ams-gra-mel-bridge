@@ -370,7 +370,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - `Buffer::getBufferAddress() const`: IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged. No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage.; Safe Ada exposes address equality/location only, never a dereferenceable native address or image span.
 - `Buffer::getImageAddress() const`: IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged. No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage.; Safe Ada exposes address equality/location only, never a dereferenceable native address or image span.
 - `Buffer::release()`: Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.
-- `Channel::disable()`: Image Stop explicitly disables; other families disable only during Close. No reusable standalone common Disable. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only.
+- `Channel::disable()`: IRMEL-ADA-019: common non-terminal Disable supports C2, HealthStatus, StackedImage and control-only Image. Image acquisition Stop remains terminal. Unique operation stays partial: Instrumentation, Track and Scheduling standalone Disable are explicitly rejected. No callback quiescence or request cancellation is implied. Failed Disable consumes the attempt, fails the lifecycle and requires cleanup; no silent retry. No application buffer registration.
 - `Channel::enable()`: Typed Enable/Start exists for all seven families; StackedImage is ownership-only, without acquisition.
 - `Channel::registerBuffer(std::shared_ptr<Buffer>)`: Internal Image Open registers provider buffers backed by bridge host storage; application buffer registration is not exposed.
 - `Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)`: Explicit actual-provider callback reception on C2 (existing shared C2 queue), HealthAndStatus, Image including control-only, and StackedImage (shared common receiver). Future completion never manufactures metadata. Partial overall: Instrumentation, Track and Scheduling remain missing. No unregister; one attempt per typed channel including failure. Close deactivates admission, not provider callback registration. Mock qualification is not real communications transport qualification.
@@ -382,12 +382,12 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 
 | Family | Safe Ada | Partial | Missing | Provider only |
 |---|---:|---:|---:|---:|
-| C2Channel | 5 | 1 | 2 | 0 |
-| HealthStatusChannel | 5 | 1 | 2 | 0 |
+| C2Channel | 6 | 0 | 2 | 0 |
+| HealthStatusChannel | 6 | 0 | 2 | 0 |
 | ImageChannel | 6 | 1 | 1 | 0 |
 | InstrumentationChannel | 4 | 1 | 3 | 0 |
 | SchedulingChannel | 4 | 1 | 3 | 0 |
-| StackedImageChannel | 5 | 1 | 2 | 0 |
+| StackedImageChannel | 6 | 0 | 2 | 0 |
 | TrackChannel | 4 | 1 | 3 | 0 |
 
 ## Image capability gaps
