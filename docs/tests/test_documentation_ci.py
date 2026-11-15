@@ -15,6 +15,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import documentation_ci as ci
 import measure_documentation_ci as measurements
+import documentation_fixtures as fixtures
 
 
 class ReconciliationTests(unittest.TestCase):
@@ -307,14 +308,23 @@ class RunnerTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory(prefix='historical-aggregate-workflow-')
+        cls.addClassCleanup(cls.temp.cleanup)
+        cls.history = fixtures.checkout(Path(cls.temp.name) / 'source')
+
     def test_required_build_always_evaluates(self):
-        text = (ci.ROOT / ".github/workflows/documentation.yml").read_text()
+        fixtures.verify(self.history)
+        text = (self.history / ".github/workflows/documentation.yml").read_text()
         self.assertIn("  build:\n    if: always()\n    needs: [prepare-documentation, enhanced-tests]", text)
         self.assertIn("fail-fast: false", text)
 
     def test_deploy_is_main_only_and_aggregate_authorized(self):
-        from ci001r3_workflow import deploy_contract
-        deploy_contract(ci.ROOT)
+        fixtures.verify(self.history)
+        fixtures.execute(self.history, [sys.executable, '-c',
+                         "import sys; sys.path.insert(0, 'docs/tools'); "
+                         "from ci001r3_workflow import deploy_contract; deploy_contract('.')"])
 
 
 class MeasurementTests(unittest.TestCase):
