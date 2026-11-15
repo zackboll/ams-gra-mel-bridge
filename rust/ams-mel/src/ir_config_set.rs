@@ -68,6 +68,11 @@ impl ControlChannel {
     /// [`crate::ReturnResult::Rejected`] retains the MEL error and description.
     /// Neither submission nor Success proves physically applied configuration.
     /// CommandStatus metadata is independent and is not implicitly registered.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::InvalidArgument`] for embedded NUL. Native lifecycle, asynchronous
+    /// admission and provider failures retain their categories and diagnostics; malformed successful
+    /// output is a protocol error. Explicit asynchronous rejection is a request result, not this call's success.
     pub fn submit_config_set(
         &mut self,
         command: &ConfigSetCommand,

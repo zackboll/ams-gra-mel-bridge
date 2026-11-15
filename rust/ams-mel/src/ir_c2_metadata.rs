@@ -15,7 +15,12 @@ macro_rules! native_enum {
         $(#[$meta])*
         #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
         #[repr(u32)]
-        pub enum $name { $($variant = $value),+ }
+        pub enum $name {
+            $(
+                /// Published alternative; see the enum's value table for its numeric association and meaning.
+                $variant = $value
+            ),+
+        }
         impl $name {
             /// Every published value in ascending native order.
             pub const ALL: &'static [Self] = &[$(Self::$variant),+];
@@ -36,6 +41,17 @@ macro_rules! native_enum {
 
 native_enum! {
     /// Reported messaging state; Accepted is not physical completion.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `Received` | 1 | Command received, not necessarily accepted. |
+    /// | `Accepted` | 2 | Command accepted, not proof of physical completion. |
+    /// | `Rejected` | 3 | Command reported rejected. |
+    /// | `Cancelled` | 4 | Action reported cancelled, generally by its originating source; not a Rust cancellation guarantee. |
     CommandState {
         NotSet = 0, Received = 1, Accepted = 2, Rejected = 3, Cancelled = 4,
     }
@@ -44,6 +60,59 @@ native_enum! {
 native_enum! {
     /// Complete published CannotComply domain. Unknown raw values are errors,
     /// not the published Other or Unknown categories.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `ConstraintAttempts` | 1 | Specified attempts exhausted before the desired result. |
+    /// | `ConstraintEndurance` | 2 | Insufficient endurance, for example fuel or battery limits. |
+    /// | `ConstraintClassification` | 3 | Inconsistent classification of the action, actor, capability or associated elements. |
+    /// | `ConstraintForFovLimit` | 4 | Field-of-regard or field-of-view limitation exceeded. |
+    /// | `ConstraintGating` | 5 | A command gate/filter constraint was not met. |
+    /// | `ConstraintManeuverLimit` | 6 | Maneuver limits exceeded. |
+    /// | `ConstraintOp` | 7 | Constraint imposed by an Op message such as OpZone, OpLine or OpRouting. |
+    /// | `ConstraintOcclusion` | 8 | Line-of-sight limitation due to terrain occlusion. |
+    /// | `CapabilityRange` | 9 | Range-related capability limitation. |
+    /// | `CapabilityPerformance` | 10 | Published capability performance category. |
+    /// | `ConstraintRf` | 11 | Conflict between required RF parameters and available spectrum. |
+    /// | `ConstraintRoute` | 12 | Action not achievable with the planned route, or a route could not be generated. |
+    /// | `ConstraintSafety` | 13 | Safety-related constraint. |
+    /// | `ConstraintTargetAngle` | 14 | Command constraint on the actor/target angle. |
+    /// | `ConstraintTime` | 15 | Temporal requirements could not be met or expired before the desired result. |
+    /// | `ConstraintSystem` | 16 | Allocation constrained to a System that cannot complete the action. |
+    /// | `InfeasibleRoute` | 17 | A route to achieve the action could not be generated. |
+    /// | `MissionEvent` | 18 | General mission event such as a flight or mission contingency. |
+    /// | `StateOrSettings` | 19 | Current/future capability or subsystem state or settings prevent the action. |
+    /// | `StateOrSettingsChange` | 20 | A change in capability or subsystem state or settings prevents the action. |
+    /// | `SystemUnavailable` | 21 | Associated System unavailable at the needed time. |
+    /// | `SystemFault` | 22 | Associated System faulted. |
+    /// | `SystemConflict` | 23 | Conflict with another System's route, sensor, weapon or other plans/actions. |
+    /// | `SubsystemUnavailable` | 24 | Associated Subsystem unavailable at the needed time. |
+    /// | `SubsystemFault` | 25 | Associated Subsystem faulted. |
+    /// | `CapabilityFault` | 26 | Associated Capability faulted. |
+    /// | `CapabilityPrecedence` | 27 | Capability precedence within its Subsystem too low for the action. |
+    /// | `CapabilityUnavailable` | 28 | Associated Capability unavailable at the needed time. |
+    /// | `InsufficientResources` | 29 | Insufficient resources such as processors or memory, with otherwise able System/Subsystem/Capability. |
+    /// | `Ranking` | 30 | Ranking too low to gain or maintain access to the required capability. |
+    /// | `Weather` | 31 | Weather effects prevent the action. |
+    /// | `IneligibleControlSource` | 32 | Source ineligible or not granted control of the associated System or Capability. |
+    /// | `DependencyPredecessor` | 33 | Required predecessor action not allocated, unallocated, failed or otherwise unavailable. |
+    /// | `DependencyAllOrNothing` | 34 | An associated all-or-nothing action was not allocated, was unallocated or failed. |
+    /// | `DependencyEitherOr` | 35 | An associated either-or action was not allocated, was unallocated or failed. |
+    /// | `InitCriteriaNotMet` | 36 | Initialization conditions not met. |
+    /// | `UnknownId` | 37 | Object corresponding to a command ID could not be found. |
+    /// | `InvalidInputParameter` | 38 | Invalid action parameter or associated input. |
+    /// | `InputOther` | 39 | Another unspecified input problem. |
+    /// | `MdfActivationError` | 40 | MDF activation rejected for invalid ID/subcategory file ID or a noncompliant file set. |
+    /// | `Multiple` | 41 | Multiple sibling reasons apply but a single reason is not known. |
+    /// | `Cancelled` | 42 | Action reported cancelled, generally by its originating source; not a Rust cancellation guarantee. |
+    /// | `Other` | 43 | Another reason not incorporated in the published enumeration. |
+    /// | `Unknown` | 44 | Reason is unknown (published category, not an unknown-number fallback). |
+    /// | `Aborted` | 45 | Action aborted due to mission/system constraints or priorities; distinct from cancellation, rejection or failure. |
+    /// | `AlignmentManeuver` | 46 | Published alignment maneuver category. |
     CannotComply {
         NotSet = 0,
         ConstraintAttempts = 1,
@@ -98,6 +167,16 @@ native_enum! {
 native_enum! {
     /// Published BIT control interface. Values 2 and 3 retain upstream names
     /// and numeric associations despite inconsistent adjacent descriptions.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `SubsystemBitCommand` | 1 | Published subsystem bit command category. |
+    /// | `SubsystemStateCommand` | 2 | Published subsystem state command category. |
+    /// | `SubsystemInitiated` | 3 | Published subsystem initiated category. |
     BitControlInterface {
         NotSet = 0, SubsystemBitCommand = 1,
         SubsystemStateCommand = 2, SubsystemInitiated = 3,
@@ -107,24 +186,33 @@ native_enum! {
 /// Independent command metadata, not request completion or inferred correlation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CommandStatus {
+    /// Provider command correlation ID, preserving all 32 bits; not a completion indicator.
     pub command_id: u32,
+    /// Reported state in the containing record's published domain.
     pub state: CommandState,
+    /// Published cannot-comply category accompanying the reported command state.
     pub reason_id: CannotComply,
+    /// Provider reason text, deeply copied into an owned UTF-8 string.
     pub reason_description: String,
 }
 
 /// Complete ordered BIT definitions, including duplicates and empty collections.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BitConfiguration {
+    /// BIT definitions in provider order, retaining duplicates and empty lists.
     pub bit_types: Vec<BitTypeDefinition>,
 }
 
 /// UCI BIT identity is not a numeric BIT command selector.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BitTypeDefinition {
+    /// UCI BIT identity, distinct from the numeric selectors used by BIT commands.
     pub bit_id: UciId,
+    /// Provider-advertised BIT control interface; not proof that an operation is usable.
     pub accepted_interface: BitControlInterface,
+    /// Ordered, owned BIT item names; duplicates and empty names are retained.
     pub bit_item_names: Vec<String>,
+    /// Ordered subsystem component UCI identities, copied without deduplication.
     pub subsystem_component_ids: Vec<UciId>,
     /// Signed nanoseconds, without normalization or physical validation.
     pub expected_duration_ns: i64,
@@ -132,12 +220,23 @@ pub struct BitTypeDefinition {
 
 /// Fully owned active event payload. Communications metadata is distinct from
 /// a CommsRequest::wait result; BIT status uses the canonical Health types.
+///
+/// The bridge receives `CommandStatus`, `BIT_Configuration`, `BIT_Status` and,
+/// only after an additional opt-in, `ChannelCommsTestRep` callbacks. Rust copies
+/// the selected native record, nested vectors, UCI identities and UTF-8 text
+/// before releasing the event. Returned events survive C2/Session closure and
+/// provider unload. No command future is completed by receiving metadata, and
+/// no additional C2 callback families are made available by this stream.
 #[derive(Clone, Debug, PartialEq)]
 #[repr(u32)]
 pub enum C2MetadataEvent {
+    /// Command messaging state and cannot-comply details, independent of request completion.
     CommandStatus(CommandStatus) = 1,
+    /// Complete ordered provider BIT catalog, not an operational capability guarantee.
     BitConfiguration(BitConfiguration) = 2,
+    /// Active/completed BITs and faults using the shared HealthStatus representation.
     BitStatus(BitStatus) = 3,
+    /// Independent communications-test metadata, not a request-handle completion.
     CommsTest(CommsTestReport) = 4,
 }
 
@@ -146,6 +245,13 @@ impl ControlChannel {
     /// in that order while Attached or Enabled. Does not enable C2. Zero
     /// capacity fails locally without consuming registration. Partial native
     /// failure publishes no Rust owner; native callback retention still applies.
+    ///
+    /// # Errors
+    /// Zero capacity is InvalidArgument without consuming registration; a closed parent is
+    /// ProviderFailed. An actual attempt, including partial registration failure, consumes the native
+    /// one-shot. Provider refusal and exceptions retain native categories and diagnostics. No stream
+    /// is returned on failure, and inactive callback state can remain retained until safe native
+    /// teardown because upstream has no unregister operation. No automatic retry is performed.
     pub fn open_metadata(&mut self, queue_capacity: usize) -> Result<C2MetadataStream, Error> {
         if self.raw.is_null() {
             return Err(Error::new(
@@ -164,7 +270,9 @@ impl ControlChannel {
 /// Saturating native callback activity snapshots, not Rust Receive-call counts.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct C2MetadataCounters {
+    /// Saturating count of native callback entries, including entries after consumption becomes inactive.
     pub events_received: u64,
+    /// Saturating count of incoming events dropped at capacity; existing queued events are not evicted.
     pub events_dropped_queue_full: u64,
     /// Malformed/unsupported callbacks. Callback-copy allocation exceptions
     /// instead fail the native stream, after its queued events drain.
@@ -178,6 +286,27 @@ type Close<T> = unsafe extern "C" fn(*mut *mut T, *mut c_char, usize, *mut usize
 /// C2 Close prevents enqueueing; queued events drain before stopped/failed status.
 /// Native channel destruction is the callback-quiescence/provider-unload boundary.
 /// Drop makes a non-panicking best-effort Close.
+///
+/// All families share one bounded drop-incoming native FIFO. Capacity is an
+/// event count, not a byte limit; counters saturate rather than wrap. This
+/// unique owner is neither `Send` nor `Sync`. Separate owners and weak views
+/// do not acquire a new cross-owner concurrency guarantee.
+///
+/// ```no_run
+/// use ams_mel::{C2MetadataEvent, ControlChannel, Error, ErrorKind};
+/// fn command_status(channel: &mut ControlChannel) -> Result<(), Error> {
+///     let mut metadata = channel.open_metadata(8)?;
+///     // Optional and independent of the three base registrations:
+///     metadata.enable_comms_test_events()?;
+///     match metadata.receive(0) {
+///         Ok(C2MetadataEvent::CommandStatus(status)) => println!("{:?}", status.state),
+///         Ok(event) => println!("{event:?}"),
+///         Err(error) if error.kind() == &ErrorKind::Timeout => {},
+///         Err(error) => return Err(error),
+///     }
+///     metadata.close()
+/// }
+/// ```
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
@@ -232,6 +361,11 @@ impl C2MetadataStream {
     /// Separately attempts optional ChannelCommsTestRep registration once.
     /// Failure consumes an actual registration attempt too. Does not send a
     /// test or re-register the three base callbacks; no automatic retry.
+    ///
+    /// # Errors
+    /// A closed owner reports [`ErrorKind::ProviderFailed`]. Duplicate native attempts are refused;
+    /// provider refusal or exceptions retain their native categories and diagnostics. Even a failed
+    /// actual registration consumes the optional attempt; no automatic retry or unregister is available.
     pub fn enable_comms_test_events(&mut self) -> Result<(), Error> {
         let raw = self.live()?;
         call_with_diagnostic(|d, c, r| {
@@ -242,6 +376,14 @@ impl C2MetadataStream {
 
     /// One native Receive; zero polls. Deeply copies the selected payload and
     /// closes its event before returning. Errors and unwind also release it.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::Timeout`] if the active queue remains empty for `timeout_ms` milliseconds
+    /// (zero polls); timeout does not cancel registration or native work. After queued values drain,
+    /// stopped consumption reports [`ErrorKind::StreamStopped`] and native callback failure can report
+    /// [`ErrorKind::ProviderFailed`]. A locally closed owner reports `ProviderFailed`. Invalid views,
+    /// enums or text and copy-allocation failures are errors, not partial values; native event cleanup
+    /// is still attempted. Returned values are independent of the stream, parent channel and provider.
     pub fn receive(&mut self, timeout_ms: u32) -> Result<C2MetadataEvent, Error> {
         let raw = self.live()?;
         self.receive_event_with(&EVENT_OPS, |out, d, c, r| {
@@ -268,6 +410,13 @@ impl C2MetadataStream {
         event.copy_with(event_from_raw)
     }
 
+    /// Copies the current saturating native callback counters without resetting them.
+    /// Counts describe callback activity, not queue depth or Rust receive calls.
+    ///
+    /// # Errors
+    /// A closed owner returns [`ErrorKind::ProviderFailed`]. Native query/cleanup and diagnostic
+    /// failures retain their error categories; malformed successful native output is a protocol error.
+    /// The returned counter value is a snapshot, not a receive count or a liveness guarantee.
     pub fn counters(&mut self) -> Result<C2MetadataCounters, Error> {
         let raw = self.live()?;
         self.counters_with(|out, d, c, r| {
@@ -292,6 +441,12 @@ impl C2MetadataStream {
     /// Idempotent consumption Close; callbacks can remain retained natively.
     /// Consumes the local release attempt even on failure or uncertain output:
     /// Drop must not retry a possibly released handle.
+    ///
+    /// # Errors
+    /// Native cleanup failures retain their categories and diagnostics; inconsistent successful
+    /// owner output is a protocol error. See the owner's lifecycle contract for whether a failed
+    /// release retains a retryable handle or consumes the one release attempt. No outcome implies
+    /// cancellation of pending work or immediate callback quiescence.
     pub fn close(&mut self) -> Result<(), Error> {
         close_owned(&mut self.raw, self.close_op)
     }

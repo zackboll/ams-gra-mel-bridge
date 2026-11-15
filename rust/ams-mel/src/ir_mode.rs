@@ -10,13 +10,22 @@ macro_rules! input_enum {
         $(#[$meta])*
         #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
         #[repr(u32)]
-        pub enum $name { $($variant = $value),+ }
+        pub enum $name {
+            $(
+                /// Published alternative; see the enum's value table for its numeric association and meaning.
+                $variant = $value
+            ),+
+        }
         impl $name {
             /// All published values in numeric order.
             pub const ALL: &'static [Self] = &[$(Self::$variant),+];
         }
         impl TryFrom<u32> for $name {
             type Error = Error;
+            /// Converts a published numeric input without substituting a fallback.
+            ///
+            /// # Errors
+            /// Returns [`ErrorKind::InvalidArgument`] for unpublished values.
             fn try_from(value: u32) -> Result<Self, Error> {
                 match value {
                     $($value => Ok(Self::$variant),)+
@@ -31,6 +40,27 @@ macro_rules! input_enum {
 input_enum! {
     /// Published Common MEL MFA states, exactly 0 through 14.
     /// `Unknown` is the published state 1, not a fallback for unknown integers.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `Unknown` | 1 | Published unknown category (not an unknown-number fallback). |
+    /// | `NotInstalled` | 2 | Published not installed category. |
+    /// | `Off` | 3 | Published off category. |
+    /// | `PreInitialization` | 4 | Published pre initialization category. |
+    /// | `Initialization` | 5 | Published initialization category. |
+    /// | `Standby` | 6 | Published standby category. |
+    /// | `Operate` | 7 | Published operate category. |
+    /// | `OperateRxOnly` | 8 | Published operate rx only category. |
+    /// | `OperateTxOnly` | 9 | Published operate tx only category. |
+    /// | `Maintenance` | 10 | Published maintenance category. |
+    /// | `Calibration` | 11 | Published calibration category. |
+    /// | `InitiatedBit` | 12 | Published initiated bit category. |
+    /// | `Shutdown` | 13 | Published shutdown category. |
+    /// | `Degraded` | 14 | Published degraded category. |
     MfaState {
         NotSet = 0, Unknown = 1, NotInstalled = 2, Off = 3,
         PreInitialization = 4, Initialization = 5, Standby = 6, Operate = 7,
@@ -40,10 +70,28 @@ input_enum! {
 }
 input_enum! {
     /// Independent reference for each scan-center angle. No transformation is performed.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `Inertial` | 0 | Published inertial reference. |
+    /// | `Aircraft` | 1 | Published aircraft reference. |
+    ///
+    /// The binding does not define an additional origin, axis convention or
+    /// relationship between these frames beyond the pinned declaration.
     CoordinateFrameReference { Inertial = 0, Aircraft = 1 }
 }
 input_enum! {
     /// Requested overload handling; this binding performs no scheduling algorithm.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `Capacity` | 0 | Published capacity degradation category. |
+    /// | `Volume` | 1 | Published volume degradation category. |
+    /// | `Range` | 2 | Published range degradation category. |
+    /// | `Revisit` | 3 | Published revisit degradation category. |
+    ///
+    /// These select the provider's policy; Rust does not infer how much any
+    /// scan property changes or whether the provider can honor the request.
     DegradationMethod { Capacity = 0, Volume = 1, Range = 2, Revisit = 3 }
 }
 
@@ -51,6 +99,9 @@ impl TryFrom<u32> for MfaMode {
     type Error = Error;
     /// Admits only the four published input modes. Result decoding continues to
     /// retain the existing `Unknown` representation where applicable.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::InvalidArgument`] for any number outside 0..=3.
     fn try_from(value: u32) -> Result<Self, Error> {
         match value {
             0 => Ok(Self::Unused),
@@ -68,8 +119,11 @@ impl TryFrom<u32> for MfaMode {
 /// Published ScanType controls are unsigned integers, **not** Booleans.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ScanType {
+    /// Published unsigned continuous-scan control; not restricted to Boolean values.
     pub continuous_scan: u32,
+    /// Published unsigned returning control; not restricted to Boolean values.
     pub returning: u32,
+    /// Published unsigned agile-scan control; not restricted to Boolean values.
     pub agile_scan: u32,
 }
 
@@ -79,22 +133,39 @@ pub struct ScanType {
 /// Zero range/altitude scalars retain upstream's unset representation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScanParameters {
+    /// Published selector for defining elevation with range and altitude; no geometry is calculated here.
     pub elevation_defined_with_range_and_altitude: bool,
+    /// Scan-center azimuth in radians, using `center_frame_ref_az`.
     pub center_az_rad: f64,
+    /// Scan-center elevation in radians, using `center_frame_ref_el`.
     pub center_el_rad: f64,
+    /// Independent elevation reference frame; defaults to Inertial.
     pub center_frame_ref_el: CoordinateFrameReference,
+    /// Independent azimuth reference frame; defaults to Aircraft.
     pub center_frame_ref_az: CoordinateFrameReference,
+    /// Published scan width in radians, without feasibility validation.
     pub scan_width_rad: f64,
+    /// Published scan height in radians, without feasibility validation.
     pub scan_height_rad: f64,
+    /// Published unsigned scan controls, copied unchanged.
     pub scan_type: ScanType,
+    /// Provider scan correlation ID, preserving all 32 bits.
     pub scan_id: u32,
+    /// Published scan rate in radians per second.
     pub scan_rate_rad_per_second: f64,
+    /// Published preferred revisit interval in seconds.
     pub preferred_revisit_interval_seconds: f64,
+    /// Published required revisit interval in seconds.
     pub required_revisit_interval_seconds: f64,
+    /// Maximum range of interest in metres; zero retains the upstream unset representation.
     pub max_range_of_interest_m: u32,
+    /// Minimum range of interest in metres; zero retains the upstream unset representation.
     pub min_range_of_interest_m: u32,
+    /// Elevation scan-center altitude in metres; zero is unset and no datum is inferred.
     pub elevation_scan_center_altitude_m: u32,
+    /// Elevation scan-center range in metres; zero retains the upstream unset representation.
     pub elevation_scan_center_range_m: u32,
+    /// Requested overload-handling category; no scheduling algorithm is implemented here.
     pub degradation_method: DegradationMethod,
 }
 
@@ -140,9 +211,13 @@ impl Default for ScanParameters {
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ModeCommand {
+    /// Provider command correlation ID, preserving all 32 bits; not a completion indicator.
     pub command_id: u32,
+    /// Reported state in the containing record's published domain.
     pub state: MfaState,
+    /// Published mode value; no state/mode compatibility rule is imposed by this binding.
     pub mode: MfaMode,
+    /// Complete scan payload, copied even when the requested state or mode does not use it.
     pub scan_parameters: ScanParameters,
 }
 
@@ -203,6 +278,11 @@ impl ControlChannel {
     /// Timeout is not cancellation; the returned [`ModeRequest`] can outlive
     /// this channel and its Session. Explicit MEL rejection is a normal
     /// [`crate::ModeResult::Rejected`], retaining provider code and description.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::InvalidArgument`] for an unsupported input mode, including any
+    /// `MfaMode::Unknown(_)`. Native lifecycle, admission and provider failures retain their categories
+    /// and diagnostics; a missing request owner is a protocol error. Successful submission is not completion.
     pub fn submit_mode(&mut self, command: &ModeCommand) -> Result<ModeRequest, Error> {
         let command = command.to_raw()?;
         submit_with(|out| {
