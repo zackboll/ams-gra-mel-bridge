@@ -8,9 +8,13 @@ Started directly from freshly fetched `origin/main` commit
 `/home/zboll/git/ams-rust-ir-017`, branch
 `feature/rust-ir-017-common-comms-metadata`. Preflight verified merged PRs
 #202, #208, #214 and #216, closed-unmerged #204, and already-merged #217.
-Draft #215 was the only open PR. Its Common-crate extraction was inspected but
-not incorporated. Existing Error, CommandReturn, UciId and CommsTestReport
-identities remain unchanged. Final commit/tree and hosted synthetic-merge
+Draft #215 was the only open PR at preflight; this work was not stacked on it.
+It merged into main during qualification as
+`ad35ec4d5fc2faa9296b530defad108bf1dbac31`. Ordinary merge
+`7ae7be18a150760050b8a864507c3a7644a3beaa` incorporated that mainline change
+without conflicts or rewriting history. Error/UciId remain the canonical
+Common-crate re-exports; CommandReturn and CommsTestReport remain the existing
+facade models. No shared model was duplicated. Final commit/tree and hosted synthetic-merge
 identities are recorded in the delivery PR, outside their own hashed source.
 
 Coverage delta: safe Rust can now register/receive the required inherited
@@ -172,14 +176,14 @@ Initial implementation qualification:
 |---|---|
 | `make native` | Passed production build. |
 | `make test-native` | Passed 744/744 native tests. |
-| `cargo test --manifest-path rust/Cargo.toml --workspace` | Passed 601 tests, 15 ignored before the final Debug-redaction test; final count recorded below/PR. |
+| `cargo test --manifest-path rust/Cargo.toml --workspace` | Initial 601 passed / 15 ignored; integrated source including Common extraction and Debug-redaction test: **604 passed / 15 ignored**, across 42 suites. |
 | `cargo check --manifest-path rust/Cargo.toml --workspace --all-targets` | Passed. |
 | `cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings` | Passed after correcting new-test iterator/borrow warnings, without suppression. |
 | `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` | Passed. |
 | `RUSTDOCFLAGS="-D warnings" cargo doc --manifest-path rust/Cargo.toml --workspace --no-deps` | Passed. |
 | Focused Debug common integration | 18 passed, one subprocess entry ignored; 69 child scenarios. |
 | Focused Release common integration | 18 passed, one subprocess entry ignored; 69 child scenarios. |
-| Private seam/native Debug and Release controls | Passed; hostile status/registration/owner/diagnostic matrices and seven isolated native controls. |
+| Private seam/native Debug and Release controls | Final **7 passed / one subprocess entry ignored**; hostile status/registration/owner/diagnostic matrices and seven isolated native controls. |
 | Release repetition | 25 full integration runs and 25 private native-control runs passed: 1,725 public child scenarios and 175 private child controls. |
 | Release native common/C2 metadata CTest | 85/85 passed. |
 | Release gated CTest `^comms_metadata_.*(async\|reentry\|held)` with `--repeat until-fail:25` | 20 cases × 25 = 500 executions passed. |
@@ -191,6 +195,13 @@ Focused tests preserve the original providers rather than modifying fixtures.
 All environment variables, retained registration graphs and actual unload
 observations are process-isolated. Existing completion probes wait for request
 worker reclamation rather than assuming future readiness proves teardown.
+
+After the Common-crate merge, the workspace test/check/all-target Clippy/Rustdoc
+sequence and formatting check all passed again. Release private/focused tests
+and all 25 repetitions of both the public suite and private native-control suite
+were rerun successfully on integrated source. Source-integrity, complete policy
+tests and authoritative IR API inventory checks passed again (127 headers,
+148 operations; 57 safe-Ada operations unchanged).
 
 ### Actual reference provider, separately qualified
 
@@ -220,8 +231,14 @@ Every receiver reports `(received, dropped, malformed) = (2, 0, 0)`. Numeric
 ChannelType routing addresses are specific to this reference stub, not a generic
 identity conversion. All requests, Views, typed channels, receivers and Session
 are explicitly closed. Reference transcripts retain every checked future and
-received callback. Debug passed; final Debug/Release and loader verification are
-recorded with the delivery qualification. Development-only compile failures
+received callback. Both **Debug and Release passed** again after the Common-crate
+merge, one opt-in test each, with zero failures/ignored tests when explicitly
+selected. `LD_DEBUG=libs` executions of both actual test binaries confirm
+initialization of `/home/zboll/git/ams-rust-ir-017/native/build/lib/libams_mel_c.so.0`
+and `/tmp/rust-ir-017-reference-build/libminimal_ir_mel_provider.so`, not a mock.
+Reference transcripts are `integrated-reference-debug.log` and
+`integrated-reference-release.log`, with separate `*-loader.log` records.
+Development-only compile failures
 (an incorrect nonexistent typed-C2 method and an omitted `/lib` in a link path)
 were corrected; neither was represented as an interoperability result.
 
