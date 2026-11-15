@@ -58,7 +58,7 @@ package AMS.MEL.IR.Stacked_Image is
    --  @param Channel Eligible Stacked owner, externally serialized against Close.
    --  @return Owned snapshot valid after channel, Session and provider closure.
    function As_Channel (Channel : Stacked_Channel) return AMS.MEL.IR.Channel.View;
-   --  Allocate a weak common view (KeepAlive, CommsTest, Capabilities) without
+   --  Allocate a weak common view (KeepAlive, CommsTest, Capabilities, Disable) without
    --  changing lifecycle. Closing the view leaves this owner intact; closing
    --  this owner makes later view operations fail. Admitted common requests
    --  retain their own lifetime and use Stacked-only request accounting.
@@ -66,8 +66,8 @@ package AMS.MEL.IR.Stacked_Image is
    --  @return Weak common view; its handle presence does not prove target existence.
    procedure Close (Channel : in out Stacked_Channel);
    --  Stop public admission and close the owner without cancelling futures.
-   --  There is no separate Disable: Close calls the inherited provider disable
-   --  only if Enable was attempted, then detaches. Physical teardown waits for
+   --  Use Channel.Disable for non-terminal disable. Close calls provider disable
+   --  only for an outstanding enable cycle, then detaches. Physical teardown waits for
    --  admitted common requests. A detach failure retains the graph and handle
    --  for retry; a disable failure after a successful detach still raises.
    --  @param Channel Stacked owner to close; serialize against its public operations.

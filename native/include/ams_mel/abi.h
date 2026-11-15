@@ -3739,6 +3739,19 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_submit_comms_test(
  * Instrumentation/Track: Attached or Enabled; Image: provider channel present
  * and not Stopping, Stopped, or Failed). The returned snapshot is independent
  * of the view, typed owner, Session, and provider library. */
+/* Non-terminal Disable: C2, HealthAndStatus, StackedImage and control-only
+ * Image only. Never-enabled/already-disabled is an OK no-op. No detach,
+ * cancellation, callback removal or quiescence is implied. Lifecycle operations
+ * in progress and failed/closed/unsupported targets are refused. A failed
+ * provider Disable consumes this cycle's attempt; Close detaches without retry.
+ * out_return is required and UINT32_MAX unless the provider actually returned
+ * a Return (including on no-op and exception). Non-Success is PROVIDER_FAILED;
+ * a thrown provider exception is PROVIDER_EXCEPTION. Distinct weak views can
+ * race typed Close; serialize use/Close of the same public wrapper. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_disable(
+    const ams_mel_ir_channel *channel, ams_mel_ir_return_t *out_return,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_get_capabilities(
     const ams_mel_ir_channel *channel,
     ams_mel_ir_channel_capability **out_capability,

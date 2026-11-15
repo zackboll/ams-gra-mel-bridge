@@ -1,5 +1,6 @@
 AMS_MEL_0.1 {
     global:
+        ams_mel_ir_channel_disable;
         ams_mel_ir_buffer_open;
         ams_mel_ir_buffer_get_info;
         ams_mel_ir_buffer_get_flags;

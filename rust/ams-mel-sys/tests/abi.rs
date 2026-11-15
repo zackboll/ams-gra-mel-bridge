@@ -1243,6 +1243,13 @@ fn common_channel_signatures_match_the_c_header() {
         *mut usize,
     ) -> AmsMelStatus = ams_mel_ir_channel_get_capabilities;
     let _: unsafe extern "C" fn(
+        *const AmsMelIrChannel,
+        *mut AmsMelIrReturn,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_disable;
+    let _: unsafe extern "C" fn(
         *mut *mut AmsMelIrChannel,
         *mut std::ffi::c_char,
         usize,
@@ -1720,8 +1727,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 323);
-    assert_eq!(exported.len(), 323);
+    assert_eq!(declared.len(), 324);
+    assert_eq!(exported.len(), 324);
     assert!(declared.windows(2).all(|pair| pair[0] != pair[1]));
     assert!(exported.windows(2).all(|pair| pair[0] != pair[1]));
     assert_eq!(declared, exported);
@@ -1755,6 +1762,7 @@ fn raw_inventory_matches_production_exports() {
         "ams_mel_ir_channel_send_keepalive",
         "ams_mel_ir_channel_submit_comms_test",
         "ams_mel_ir_channel_get_capabilities",
+        "ams_mel_ir_channel_disable",
         "ams_mel_ir_channel_close",
     ] {
         assert!(declared.binary_search(&name).is_ok(), "{name}");

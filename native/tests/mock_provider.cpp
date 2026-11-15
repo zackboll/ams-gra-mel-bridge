@@ -2043,9 +2043,41 @@ private:
  * completion, deliver metadata. Tests keep attachment/registration serialized. */
 using CommonCommsCallback = std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>;
 void (*common_comms_reentry)(){};
+std::map<unsigned, std::function<void(const irmel::ChannelCommsTestRep&)>> common_comms_routes;
+void (*disable_reentry)(){};
+void (*enable_reentry)(){};
+extern "C" __attribute__((visibility("default"))) void mock_disable_reentry(void (*hook)())
+{ disable_reentry = hook; }
+extern "C" __attribute__((visibility("default"))) void mock_enable_reentry(void (*hook)())
+{ enable_reentry = hook; }
+void standalone_enable_hook()
+{
+    auto hook = std::exchange(enable_reentry, nullptr);
+    if (hook) hook();
+}
+bool standalone_disable_scenario(const std::string& scenario)
+{ return scenario.rfind("common-meta-disable019-", 0U) == 0U; }
+Return standalone_disable(const std::string& scenario, unsigned family)
+{
+    record("standalone_disable_entered");
+    const auto found = common_comms_routes.find(family);
+    if (found != common_comms_routes.end()) {
+        found->second(irmel::ChannelCommsTestRep{91U, 92U});
+        record("standalone_disable_callback_returned");
+    }
+    auto hook = std::exchange(disable_reentry, nullptr);
+    if (hook) hook();
+    record("standalone_disable_returning");
+    if (scenario == "common-meta-disable019-ada")
+        (void)mock_completion_release_family(family == 6U ? 13U : 1U, 1U);
+    if (scenario == "common-meta-disable019-throw") throw std::runtime_error("mock Disable exception");
+    if (scenario == "common-meta-disable019-fail" || scenario == "common-meta-disable019-failed-detach" ||
+        scenario == "common-meta-disable019-failed-stop") return Return::Fail;
+    if (scenario == "common-meta-disable019-refuse") return Return::NotSupported;
+    return Return::Success;
+}
 extern "C" __attribute__((visibility("default"))) void mock_comms_reentry(void (*hook)())
 { common_comms_reentry = hook; }
-std::map<unsigned, std::function<void(const irmel::ChannelCommsTestRep&)>> common_comms_routes;
 bool common_metadata_scenario(const std::string& scenario)
 { return scenario.rfind("common-meta-", 0) == 0; }
 void route_common_comms(unsigned destination, const irmel::ChannelCommsTestRep& report)
@@ -2119,7 +2151,7 @@ public:
             callback_(*channel_, nullptr);
         }
         if (scenario != "common-meta-future-only" && callback_) callback_(*channel_, report.get());
-        if (scenario == "common-meta-held") return held_request(std::move(report), family_ == 6 ? 14 : 2);
+        if (scenario == "common-meta-held" || scenario == "common-meta-disable019-pending") return held_request(std::move(report), family_ == 6 ? 14 : 2);
         return ready_request(std::move(report));
     }
     void bind(irmel::Channel& channel) noexcept { channel_ = &channel; }
@@ -2205,7 +2237,7 @@ public:
         c2_send_boundary(1);
         record("keepalive_sent");
         if (scenario_ == "keepalive-send-throw") throw std::runtime_error("mock keepalive send exception");
-        if (scenario_ == "completion-scale") return held_request(std::make_shared<Return>(Return::Success), 1);
+        if (scenario_ == "completion-scale" || scenario_ == "common-meta-disable019-pending" || scenario_ == "common-meta-disable019-ada") return held_request(std::make_shared<Return>(Return::Success), 1);
         std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
         auto future = promise.get_future();
         promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{std::make_shared<Return>(Return::Success)});
@@ -2352,6 +2384,7 @@ public:
     Return enable() override
     {
         record("channel_enabled");
+        standalone_enable_hook();
         if (common_metadata_scenario(scenario_)) return Return::Success;
         if (scenario_ == "image-control-unexpected" ||
             scenario_ == "image-control-release-fail" ||
@@ -2385,6 +2418,10 @@ public:
     }
     Return disable() override
     {
+        if (standalone_disable_scenario(scenario_)) {
+            record("channel_disabled");
+            return standalone_disable(scenario_, 1U);
+        }
         if (scenario_ == "common-meta-disable-fail") return Return::Fail;
         if (!producer_.joinable()) return Return::Success;
         record("channel_disabled"); stopping_ = true;
@@ -2404,7 +2441,7 @@ public:
     }
     irmel::ChannelCapability getCapabilities() const override
     {
-        if (scenario_ == "common-meta-zero" || scenario_.rfind("image-control-", 0U) == 0U) {
+        if (standalone_disable_scenario(scenario_) || scenario_ == "common-meta-zero" || scenario_.rfind("image-control-", 0U) == 0U) {
             return control_image_capability();
         }
         if (scenario_ == "capability-inflight" && capability_calls_++ != 0U) {
@@ -3402,6 +3439,11 @@ public:
         protect_.finish(*this, scenario_);
         calibration_.finish(*this, scenario_);
         calibration_status_.finish(*this, scenario_);
+        if (scenario_.rfind("c2-comms-r1-", 0U) == 0U && comms_callback_) {
+            irmel::ChannelCommsTestRep report{0xffffffffU, 0xffffffffU};
+            comms_callback_(*this, &report);
+            record("c2_comms_r1_late_callback");
+        }
         if (scenario_ == "comms-register-retain-fail" && comms_callback_) {
             irmel::ChannelCommsTestRep report{91U, 92U};
             record("retained_comms_callback_invoked");
@@ -3425,7 +3467,7 @@ public:
     {
         c2_send_boundary(1);
         record("keepalive_sent");
-        if (scenario_ == "completion-scale")
+        if (scenario_ == "completion-scale" || scenario_ == "common-meta-disable019-pending" || scenario_ == "common-meta-disable019-ada")
             return held_request(std::make_shared<Return>(Return::Success), 1);
         if (scenario_ == "keepalive-send-throw") throw std::runtime_error("mock keepalive send exception");
         std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
@@ -3461,7 +3503,7 @@ public:
             throw std::runtime_error("CommsTest request conversion mismatch");
         auto response = std::make_shared<irmel::ChannelCommsTestRep>(
             request.getCommandID(), request.getRequestID());
-        if (scenario_ == "completion-scale" || scenario_ == "comms-high-held")
+        if (scenario_ == "completion-scale" || scenario_ == "comms-high-held" || scenario_ == "common-meta-disable019-pending")
             return held_request(std::move(response), 2);
         if (common_metadata_scenario(scenario_)) {
             if (scenario_ != "common-meta-future-only") route_common_comms(request.getChannelID(), *response);
@@ -3800,6 +3842,7 @@ public:
     Return enable() override
     {
         record("c2_enabled");
+        standalone_enable_hook();
         if (scenario_ == "c2-enable-fail") return Return::Fail;
         enabled_ = true;
         return Return::Success;
@@ -3808,6 +3851,7 @@ public:
     {
         record("c2_disabled");
         enabled_ = false;
+        if (standalone_disable_scenario(scenario_)) return standalone_disable(scenario_, 2U);
         if (scenario_ == "metadata-nonquiescing-disable") {
             const char *base = std::getenv("AMS_MEL_TEST_METADATA_CALLBACK_BARRIER");
             if (!base) throw std::runtime_error("metadata callback barrier is not configured");
@@ -3847,6 +3891,22 @@ public:
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)> callback) override
     {
         comms_callback_ = std::move(callback);
+        if (scenario_.rfind("c2-comms-r1-", 0U) == 0U) {
+            record("c2_comms_r1_registration");
+            irmel::ChannelCommsTestRep first{0x80000001U, 0xffffffffU};
+            comms_callback_(*this, &first);
+            auto hook = std::exchange(common_comms_reentry, nullptr);
+            if (!hook) std::abort();
+            hook();
+            irmel::ChannelCommsTestRep second{0xffffffffU, 0x80000000U};
+            comms_callback_(*this, &second);
+            record("c2_comms_r1_registration_returning");
+            if (scenario_.find("unknown-throw") != std::string::npos) throw 17;
+            if (scenario_.find("throw") != std::string::npos)
+                throw std::runtime_error("C2 comms registration exception");
+            if (scenario_.find("refuse") != std::string::npos) return Return::NotSupported;
+            if (scenario_.find("fail") != std::string::npos) return Return::Fail;
+        }
         if (common_metadata_scenario(scenario_)) common_comms_routes[2U] = [this](const auto& report) { comms_callback_(*this, &report); };
         if (scenario_ == "comms-register-retain-fail") return Return::Fail;
         return Return::Success;
@@ -4074,8 +4134,8 @@ public:
     }
     Return registerBuffer(std::shared_ptr<irmel::Buffer>) override { return Return::NotSupported; }
     Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override { return Return::NotSupported; }
-    Return enable() override { enabled_=true;record("health_enabled");return scenario_=="health-enable-fail"?Return::Fail:Return::Success; }
-    Return disable() override { enabled_=false;record("health_disabled");if(scenario_=="health-metadata-nonquiescing-disable"){const char* base=std::getenv("AMS_MEL_TEST_HEALTH_CALLBACK_BARRIER");if(!base)std::abort();wait_for_file(std::string{base}+".entered");record("disable_returned_with_health_callback_active");}return scenario_ == "common-meta-disable-fail" ? Return::Fail : Return::Success; }
+    Return enable() override { enabled_=true;record("health_enabled");standalone_enable_hook();return scenario_=="health-enable-fail"?Return::Fail:Return::Success; }
+    Return disable() override { enabled_=false;record("health_disabled");if(standalone_disable_scenario(scenario_))return standalone_disable(scenario_,4U);if(scenario_=="health-metadata-nonquiescing-disable"){const char* base=std::getenv("AMS_MEL_TEST_HEALTH_CALLBACK_BARRIER");if(!base)std::abort();wait_for_file(std::string{base}+".entered");record("disable_returned_with_health_callback_active");}return scenario_ == "common-meta-disable-fail" ? Return::Fail : Return::Success; }
     irmel::ChannelCapability getCapabilities() const override
     { auto value=rich_channel_capability();value.setChannelTypes({irmel::ChannelType::HealthAndStatus});value.setChannelMetadataCapabilities({irmel::ChannelMetadataCapabilityType::MFAStatus,irmel::ChannelMetadataCapabilityType::BITStatus,irmel::ChannelMetadataCapabilityType::SubsystemStatusResp,irmel::ChannelMetadataCapabilityType::MFAStatusDetailed});return value; }
     Return registerMetadataCallback(CommonCommsCallback callback) override { return common_comms_.install(scenario_, *this, std::move(callback)); }
@@ -6046,6 +6106,7 @@ public:
     Return enable() override
     {
         record("stacked_enabled");
+        standalone_enable_hook();
         stacked_reenter(1U);
         if (scenario_ == "stacked-enable-throw")
             throw std::runtime_error("mock Stacked enable exception");
@@ -6055,6 +6116,7 @@ public:
     Return disable() override
     {
         record("stacked_disabled");
+        if (standalone_disable_scenario(scenario_)) return standalone_disable(scenario_, 6U);
         if (scenario_ == "common-meta-disable-fail") return Return::Fail;
         if (scenario_ == "stacked-disable-throw")
             throw std::runtime_error("mock Stacked disable exception");
@@ -6402,7 +6464,10 @@ public:
             record("channel_detach_failed");
             throw std::runtime_error("mock detach exception");
         }
-        if ((instance_ == "common-meta-detach-fail" ||
+        if ((instance_ == "common-meta-disable019-detach-fail" ||
+             instance_ == "common-meta-disable019-failed-detach" ||
+             instance_.rfind("c2-comms-r1-close-detach", 0U) == 0U ||
+             instance_ == "common-meta-detach-fail" ||
              instance_ == "stacked-detach-fail" ||
              instance_ == "stacked-enabled-detach-fail" ||
              instance_ == "stacked-open-detach-fail" ||

@@ -3,6 +3,7 @@
 #include "internal/ir_channel.hpp"
 #include "internal/ir_stream.hpp"
 #include "internal/common_channel_requests.hpp"
+#include "internal/channel_disable.hpp"
 #include "internal/channel_comms_metadata.hpp"
 
 #include <irmel/library/image/ImageChannel.h>
@@ -580,6 +581,7 @@ enum class Lifecycle {
     Attached,
     Starting,
     Running,
+    Disabling,
     Stopping,
     Stopped,
     Failed
@@ -1448,6 +1450,20 @@ CommonChannelAccess common_from_stream(const ams_mel_ir_stream *owner)
             state->comms_metadata_attempted = true;
             state->comms_metadata = queue;
             return true;
+        },
+        [](const std::shared_ptr<void>& erased, ams_mel_ir_return_t *result,
+           char *out, std::size_t capacity, std::size_t *required) noexcept {
+            auto state = std::static_pointer_cast<ImageStreamState>(erased);
+            const auto status = disable_attached(state, state->callback->mutex,
+                state->callback->lifecycle, Lifecycle::Attached, Lifecycle::Running,
+                Lifecycle::Disabling, Lifecycle::Failed, state->control_only,
+                state->enable_attempted, state->disable_failed, state->requests, state->channel,
+                [](const std::shared_ptr<ImageStreamState>& claimed) noexcept {
+                    return finish_image_request(claimed);
+                }, image_stream_retain_failed, result);
+            diagnostic(status == AMS_MEL_OK ? "" : "Image Disable failed or unavailable",
+                       out, capacity, required);
+            return status;
         }};
 }
 } // namespace ams_mel_common
@@ -1537,6 +1553,9 @@ ImageCleanupOutcome finish_deferred_cleanup_from_external_owner(
                 if (state->cleanup_complete)
                     return state->cleanup_ok ? ImageCleanupOutcome::Succeeded
                                              : ImageCleanupOutcome::Failed;
+                if (state->control_only && state->disable_failed &&
+                    !state->control_stop_requested && !state->public_owner_closed && !close_public_owner)
+                    return ImageCleanupOutcome::NotRequired;
                 const bool stopping = callback.lifecycle == Lifecycle::Stopping ||
                     callback.lifecycle == Lifecycle::Stopped ||
                     callback.lifecycle == Lifecycle::Failed || state->public_owner_closed;
@@ -1730,6 +1749,7 @@ void logical_stop(ImageStreamState& stream, bool failed) noexcept
         {
             std::lock_guard lock{stream.callback->mutex};
             stream.callback->accepting = false;
+            stream.control_stop_requested = true;
             if (stream.comms_metadata) stream.comms_metadata->deactivate(failed);
             if (stream.callback->lifecycle != Lifecycle::Failed)
                 stream.callback->lifecycle = failed ? Lifecycle::Failed : Lifecycle::Stopping;
@@ -1897,7 +1917,7 @@ ImageCleanupOutcome image_stream_cleanup(
             }
             if (!stream.channel) return ImageCleanupOutcome::NotRequired;
             stream.cleanup_in_progress = true;
-            failed = stream.callback->lifecycle == Lifecycle::Failed;
+            failed = stream.callback->lifecycle == Lifecycle::Failed || stream.disable_failed;
             owner_closed = stream.public_owner_closed;
             disable_needed = stream.enable_attempted;
             /* Move ownership out of the shared state under the lock so the
@@ -2332,6 +2352,43 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
 {
     diagnostic("", out, capacity, required);
     if (!stream || (!out && capacity != 0U)) return AMS_MEL_INVALID_ARGUMENT;
+    if (stream->state->control_only) {
+        // Control-only Start has no buffer work. Retain the graph exactly like
+        // a common operation, and never refer to the public wrapper on reentry.
+        auto state = stream->state;
+        try {
+            std::shared_ptr<irmel::Channel> channel;
+            {
+                std::lock_guard lock{state->callback->mutex};
+                if (state->callback->lifecycle == Lifecycle::Running) return AMS_MEL_OK;
+                if (state->callback->lifecycle == Lifecycle::Stopped ||
+                    state->callback->lifecycle == Lifecycle::Stopping) return AMS_MEL_STREAM_STOPPED;
+                if (state->callback->lifecycle != Lifecycle::Attached) return AMS_MEL_PROVIDER_FAILED;
+                state->callback->lifecycle = Lifecycle::Starting;
+                state->enable_attempted = true;
+                ++state->requests;
+                channel = state->channel;
+            }
+            ams_mel_status_t status = AMS_MEL_OK;
+            try {
+                if (channel->enable() != irmel::Return::Success) status = AMS_MEL_PROVIDER_FAILED;
+            } catch (...) { status = AMS_MEL_PROVIDER_EXCEPTION; }
+            {
+                std::lock_guard lock{state->callback->mutex};
+                if (state->callback->lifecycle == Lifecycle::Failed) status = AMS_MEL_PROVIDER_FAILED;
+                if (state->callback->lifecycle == Lifecycle::Starting)
+                    state->callback->lifecycle = status == AMS_MEL_OK ? Lifecycle::Running : Lifecycle::Failed;
+            }
+            channel.reset();
+            if (!finish_image_request(state) && status == AMS_MEL_OK) status = AMS_MEL_PROVIDER_FAILED;
+            diagnostic(status == AMS_MEL_OK ? "" : "control-only Image enable failed", out, capacity, required);
+            return status;
+        } catch (...) {
+            image_stream_retain_failed(state);
+            diagnostic("Image enable lifecycle failure; graph retained", out, capacity, required);
+            return AMS_MEL_INTERNAL_ERROR;
+        }
+    }
     try {
         {
             std::lock_guard lock{stream->state->callback->mutex};
@@ -2341,6 +2398,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
             case Lifecycle::Failed: return AMS_MEL_PROVIDER_FAILED;
             /* A concurrent Start is genuinely a misuse. */
             case Lifecycle::Starting: return AMS_MEL_PROVIDER_FAILED;
+            case Lifecycle::Disabling: return AMS_MEL_PROVIDER_FAILED;
             /* Stopping is a LOGICALLY STOPPED stream whose physical teardown
              * is merely deferred (PR #42 third-review corrective).
              *

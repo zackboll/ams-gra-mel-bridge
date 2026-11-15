@@ -36,14 +36,21 @@ public:
         ams_mel_ir_channel_capability **, char *, std::size_t, std::size_t *) noexcept;
     using MetadataFunction = bool (*)(const std::shared_ptr<void>&,
         const std::shared_ptr<CommsMetadataState>&);
+    using DisableFunction = ams_mel_status_t (*)(const std::shared_ptr<void>&,
+        ams_mel_ir_return_t *, char *, std::size_t, std::size_t *) noexcept;
     /* Optional family-local one-shot publication, called while a temporary
      * claim retains the graph. C2 deliberately has no adapter here: its common
      * callback belongs exclusively to the existing C2 metadata queue. */
     CommonChannelAccess(std::weak_ptr<void> state, AdmissionFunction admission,
                         ClaimFunction claim, CapabilityFunction capability,
-                        MetadataFunction metadata = nullptr) noexcept
+                        MetadataFunction metadata = nullptr,
+                        DisableFunction disable = nullptr) noexcept
         : state_{std::move(state)}, admission_{admission}, claim_{claim},
-          capability_{capability}, metadata_{metadata} {}
+          capability_{capability}, metadata_{metadata}, disable_{disable} {}
+    ams_mel_status_t disable(const std::shared_ptr<void>& state,
+        ams_mel_ir_return_t *result, char *out, std::size_t capacity,
+        std::size_t *required) const noexcept
+    { return disable_ ? disable_(state, result, out, capacity, required) : AMS_MEL_PROVIDER_FAILED; }
     bool expired() const noexcept { return state_.expired(); }
     std::shared_ptr<void> lock() const noexcept { return state_.lock(); }
     std::shared_ptr<CompletionAdmission> admission(const std::shared_ptr<void>& state) const noexcept
@@ -64,6 +71,7 @@ private:
     ClaimFunction claim_;
     CapabilityFunction capability_;
     MetadataFunction metadata_;
+    DisableFunction disable_;
 };
 static_assert(std::is_nothrow_move_constructible_v<CommonChannelAccess>);
 

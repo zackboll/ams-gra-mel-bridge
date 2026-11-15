@@ -1211,7 +1211,8 @@ class PublicSurfaceTests(unittest.TestCase):
         public_view_members = {name for name in dir(ChannelView) if not name.startswith("_")}
         self.assertEqual(
             public_view_members,
-            {"is_open", "send_keepalive", "submit_comms_test", "capabilities", "close"},
+            {"is_open", "send_keepalive", "submit_comms_test", "open_comms_metadata",
+             "capabilities", "close"},
         )
         self.assertEqual(
             {name for name in dir(CommsRequest) if not name.startswith("_")},

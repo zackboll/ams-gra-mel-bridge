@@ -2782,6 +2782,13 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_channel_get_capabilities";
+   function IR_Channel_Disable
+     (Handle              : Channel_Handle;
+      Result              : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_disable";
    function IR_Channel_Close
      (Handle              : access Channel_Handle;
       Diagnostic          : System.Address;
