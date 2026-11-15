@@ -11,12 +11,14 @@ ams_mel_status_t disable_attached(const std::shared_ptr<State>& state,
     Lifecycle disabling, Lifecycle failed, bool eligible, bool& obligation,
     bool& disable_failed, std::size_t& requests,
     const std::shared_ptr<ams::iface::irmel::Channel>& provider,
-    Finish finish, Retain retain, ams_mel_ir_return_t *result) noexcept
+    Finish finish, Retain retain, ams_mel_ir_return_t *result,
+    const bool *buffer_operation = nullptr) noexcept
 {
     std::shared_ptr<ams::iface::irmel::Channel> channel;
     try {
         {
             std::lock_guard lock{mutex};
+            if (buffer_operation && *buffer_operation) return AMS_MEL_PROVIDER_FAILED;
             if (!eligible || !provider) return AMS_MEL_PROVIDER_FAILED;
             if (lifecycle == attached) return AMS_MEL_OK;
             if (lifecycle != enabled) return AMS_MEL_PROVIDER_FAILED;

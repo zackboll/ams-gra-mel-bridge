@@ -2079,7 +2079,7 @@ Return standalone_disable(const std::string& scenario, unsigned family)
 extern "C" __attribute__((visibility("default"))) void mock_comms_reentry(void (*hook)())
 { common_comms_reentry = hook; }
 bool common_metadata_scenario(const std::string& scenario)
-{ return scenario.rfind("common-meta-", 0) == 0; }
+{ return scenario.rfind("common-meta-", 0) == 0 || scenario == "registration020-ada"; }
 void route_common_comms(unsigned destination, const irmel::ChannelCommsTestRep& report)
 {
     const auto found = common_comms_routes.find(destination);
@@ -2163,7 +2163,92 @@ private:
     bool partial_{};
 };
 
+/* IRMEL-ADA-020 isolated application-buffer fixture. Existing acquisition
+ * registration behavior is unchanged outside this explicit scenario prefix. */
+bool application_registration(const std::string& scenario)
+{ return scenario.starts_with("registration020-"); }
+void (*registration_reentry)(){};
+std::shared_ptr<irmel::Buffer> application_retained;
+extern "C" __attribute__((visibility("default"))) void mock_registration_reentry(void (*hook)())
+{ registration_reentry = hook; }
+extern "C" __attribute__((visibility("default"))) void mock_registration_drop_retained()
+{ application_retained.reset(); }
+class ApplicationRegistration {
+    std::shared_ptr<irmel::Buffer> registered_;
+    std::weak_ptr<irmel::Buffer> original_;
+    void *address_{};
+    bool register_failed_{}, unregister_failed_{};
+public:
+    Return call(const std::string& scenario, std::shared_ptr<irmel::Buffer> buffer, bool removing)
+    {
+        record(removing ? "application_unregister_entered" : "application_register_entered");
+        if (!buffer || buffer->getSize() != 16 || buffer->getContext() != -20)
+            throw std::runtime_error("application Buffer descriptor changed");
+        if (removing) {
+            if (original_.lock() != buffer || buffer->getBufferAddress() != address_)
+                throw std::runtime_error("application Buffer identity/storage changed");
+            record("application_identity_verified");
+        } else {
+            if (registered_) throw std::runtime_error("duplicate reached provider");
+            registered_ = buffer;
+            original_ = buffer;
+            address_ = buffer->getBufferAddress();
+        }
+        auto hook = std::exchange(registration_reentry, nullptr);
+        if (hook) hook();
+        if (scenario == "registration020-ada") {
+            const irmel::ChannelCommsTestRep report{20U, removing ? 2U : 1U};
+            for (const auto& route : common_comms_routes) route.second(report);
+            record("application_metadata_reentry_returned");
+        }
+        record(removing ? "application_unregister_returning" : "application_register_returning");
+        bool& failed = removing ? unregister_failed_ : register_failed_;
+        const std::string prefix = removing ? "registration020-unregister-" : "registration020-register-";
+        if (!failed && scenario.starts_with(prefix)) {
+            failed = true;
+            const auto mode = scenario.substr(prefix.size());
+            if (mode == "fail-no-retain") { registered_.reset(); return Return::Fail; }
+            if (mode == "throw") throw std::runtime_error("application registration exception");
+            if (mode == "bad-pointer") return Return::BadPointer;
+            if (mode == "fail" || mode == "retained") return Return::Fail;
+            if (mode == "unsupported") return Return::NotSupported;
+            if (mode == "unimplemented") return Return::NotImplemented;
+        }
+        if (removing) {
+            if (scenario == "registration020-retain-unregistered") application_retained = registered_;
+            registered_.reset();
+        }
+        return Return::Success;
+    }
+};
+
+/* A real delivered checkout wrapper owns the original application Buffer.
+ * Queries are forbidden: control-only callbacks have no acquisition layout. */
+class ApplicationCheckout final : public irmel::Buffer {
+    std::shared_ptr<irmel::Buffer> original_;
+    bool fail_, released_{};
+public:
+    ApplicationCheckout(std::shared_ptr<irmel::Buffer> original, bool fail)
+        : original_{std::move(original)}, fail_{fail} {}
+    Return init(void *, std::size_t, std::int64_t) override { std::abort(); }
+    void *getBufferAddress() const override { std::abort(); }
+    void *getImageAddress() const override { std::abort(); }
+    std::int64_t getSize() const override { std::abort(); }
+    std::int64_t getContext() const override { std::abort(); }
+    Return getFlags(std::vector<irmel::BufferFlag>&) const override { std::abort(); }
+    void addFlag(irmel::BufferFlag) override { std::abort(); }
+    void setFlags(const std::vector<irmel::BufferFlag>&) override { std::abort(); }
+    Return release() override
+    {
+        if (released_) std::abort();
+        released_ = true;
+        record("application_checkout_released");
+        return fail_ ? Return::Fail : Return::Success;
+    }
+};
+
 class MockImageChannel final : public irmel::ImageChannel {
+ApplicationRegistration application_registration_;
 public:
     MockImageChannel(std::string scenario, std::shared_ptr<irmel::ImageListener> listener)
         : scenario_{std::move(scenario)}, listener_{std::move(listener)},
@@ -2350,6 +2435,16 @@ public:
     }
     Return registerBuffer(std::shared_ptr<irmel::Buffer> buffer) override
     {
+        if (application_registration(scenario_)) {
+            const auto result = application_registration_.call(scenario_, buffer, false);
+            if (scenario_ == "registration020-callback" || scenario_ == "registration020-callback-fail") {
+                irmel::FrameHeader header;
+                listener_->onImage(*this, header,
+                    std::make_shared<ApplicationCheckout>(buffer, scenario_ == "registration020-callback-fail"));
+                record("application_checkout_returned");
+            }
+            return result;
+        }
         record("buffer_registered");
         if (scenario_ == "register-fail") return Return::Fail;
         /* Squall-shaped: every registered buffer starts in the available
@@ -2375,6 +2470,15 @@ public:
     }
     Return unregisterBuffer(std::shared_ptr<irmel::Buffer> buffer) override
     {
+        if (application_registration(scenario_)) {
+            const auto result = application_registration_.call(scenario_, buffer, true);
+            if (scenario_ == "registration020-unregister-callback") {
+                irmel::FrameHeader header;
+                listener_->onImage(*this, header, std::make_shared<ApplicationCheckout>(buffer, false));
+                record("application_checkout_returned");
+            }
+            return result;
+        }
         if (producer_.joinable()) std::abort();
         record("buffer_unregistered");
         const auto it = std::find(buffers_.begin(), buffers_.end(), buffer);
@@ -2385,7 +2489,7 @@ public:
     {
         record("channel_enabled");
         standalone_enable_hook();
-        if (common_metadata_scenario(scenario_)) return Return::Success;
+        if (application_registration(scenario_) || common_metadata_scenario(scenario_)) return Return::Success;
         if (scenario_ == "image-control-unexpected" ||
             scenario_ == "image-control-release-fail" ||
             scenario_ == "image-control-release-throw") {
@@ -2418,6 +2522,7 @@ public:
     }
     Return disable() override
     {
+        if (application_registration(scenario_)) return Return::Success;
         if (standalone_disable_scenario(scenario_)) {
             record("channel_disabled");
             return standalone_disable(scenario_, 1U);
@@ -2441,7 +2546,7 @@ public:
     }
     irmel::ChannelCapability getCapabilities() const override
     {
-        if (standalone_disable_scenario(scenario_) || scenario_ == "common-meta-zero" || scenario_.rfind("image-control-", 0U) == 0U) {
+        if (application_registration(scenario_) || standalone_disable_scenario(scenario_) || scenario_ == "common-meta-zero" || scenario_.rfind("image-control-", 0U) == 0U) {
             return control_image_capability();
         }
         if (scenario_ == "capability-inflight" && capability_calls_++ != 0U) {
@@ -3432,6 +3537,7 @@ public:
 };
 
 class MockC2Channel final : public irmel::C2Channel {
+ApplicationRegistration application_registration_;
 public:
     explicit MockC2Channel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockC2Channel() override
@@ -3835,10 +3941,14 @@ public:
         }
         return future;
     }
-    Return registerBuffer(std::shared_ptr<irmel::Buffer>) override
-    { return Return::NotSupported; }
-    Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override
-    { return Return::NotSupported; }
+    Return registerBuffer(std::shared_ptr<irmel::Buffer> buffer) override
+    {
+        if (application_registration(scenario_)) return application_registration_.call(scenario_, buffer, false);
+        return Return::NotSupported; }
+    Return unregisterBuffer(std::shared_ptr<irmel::Buffer> buffer) override
+    {
+        if (application_registration(scenario_)) return application_registration_.call(scenario_, buffer, true);
+        return Return::NotSupported; }
     Return enable() override
     {
         record("c2_enabled");
@@ -4092,6 +4202,7 @@ mel::MFA_SecurityAuditRecord security_record(unsigned alternative)
 }
 
 class MockHealthStatusChannel final : public irmel::HealthStatusChannel {
+ApplicationRegistration application_registration_;
 public:
     explicit MockHealthStatusChannel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockHealthStatusChannel() override
@@ -4132,8 +4243,12 @@ public:
         return held_request(std::make_shared<irmel::ChannelCommsTestRep>(
             request.getCommandID(), request.getRequestID()), 2);
     }
-    Return registerBuffer(std::shared_ptr<irmel::Buffer>) override { return Return::NotSupported; }
-    Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override { return Return::NotSupported; }
+    Return registerBuffer(std::shared_ptr<irmel::Buffer> buffer) override {
+        if (application_registration(scenario_)) return application_registration_.call(scenario_, buffer, false);
+        return Return::NotSupported; }
+    Return unregisterBuffer(std::shared_ptr<irmel::Buffer> buffer) override {
+        if (application_registration(scenario_)) return application_registration_.call(scenario_, buffer, true);
+        return Return::NotSupported; }
     Return enable() override { enabled_=true;record("health_enabled");standalone_enable_hook();return scenario_=="health-enable-fail"?Return::Fail:Return::Success; }
     Return disable() override { enabled_=false;record("health_disabled");if(standalone_disable_scenario(scenario_))return standalone_disable(scenario_,4U);if(scenario_=="health-metadata-nonquiescing-disable"){const char* base=std::getenv("AMS_MEL_TEST_HEALTH_CALLBACK_BARRIER");if(!base)std::abort();wait_for_file(std::string{base}+".entered");record("disable_returned_with_health_callback_active");}return scenario_ == "common-meta-disable-fail" ? Return::Fail : Return::Success; }
     irmel::ChannelCapability getCapabilities() const override
@@ -6071,6 +6186,7 @@ void stacked_reenter(unsigned operation)
 }
 
 class MockStackedImageChannel final : public irmel::StackedImageChannel {
+ApplicationRegistration application_registration_;
 public:
     explicit MockStackedImageChannel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockStackedImageChannel() override
@@ -6101,8 +6217,12 @@ public:
         return held_request(std::make_shared<irmel::ChannelCommsTestRep>(
             request.getCommandID(), request.getRequestID()), 14);
     }
-    Return registerBuffer(std::shared_ptr<irmel::Buffer>) override { record("stacked_forbidden_registration"); return Return::NotSupported; }
-    Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override { record("stacked_forbidden_registration"); return Return::NotSupported; }
+    Return registerBuffer(std::shared_ptr<irmel::Buffer> buffer) override {
+        if (application_registration(scenario_)) return application_registration_.call(scenario_, buffer, false);
+        record("stacked_forbidden_registration"); return Return::NotSupported; }
+    Return unregisterBuffer(std::shared_ptr<irmel::Buffer> buffer) override {
+        if (application_registration(scenario_)) return application_registration_.call(scenario_, buffer, true);
+        record("stacked_forbidden_registration"); return Return::NotSupported; }
     Return enable() override
     {
         record("stacked_enabled");
@@ -6147,7 +6267,7 @@ class MockControl final : public irmel::Control {
 public:
     explicit MockControl(std::string instance) : instance_{std::move(instance)}
     {
-        if (common_metadata_scenario(instance_)) {
+        if (application_registration(instance_) || common_metadata_scenario(instance_)) {
             for (auto type : {irmel::ChannelType::CommandAndControl, irmel::ChannelType::HealthAndStatus, irmel::ChannelType::IRSTImage, irmel::ChannelType::StackedImage}) {
                 irmel::ChannelCapability value; value.setChannelTypes({type}); capabilities_.push_back(std::move(value));
             }
@@ -6981,7 +7101,7 @@ std::shared_ptr<ams::iface::irmel::Buffer> getBuffer(
     std::string_view instance, std::shared_ptr<API_Manager> manager)
 {
     record("buffer_factory_called");
-    if (instance.starts_with("foundation-")) {
+    if (instance.starts_with("foundation-") || application_registration(std::string{instance})) {
         const auto actual = std::dynamic_pointer_cast<MockManager>(manager);
         if (!actual || actual->instance != instance) std::abort();
         record("foundation_instance_manager_verified");

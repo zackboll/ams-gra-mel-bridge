@@ -3,6 +3,7 @@ private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
 private with AMS.MEL_C_API;
 with Interfaces;
+with AMS.MEL.IR.Buffer;
 
 package AMS.MEL.IR.Channel is
    --  Shared channel capability snapshots and the weak common-channel facade.
@@ -432,6 +433,31 @@ package AMS.MEL.IR.Channel is
    --  owner and independently admitted requests are unaffected. Unexpected
    --  native failure raises a provider error; finalization is non-raising.
    --  @param Channel View to close; externally serialize against its operations.
+
+   procedure Register_Buffer (Channel : View; Object : in out AMS.MEL.IR.Buffer.Host_Buffer);
+   --  Register the exact independently owned Buffer on an attached, disabled
+   --  C2, Health, Stacked or control-only Image channel in the same native Session.
+   --  Initialize bytes and flags first. Registration retains the native graph,
+   --  not public ownership; the View remains weak. No acquisition is introduced.
+   --  @param Channel Weak view of the concrete typed channel; serialize closure.
+   --  @param Object Open unregistered owner, retained unchanged on refusal.
+   --  @exception Provider_Error Ineligible lifecycle, incompatible Session,
+   --  duplicate, refusal or exception. Actual provider Return is reported when
+   --  available. After provider entry, only same-channel unregister cleanup is
+   --  allowed; storage/flag access and owner Close remain blocked if uncertain.
+
+   procedure Unregister_Buffer (Channel : View; Object : in out AMS.MEL.IR.Buffer.Host_Buffer);
+   --  Unregister the original provider Buffer while attached and disabled.
+   --  Success is logical unregister, not callback quiescence. Extra provider
+   --  ownership or unresolved Image checkouts continue to block storage access
+   --  and Close until safety reconciliation; uncertain graphs may be retained
+   --  until process exit. Never calls checkout release or silently retries.
+   --  @param Channel Same concrete channel used for registration, not another
+   --  attachment or Session. Keep its typed owner open through cleanup.
+   --  @param Object Original limited owner; ownership is never transferred.
+   --  @exception Provider_Error Wrong association, active lifecycle, duplicate
+   --  unregister, provider refusal or exception. Actual Return is reported when
+   --  available. Refusal preserves the obligation and both owner handles.
 
    procedure Disable (Channel : View);
    --  Explicitly disable C2, HealthAndStatus, StackedImage or control-only Image

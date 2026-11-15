@@ -3,6 +3,7 @@
 #include "internal/ir_channel.hpp"
 #include "internal/common_channel_requests.hpp"
 #include "internal/channel_disable.hpp"
+#include "internal/channel_buffer_registration.hpp"
 #include "internal/completion_probe.hpp"
 #include "internal/ir_camera_command.hpp"
 #include "internal/ir_erase.hpp"
@@ -386,6 +387,7 @@ std::unique_ptr<EventData> copy_bit_status(const mel::BIT_Status *input)
 enum class C2Lifecycle { Attached, Enabling, Enabled, Disabling, Failed, Closed };
 
 struct ChannelState {
+    ams_mel_common::BufferRegistrations application_buffers;
     std::mutex mutex;
     std::shared_ptr<SessionState> session;
     std::shared_ptr<irmel::Channel> channel;
@@ -736,6 +738,15 @@ ams_mel_status_t c2_capability(const std::shared_ptr<ChannelState>& state,
 }
 } // namespace
 
+namespace {
+bool reconcile_application_buffer(ams_mel_ir_buffer& buffer) noexcept
+{
+    auto state = std::static_pointer_cast<ChannelState>(buffer.channel_owner);
+    return ams_mel_common::reconcile_buffer(buffer, state->mutex,
+        state->application_buffers, [] { return true; });
+}
+} // namespace
+
 namespace ams_mel_common {
 using namespace ams::iface;
 CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *owner)
@@ -766,10 +777,17 @@ CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *owner)
             const auto status = disable_attached(state, state->mutex, state->lifecycle,
                 C2Lifecycle::Attached, C2Lifecycle::Enabled, C2Lifecycle::Disabling,
                 C2Lifecycle::Failed, true, state->enable_attempted, state->disable_failed,
-                state->requests, state->channel, finish_c2_operation, retain_failed, result);
+                state->requests, state->channel, finish_c2_operation, retain_failed, result, &state->application_buffers.operation);
             diagnostic(status == AMS_MEL_OK ? "" : "C2 Disable failed or unavailable",
                        out, capacity, required);
             return status;
+        },
+        [](const std::shared_ptr<void>& erased, ams_mel_ir_buffer& buffer,
+           bool removing, ams_mel_ir_return_t *result) noexcept {
+            auto state = std::static_pointer_cast<ChannelState>(erased);
+            return buffer_registration(state, state->mutex, state->lifecycle,
+                C2Lifecycle::Attached, true, state->application_buffers, state->channel,
+                buffer, removing, result, reconcile_application_buffer, [] { return true; });
         }};
 }
 } // namespace ams_mel_common
@@ -1159,6 +1177,8 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_enable(
         std::shared_ptr<irmel::Channel> channel;
         {
             std::lock_guard lock{state->mutex};
+            if (state->application_buffers.operation || state->application_buffers.uncertain)
+                return AMS_MEL_PROVIDER_FAILED;
             if (state->lifecycle == C2Lifecycle::Enabled) return AMS_MEL_OK;
             if (state->lifecycle != C2Lifecycle::Attached) return AMS_MEL_PROVIDER_FAILED;
             state->enable_attempted = true;
@@ -1928,6 +1948,7 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_close(
         bool now = false;
         {
             std::lock_guard lock{state->mutex};
+            if (state->application_buffers.count) return AMS_MEL_PROVIDER_FAILED;
             state->lifecycle = C2Lifecycle::Closed;
             now = state->requests == 0U;
         }

@@ -2496,6 +2496,24 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_config_set(
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
+/* Application-owned registration: C2, Health, Stacked and control-only Image,
+ * attached and disabled, same native Session graph only. Ownership is not
+ * transferred. Close and byte/flag access refuse while registered or uncertain.
+ * A refusal/exception after provider entry retains the association for explicit
+ * unregister cleanup. Successful unregister is not callback quiescence; extra
+ * provider ownership and unresolved Image checkouts continue to block access
+ * and closure. result is the exact Return, UINT32_MAX when none was obtained.
+ * Externally serialize handle lifetime; competing admitted lifecycle calls
+ * reject rather than wait for provider reentry. Never calls Buffer::release. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_register_buffer(
+    const ams_mel_ir_channel *channel, ams_mel_ir_buffer *buffer,
+    ams_mel_ir_return_t *result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_unregister_buffer(
+    const ams_mel_ir_channel *channel, ams_mel_ir_buffer *buffer,
+    ams_mel_ir_return_t *result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* Common inherited Channel services are valid while attached or enabled. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_send_keepalive(
     ams_mel_ir_c2 *c2, ams_mel_ir_return_request **out_request,

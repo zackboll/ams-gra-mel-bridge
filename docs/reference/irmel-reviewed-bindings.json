@@ -1096,28 +1096,30 @@
       "status": "partial",
       "native": [
         {
-          "path": "native/src/ir_stream.cpp",
-          "symbol": "ams_mel_ir_stream_receive_snapshot"
+          "path": "native/src/common_channel_requests.cpp",
+          "symbol": "ams_mel_ir_channel_register_buffer"
         }
       ],
       "ada": [
         {
-          "path": "ada/src/ams-mel-ir-image.ads",
-          "symbol": "Receive"
+          "path": "ada/src/ams-mel-ir-channel.ads",
+          "symbol": "Register_Buffer"
         }
       ],
       "tests": [
         {
-          "path": "native/tests/test_ir_stream.c",
+          "path": "native/tests/test_channel_buffer_registration.c",
           "symbol": "main"
         },
         {
-          "path": "ada/tests/src/ams_mel_ir_image_tests.adb",
+          "path": "ada/tests/src/ams_mel_ir_registration_tests.adb",
           "symbol": "Run"
         }
       ],
-      "notes": "Internal Image Open registers provider buffers backed by bridge host storage; application buffer registration is not exposed.",
-      "limitations": [],
+      "notes": "IRMEL-ADA-020: independently owned stable host Buffer registration on C2, HealthStatus, StackedImage and control-only Image. Exact Buffer/Session identity, disabled-only lifecycle, persistent registration accounting, conservative refusal retention and explicit same-channel cleanup.",
+      "limitations": [
+        "Other conditional families remain unsupported. Full Mono8 application registration is not exposed. Success is not callback quiescence; extra provider ownership and unresolved Image checkouts retain the graph."
+      ],
       "representation": []
     },
     {
@@ -1243,12 +1245,33 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Not exposed or called during teardown; provider channel destruction is used instead. Upstream disable does not establish callback quiescence.",
-      "limitations": [],
+      "status": "partial",
+      "native": [
+        {
+          "path": "native/src/common_channel_requests.cpp",
+          "symbol": "ams_mel_ir_channel_unregister_buffer"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-channel.ads",
+          "symbol": "Unregister_Buffer"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_channel_buffer_registration.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_registration_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-020: independently owned stable host Buffer registration on C2, HealthStatus, StackedImage and control-only Image. Exact Buffer/Session identity, disabled-only lifecycle, persistent registration accounting, conservative refusal retention and explicit same-channel cleanup.",
+      "limitations": [
+        "Other conditional families remain unsupported. Full Mono8 application registration is not exposed. Success is not callback quiescence; extra provider ownership and unresolved Image checkouts retain the graph."
+      ],
       "representation": []
     },
     {
@@ -7217,7 +7240,7 @@
       ],
       "notes": "Standalone host Buffer owner is safe Ada; complete upstream Buffer contract remains partial. No C++ layout or native address is public. General release requires a future checkout/lease contract.",
       "limitations": [
-        "Channel registration/unregistration, checkout release, generic image acquisition and GPU/RDMA storage remain unbound."
+        "Application registration/unregistration is supported on C2, HealthStatus, StackedImage and control-only Image; other families/full acquisition registration, generic delivered-buffer checkout/release, generic image acquisition and GPU/RDMA storage remain unbound."
       ],
       "representation": [
         {
@@ -12581,9 +12604,8 @@
       "native": [],
       "ada": [],
       "tests": [],
-      "notes": "IRMEL-ADA-016 adds only AMS.MEL.IR.Stacked_Image ownership/lifecycle and weak common requests, not a stacked-image receiver.",
+      "notes": "Typed safe StackedImage owner with common communications, standalone Disable and application Buffer registration/unregistration; no stacked-image receiver.",
       "limitations": [
-        "Standalone Disable, application buffers and common communications metadata registration remain unbound.",
         "Optional LOS3D registration, image-stack callbacks and StackFrameHeader conversion remain missing.",
         "Qualification is separate mock-provider only."
       ],
@@ -14353,9 +14375,9 @@
     },
     {
       "id": "C2Channel|ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "C2Channel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
@@ -14377,9 +14399,9 @@
     },
     {
       "id": "C2Channel|ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::disable()",
@@ -14401,9 +14423,9 @@
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "status": "partial",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "notes": "Internal bridge-managed host pool, not application-managed buffers."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
@@ -14425,9 +14447,9 @@
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::disable()",
@@ -14449,9 +14471,9 @@
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
@@ -14473,9 +14495,9 @@
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "InstrumentationChannel|ir:operation:ams::iface::irmel::Channel::disable()",
@@ -14641,9 +14663,9 @@
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "notes": "IRMEL-ADA-016 foundation leaves required buffer registration/unregistration and common communications metadata registration missing. No implicit registration occurs."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
@@ -14665,16 +14687,16 @@
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "notes": "IRMEL-ADA-016 foundation leaves required buffer registration/unregistration and common communications metadata registration missing. No implicit registration occurs."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     }
   ],
   "image_capabilities": [
     {
       "name": "Control-only Image attachment",
       "status": "safe_ada",
-      "notes": "Open_Image_Control uses the same limited Image_Stream owner for capabilities, common KeepAlive/CommsTest, navigation and four required metadata registrations with zero image-layout fields. Start only enables; Receive/frame leases fail explicitly. No image buffers are created, initialized or registered; unexpected callbacks are released without querying sample bytes, with existing uncertainty retention."
+      "notes": "Open_Image_Control uses the existing limited Image_Stream with zero image-layout fields, capabilities, communications, navigation and required metadata. Explicit application Buffer registration/unregistration is supported, but no internal image pool is allocated. Receive/frame leases refuse; unexpected delivered checkouts use the existing safe release engine without querying sample bytes, with uncertainty retention."
     },
     {
       "name": "Mono8 single-band",
@@ -14709,7 +14731,7 @@
     {
       "name": "Generic application-managed buffers",
       "status": "partial",
-      "notes": "IRMEL-ADA-018 independently owned provider Buffer with bridge-managed host storage, exact flags, signed context and checked byte copies. Registration/unregistration and delivered-buffer checkout/release remain unavailable; not generic acquisition parity."
+      "notes": "IRMEL-ADA-020: independently owned host Buffer registration/unregistration on C2, HealthStatus, StackedImage and control-only Image. Exact identity, disabled-only lifecycle and conservative ownership reconciliation; generic delivered-buffer checkout/release and full Mono8 application registration remain unavailable. Not generic acquisition parity."
     },
     {
       "name": "GPU/RDMA buffers",
@@ -14719,7 +14741,7 @@
     {
       "name": "StackedImage",
       "status": "partial",
-      "notes": "IRMEL-ADA-016 required channel ownership/common communications only. No image-stack listener, StackFrameHeader conversion, buffers or optional LOS3D reception."
+      "notes": "Required channel ownership/common communications, standalone Disable and explicit application Buffer registration/unregistration. No image-stack listener, StackFrameHeader conversion or optional LOS3D reception."
     }
   ],
   "source_sha256": {
