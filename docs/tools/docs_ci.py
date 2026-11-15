@@ -17,6 +17,7 @@ import tempfile
 import feature_source as source
 import source_epoch as epoch
 import build_enhanced_site as presentation
+import rustdoc_publication as rustdoc
 
 ROOT = Path(__file__).resolve().parents[2]
 require = source.require
@@ -74,7 +75,15 @@ def build(root, directory, prefix):
                                                   directory / 'generation.log')
         epoch.enhance(site, exported, report, references, Path(temp) / 'published', deep=False)
         shutil.copytree(site, directory / 'pristine')
-        shutil.copytree(Path(temp) / 'published', directory / 'published')
+        shutil.copytree(Path(temp) / 'published', directory / 'ada-qualified')
+        rust_files, rust_record = rustdoc.generate(exported, Path(temp) / 'rust-generation',
+                                                  context, directory / 'rustdoc.log')
+        combined = rustdoc.assembled(presentation.files(directory / 'ada-qualified'), rust_files)
+        for name, data in combined.items():
+            target = directory / 'published' / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        write(directory / 'rustdoc.json', rust_record)
         for name in ('coverage.json', 'warnings.json', 'native-anchors.json', 'gnatdoc.log'):
             shutil.copyfile(exported / 'obj/docs' / name, directory / name)
     manifest = {'schema': 1, 'identity': context,
@@ -92,6 +101,9 @@ def build(root, directory, prefix):
     warning_summary = (str(warning_report['raw_total']) if 'raw_total' in warning_report
                        else 'classification unavailable; raw diagnostics retained')
     summary = (f"### Documentation (current Git source)\n\nCommit: `{context['commit']}`\n\n"
+               f"Rustdoc {rustdoc.TOOLCHAIN}: {rust_record['counts']['html']} HTML, "
+               f"{rust_record['counts']['assets']} assets, {rust_record['seconds']:.2f}s. "
+               "Locked/offline; no native facade or doctests.\n\n"
                f"Coverage: {report['documented_elements']}/{report['total_elements']} "
                f"({report['documented_percentage']}%). Informational; no completeness threshold.\n\n"
                f"GNATdoc warnings: {warning_summary}. Informational; see `gnatdoc.log` and "
@@ -108,6 +120,7 @@ def verify(root, directory, manifest_sha, deployment=False):
     raw = (directory / 'manifest.json').read_bytes()
     require(epoch.sha(raw) == manifest_sha, 'manifest digest mismatch')
     manifest = json.loads(raw)
+    require(raw == epoch.canonical(manifest), 'noncanonical/duplicate manifest entries')
     require(manifest['schema'] == 1 and manifest['identity'] == context, 'source/run identity mismatch')
     actual = presentation.files(directory)
     del actual['manifest.json']
@@ -127,7 +140,11 @@ def verify(root, directory, manifest_sha, deployment=False):
         validate(directory / 'pristine', exported, ledger)
         references = References(exported, directory / 'pristine', ledger=ledger)
         epoch.verify_presentation(directory / 'pristine', exported, report, references,
-                                  directory / 'published')
+                                  directory / 'ada-qualified')
+        rust_raw = (directory / 'rustdoc.json').read_bytes()
+        rust_record = json.loads(rust_raw)
+        require(rust_raw == epoch.canonical(rust_record), 'noncanonical/duplicate Rustdoc record')
+        rustdoc.verify_assembly(directory, context, rust_record)
     return manifest
 
 
@@ -149,6 +166,7 @@ def unpack(bundle, directory, bundle_sha, manifest_sha):
         raw = archive.extractfile('manifest.json').read()
         require(epoch.sha(raw) == manifest_sha, 'archive manifest mismatch')
         manifest = json.loads(raw)
+        require(raw == epoch.canonical(manifest), 'noncanonical/duplicate manifest entries')
         require(set(names) == set(manifest['payload']) | {'manifest.json'}, 'archive inventory mismatch')
         directory.mkdir(parents=True)
         for member in members:
@@ -159,14 +177,24 @@ def unpack(bundle, directory, bundle_sha, manifest_sha):
 
 def live(directory, base, evidence):
     from check_live_docs_site import base_url, file_url, get_entity, graph
+    from concurrent.futures import ThreadPoolExecutor
     import time
     base = base_url(base)
     files = presentation.files(directory / 'published')
-    graph(files)
+    # Run the unchanged active-content/anchor policy on the isolated Ada bytes.
+    graph(presentation.files(directory / 'ada-qualified'))
+    rustdoc.validate({n.removeprefix('rust/'): d for n, d in files.items() if n.startswith('rust/')})
     attempts = []
     for _ in range(10):
-        attempts.append([get_entity(file_url(base, name), base, data)[0] for name, data in files.items()])
+        def fetch(item):
+            name, data = item
+            return get_entity(file_url(base, name), base, data, rustdoc=name.startswith('rust/'))[0]
+        # Bounded parallel GETs retain exhaustive ordered evidence and all transport
+        # checks. No external documentation link is fetched; no redirects added.
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            attempts.append(list(pool.map(fetch, files.items())))
         if all(item['comparison'] for item in attempts[-1]):
+            require(presentation.files(directory / 'published') == files, 'artifact changed during HTTP verification')
             write(evidence, {'successful': True, 'attempts': attempts})
             return
         time.sleep(30)
