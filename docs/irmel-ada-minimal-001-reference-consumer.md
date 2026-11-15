@@ -302,9 +302,20 @@ without concurrent native/Ada builds in its output directories. Logs live at
 | `make test-ada` | PASS, exit 0; full existing smoke suite plus 14 new provider-free negative controls |
 | `make check-ir-api-coverage` | PASS, exit 0; 70 controls, unchanged coverage |
 
-Aggregate `make check`, pinned Alire build/run, Rust formatting/Clippy and final
-integrity checks follow sequentially. Results are recorded after completion,
-not inferred from individual earlier gates.
+| `make check` | PASS, exit 0; both build-tree isolation directions, repeated 821/821 native, full Ada/negative suite, coverage/format/newline/whitespace gates |
+| `alr -n -C ada build` | PASS, exit 0, pinned GNAT/GPRbuild |
+| `alr -n -C ada/tests run` | PASS, exit 0, full existing Alire smoke executable |
+| `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` | PASS, exit 0 |
+| `cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings` | PASS, exit 0 with test-tree native/provider environment |
+| `python3 scripts/check_doc_source_integrity.py` | PASS, exit 0; 825 vendor files / four workflows |
+| `python3 scripts/check_final_newlines.py` / `git diff --check` | PASS, exit 0 |
+
+The complete serialized driver finished **exit 0** and records
+`all qualification passed`. Existing imported-native-project metadata warnings
+(`no sources of language C`) remain visible; compiled Ada sources pass
+warnings-as-errors. No public Ada declarations changed, so GNATdoc regeneration
+is not required; the unchanged-public-declaration gate passed. The new checks
+package is application test support under `ada/tests/src`, not a public binding.
 
 ## Delivery
 
@@ -318,8 +329,10 @@ are above. Hosted runs at source/report commit `9a6a1a1`:
 - Documentation: <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/43743201287>.
 
 These superseded-HEAD results are not substituted for subsequent report
-commits' own exact-HEAD checks. Local full qualification must complete before
-the disposition can become HOSTED_CI_PENDING or READY_FOR_INDEPENDENT_REVIEW.
+commits' own exact-HEAD checks. All required local qualification is now
+complete: disposition **HOSTED_CI_PENDING** until applicable exact-final-HEAD
+hosted checks complete. No unresolved real-provider interoperability limitation
+was found within this task's required safe scope.
 
 ## Limitations
 
