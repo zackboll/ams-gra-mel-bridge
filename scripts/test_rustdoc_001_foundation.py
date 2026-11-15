@@ -99,7 +99,8 @@ class FoundationTests(unittest.TestCase):
             self.assertIn("--deny rustdoc::broken_intra_doc_links", env["RUSTDOCFLAGS"])
             self.assertIn("--warn missing_docs", env["RUSTDOCFLAGS"])
         report = json.loads((second / "qualification.json").read_text())
-        self.assertIn("ams_mel_sys/index.html", "ams_mel_common/index.html", report["files"])
+        self.assertIn("ams_mel_sys/index.html", report["files"])
+        self.assertIn("ams_mel_common/index.html", report["files"])
 
 
 if __name__ == "__main__":
