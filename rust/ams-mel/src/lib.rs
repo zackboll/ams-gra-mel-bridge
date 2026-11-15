@@ -1,5 +1,5 @@
 //! Safe Rust provider sessions, IR Mono8 frames, IR C2, IR HealthAndStatus
-//! lifecycle, and the common Channel façade for C2, Image, and Health through
+//! lifecycle, and the common Channel façade for C2, Image, Health and Stacked through
 //! `ams_mel_c`.
 //!
 //! [`Session`], [`ImageStream`], [`ControlChannel`], [`HealthStatusChannel`],
@@ -29,8 +29,8 @@
 //! Common Channel coverage (Task 032B3, RUST-IR-001):
 //!
 //! ```text
-//! safe Rust common Channel:      C2 + Image + Health
-//! native C / safe Ada common:    C2/Image/Health/Instrumentation/Track
+//! safe Rust common Channel:      C2 + Image + Health + Stacked
+//! native C / safe Ada common:    C2/Image/Health/Instrumentation/Track/Scheduling/Stacked
 //! ```
 //!
 //! Safe Rust has no typed Instrumentation or Track owners, so no common
@@ -39,6 +39,10 @@
 //! IR HealthAndStatus (RUST-IR-001): [`HealthStatusChannel`] covers Open,
 //! explicit Enable, capability snapshots, retryable Close, and its weak
 //! [`ChannelView`].
+//! [`StackedChannel`] provides the required fourth-channel foundation: owned
+//! [`StackedConfig`], discovery-derived attachment, explicit Enable, complete
+//! capabilities and weak common requests. It does not provide acquisition or
+//! metadata callback registration.
 //!
 //! IR HealthStatus metadata (RUST-IR-002):
 //! [`HealthStatusChannel::open_metadata`] returns an independent
@@ -106,6 +110,7 @@ mod ir_health_metadata;
 mod ir_image_metadata;
 mod ir_los_quaternion;
 mod ir_navigation;
+mod ir_stacked;
 pub use ir_navigation::{
     AttitudeRate, NavigationReport, NavigationRequest, NavigationResult, NorthEastDown,
     PositionSolutionState, PositionVelocityCovariance,
@@ -155,6 +160,7 @@ pub use ir_mode::{
 pub use ir_nuc::{
     NucCounters, NucOpenError, NucPixelValue, NucPointType, NucStream, NucTempData, NucTempPoint,
 };
+pub use ir_stacked::{StackedChannel, StackedConfig};
 pub use rf_admin::{RfAdmin, RfMfaState};
 pub use rf_data::{RfData, RfFaceInfo, RfFrequencyRange, RfJobDataFormat, RfMfaInfo};
 
@@ -1878,7 +1884,7 @@ impl Drop for ModeRequest {
 /// - [`ControlChannel::submit_bit`] (one-choice C2 BIT),
 /// - [`ControlChannel::submit_bit_noop`] (C2 BIT, empty/no-op convenience), and
 /// - [`ControlChannel::submit_config_set`] (C2 opaque configuration text), and
-/// - [`ChannelView::send_keepalive`] (common Channel KeepAlive, C2/Image/Health).
+/// - [`ChannelView::send_keepalive`] (common Channel KeepAlive, C2/Image/Health/Stacked).
 ///
 /// The native request owns its admitted family graph independently of the
 /// View, typed owner, and Session that created it. Wait is cached; timeout is
@@ -1936,7 +1942,7 @@ impl Drop for ReturnRequest {
 }
 
 /// Weak common Channel view of one safe typed owner ([`ControlChannel`],
-/// [`ImageStream`], or [`HealthStatusChannel`]).
+/// [`ImageStream`], [`HealthStatusChannel`], or [`StackedChannel`]).
 ///
 /// Ownership model:
 ///
