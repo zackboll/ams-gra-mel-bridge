@@ -168,3 +168,12 @@ no unrelated runtime changes were adopted into this branch. Final integration
 against advanced main, full prepared current-source legacy suites and exact-HEAD
 hosted qualification remain blockers. **QUALIFICATION_INCOMPLETE** remains the
 only justified disposition. No Pages deployment or merge was performed.
+
+Hosted follow-up found an existing fixture/environment boundary bug: the synthetic
+source-addition commit inherited `GITHUB_ACTIONS=true`, so its assembly identity
+was incorrectly compared to the event PR HEAD. Only that fixture now scopes
+`GITHUB_ACTIONS=false` while deriving its genuine Git identity, consistently with
+its existing verifier calls. Production event validation remains unchanged.
+This failure blocked the newly added hosted qualification job before Chromium;
+it is not counted as a successful hosted browser run. The dedicated historical
+HTTP child campaign actually ran **22**, not 15, tests; all passed.
