@@ -317,7 +317,7 @@ class AbiTests(unittest.TestCase):
         self.assertFalse([n for n in dir(ams_mel) if "quaternion" in n.lower()])
 
     def test_private_image_odm_abi(self) -> None:
-        """IRMEL-ADA-009: private raw Image OpticalDistortionMap mirror only."""
+        """IRMEL-ADA-009 raw layout/signatures remain unchanged by PY-MEL-017."""
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as temp:
             executable = Path(temp) / "layout"
@@ -358,9 +358,10 @@ class AbiTests(unittest.TestCase):
             self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
             self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
             self.assertIs(function.restype, ctypes.c_int32)
-        # No safe Python ODM API is introduced.
+        # PY-MEL-017 adds safe reception without changing this raw ABI.
         import ams_mel
-        self.assertFalse([n for n in dir(ams_mel) if "odm" in n.lower() or "distortion" in n.lower()])
+        self.assertTrue({"OpticalDistortionMap", "OpticalDistortionMapOpenError",
+                         "OpticalDistortionMapStream"}.issubset(ams_mel.__all__))
 
     def test_private_c2_system_response_abi(self) -> None:
         root = Path(__file__).resolve().parents[2]
