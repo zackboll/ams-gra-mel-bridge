@@ -3,6 +3,7 @@ name = "ams-mel-rf"
 version = "0.1.0"
 edition = "2021"
 publish = false
+build = "build.rs"
 
 [dependencies]
 ams-mel-common = { path = "../ams-mel-common" }
