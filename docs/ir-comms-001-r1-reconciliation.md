@@ -275,6 +275,16 @@ changes. No native inputs, public ABI or raw binding declarations changed.
 Final gate/hosted results for this merge and later evidence-only commits are
 recorded in PR #208; earlier results are not substituted for them.
 
+The next incoming main revision `8a6c07589a4ac0e9095bfb97d53b664916ab9383`,
+tree `29fb1f5e9dd8af586dcf823a5d0cb7a258859826` (documentation portal #212),
+was normally merged as `fef41c43222b1f634c8ad357d9708917a06099ca`, tree
+`b778f701593e85f923f78d834cf0f5753cf12c76`. It changes no native/Ada inputs.
+All hosted checks on preceding `8acd457` passed. Aggregate/native/Ada inputs
+remain identical while the aggregate completes; fresh sequential repository
+gates cover the incoming policy/documentation changes afterward. The workflow
+edit in this merge belongs to main, not this corrective change's PR delta.
+Final completion and readiness are recorded in PR #208 with exact HEAD/tree.
+
 After corrective review/merge, recommend
 closing #204 as superseded rather than merging its duplicate foundation. Do not
 close #204 automatically.
