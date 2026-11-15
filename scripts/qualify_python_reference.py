@@ -235,6 +235,39 @@ def kind(value):
     return "exception" if issubclass(value, BaseException) else "class"
 
 
+def qualify_public_modules(inventory, public, modules):
+    """Check namespace reexports without evaluating module attribute hooks."""
+    root_name = inventory["module"]
+    records = inventory.get("public_modules", [])
+    names = [record["name"] for record in records]
+    require(len(names) == len(set(names)), "duplicate public module records")
+    root_exports = {record["name"] for record in inventory["exports"]}
+    count = 0
+    for record in records:
+        name = record["name"]
+        prefix = root_name + "."
+        short_name = name[len(prefix):] if name.startswith(prefix) else ""
+        require(short_name.isidentifier() and not short_name.startswith("_"),
+                "public module is not a direct public package child: " + name)
+        require(name in modules, name + ": public module is not loaded")
+        module = modules[name]
+        require(inspect.ismodule(module) and vars(module).get("__name__") == name,
+                name + ": public module identity differs")
+        require(vars(public).get(short_name) is module,
+                name + ": parent package binding differs")
+        exports = record["exports"]
+        require(len(exports) == len(set(exports)), name + ": duplicate public module exports")
+        require(set(exports) <= root_exports, name + ": export is outside the root public API")
+        namespace = vars(module)
+        require(exports == list(namespace.get("__all__", ())),
+                name + ": public __all__ names/order differ")
+        for export in exports:
+            require(export in namespace and namespace[export] is vars(public)[export],
+                    name + "." + export + ": canonical export identity differs")
+        count += len(exports)
+    return len(records), count
+
+
 def qualify_inventory(inventory, public, modules=None):
     """Qualify an inventory against loaded modules; exposed for focused tests."""
     modules = sys.modules if modules is None else modules
@@ -318,6 +351,8 @@ def qualify_inventory(inventory, public, modules=None):
                         name + "." + item["name"] + ": enum value differs")
             counts["enums"] += 1
             counts["enum_members"] += len(record["enum_members"])
+    counts["public_modules"], counts["public_module_exports"] = qualify_public_modules(
+        inventory, public, modules)
     return counts
 
 
@@ -341,6 +376,15 @@ def qualify(root, inventory=None):
     sources = {path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
                for path in sorted(package.glob("*.py"))}
     require(sources == inventory["sources"], "inventory source hashes differ from this checkout")
+    public_modules = inventory.get("public_modules", [])
+    expected_modules = {"ams_mel." + path.stem: path.relative_to(root).as_posix()
+                        for path in sorted(package.glob("*.py")) if not path.stem.startswith("_")}
+    recorded_names = [record["name"] for record in public_modules]
+    require(len(recorded_names) == len(set(recorded_names)) and
+            set(recorded_names) == set(expected_modules),
+            "public module inventory names differ from this checkout")
+    require(all(record["source"] == expected_modules[record["name"]] for record in public_modules),
+            "public module source paths differ from this checkout")
 
     def check_loaded_origins():
         for name, module in tuple(sys.modules.items()):
@@ -355,6 +399,8 @@ def qualify(root, inventory=None):
     sys.path.insert(0, str(root / "python"))
     try:
         public = importlib.import_module("ams_mel")
+        for record in public_modules:
+            importlib.import_module(record["name"])
     finally:
         sys.path[:] = previous
     check_loaded_origins()

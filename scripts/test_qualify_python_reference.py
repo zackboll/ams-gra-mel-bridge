@@ -1,12 +1,16 @@
 """Runtime-reference qualification tests without a native library or provider."""
 
 import copy
+import hashlib
+import os
+from pathlib import Path
 import sys
+import tempfile
 import types
 import unittest
 from unittest.mock import patch
 
-from qualify_python_reference import QualificationError, qualify_inventory, resolve_default
+from qualify_python_reference import QualificationError, qualify, qualify_inventory, resolve_default
 
 
 SOURCE = '''from __future__ import annotations
@@ -114,12 +118,114 @@ class QualificationTests(unittest.TestCase):
         return qualify_inventory(self.inventory if inventory is None else inventory,
                                  self.public, self.modules)
 
+    def add_public_modules(self):
+        self.inventory["public_modules"] = []
+        for short_name, exports in (("common", ["Choice", "Value", "ValueAlias"]),
+                                    ("ir", ["Owner", "query"])):
+            name = "ams_mel." + short_name
+            module = types.ModuleType(name)
+            module.__all__ = list(exports)
+            for export in exports:
+                setattr(module, export, vars(self.public)[export])
+            setattr(self.public, short_name, module)
+            self.modules[name] = module
+            self.inventory["public_modules"].append(dict(
+                name=name, source="python/ams_mel/" + short_name + ".py", doc="", exports=exports))
+
     def test_complete_inventory_without_calling_owners_properties_or_factories(self):
         result = self.qualify()
         self.assertEqual(result, dict(exports=5, aliases=1, callables=10, methods=5,
                                      properties=1, dataclasses=2, dataclass_fields=6,
                                      generated_dataclass_constructors=2,
-                                     enums=1, enum_members=3))
+                                     enums=1, enum_members=3,
+                                     public_modules=0, public_module_exports=0))
+
+    def test_public_modules_reuse_canonical_objects_without_duplicate_api_counts(self):
+        self.add_public_modules()
+        result = self.qualify()
+        self.assertEqual(result["public_modules"], 2)
+        self.assertEqual(result["public_module_exports"], 5)
+        self.assertEqual(result["exports"], 5)
+        self.assertEqual(result["aliases"], 1)
+        self.assertEqual(result["dataclasses"], 2)
+        self.assertIs(self.public.common.Value, self.public.Value)
+        self.assertIs(self.public.common.ValueAlias, self.public.Value)
+        self.assertEqual(self.public.common.Value.__module__, "ams_mel")
+
+    def test_public_module_export_omission_order_identity_and_unknown_names_fail(self):
+        self.add_public_modules()
+        common = self.public.common
+        for mutation in (lambda module: module.__all__.pop(),
+                         lambda module: module.__all__.reverse(),
+                         lambda module: setattr(module, "Value", self.public.Choice)):
+            with self.subTest(mutation=mutation):
+                with patch.dict(vars(common), {"__all__": list(common.__all__)}):
+                    mutation(common)
+                    with self.assertRaises(QualificationError):
+                        self.qualify()
+        for mutation in (lambda records: records[0]["exports"].append("query"),
+                         lambda records: records[0]["exports"].append("private_operation"),
+                         lambda records: records[0]["exports"].append("Choice")):
+            with self.subTest(mutation=mutation):
+                changed = copy.deepcopy(self.inventory)
+                mutation(changed["public_modules"])
+                with self.assertRaises(QualificationError):
+                    self.qualify(changed)
+
+    def test_public_module_record_identity_and_parent_binding_fail(self):
+        self.add_public_modules()
+        for mutation in (lambda records: records.append(copy.deepcopy(records[0])),
+                         lambda records: records[0].update(name="other.common"),
+                         lambda records: records[0].update(name="ams_mel._private"),
+                         lambda records: records[0].update(name="ams_mel.ir.nested"),
+                         lambda records: records[0].update(name="ams_mel.missing")):
+            with self.subTest(mutation=mutation):
+                changed = copy.deepcopy(self.inventory)
+                mutation(changed["public_modules"])
+                with self.assertRaises(QualificationError):
+                    self.qualify(changed)
+        with patch.object(self.public.common, "__name__", "other.common"):
+            with self.assertRaisesRegex(QualificationError, "public module identity"):
+                self.qualify()
+        with patch.object(self.public, "common", self.public.ir):
+            with self.assertRaisesRegex(QualificationError, "parent package binding"):
+                self.qualify()
+
+    def test_missing_public_module_exports_do_not_invoke_attribute_hooks(self):
+        self.add_public_modules()
+
+        def forbidden(name):
+            self.fail("qualification executed a module attribute hook: " + name)
+
+        del self.public.common.Value
+        self.public.common.__getattr__ = forbidden
+        with self.assertRaisesRegex(QualificationError, "canonical export identity"):
+            self.qualify()
+
+    def test_checkout_requires_public_module_inventory_and_exact_source_paths_before_import(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "python/ams_mel"
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text("# Package fixture.\n", encoding="utf-8")
+            (package / "common.py").write_text("# Namespace fixture.\n", encoding="utf-8")
+            native = root / "native-fixture.so"
+            native.write_bytes(b"Not loaded: namespace inventory is checked before imports.")
+            sources = {path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+                       for path in package.glob("*.py")}
+            base = dict(sources=sources)
+            mutations = (
+                ([], "inventory names"),
+                ([dict(name="ams_mel.common", source="python/ams_mel/_other.py")], "source paths"),
+                ([dict(name="ams_mel.common", source="python/ams_mel/common.py")] * 2, "inventory names"),
+            )
+            with patch.dict(os.environ, {"AMS_MEL_NATIVE_LIB": str(native)}):
+                with patch("qualify_python_reference.importlib.import_module",
+                           side_effect=AssertionError("package must not be imported")):
+                    for records, message in mutations:
+                        with self.subTest(records=records):
+                            with self.assertRaisesRegex(QualificationError, message):
+                                qualify(root, {**base, "public_modules": records})
 
     def test_omitted_or_reordered_exports_and_wrong_identity_fail(self):
         original = self.inventory

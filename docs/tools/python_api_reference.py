@@ -1,8 +1,8 @@
 """Generate the safe Python reference from source without importing the binding.
 
 This is a deliberately bounded source reader, not a Python evaluator. Public
-exports come from the package's literal __all__; unsupported public constructs
-raise ReferenceError instead of disappearing from the reference. A separate
+exports come from the package's and public modules' literal __all__; unsupported
+public constructs raise ReferenceError instead of disappearing from the reference. A separate
 native-backed qualification command compares this inventory with Python's real
 runtime API. Documentation prose coverage is informational.
 """
@@ -450,9 +450,9 @@ class Sources:
         require(len(set(identities)) == len(identities), "ambiguous public member identity: " + name)
         return record
 
-    def inventory(self):
-        tree = self.modules["ams_mel"]
-        binding = self.bindings["ams_mel"].get("__all__")
+    def export_names(self, module):
+        tree = self.modules[module]
+        binding = self.bindings[module].get("__all__")
         require(binding and binding[0] == "assignment", "public __all__ must be one literal assignment")
         all_node = binding[2][0].value
         require(isinstance(all_node, (ast.List, ast.Tuple)) and all(
@@ -473,6 +473,11 @@ class Sources:
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(
                     node.func.value, ast.Name) and node.func.value.id == "__all__":
                 raise ReferenceError("dynamic __all__ mutation")
+        return names
+
+    def inventory(self):
+        tree = self.modules["ams_mel"]
+        names = self.export_names("ams_mel")
         exports = []
         for name in names:
             kind, module, node = self.resolve("ams_mel", name)
@@ -485,8 +490,24 @@ class Sources:
                 record.update(name=name, kind="function", definition_module=module,
                               definition_name=node.name, members=[], fields=[], attributes=[], enum_members=[])
             exports.append(record)
+        public_modules = []
+        for module in sorted(self.modules):
+            if module == "ams_mel" or module.rsplit(".", 1)[1].startswith("_"):
+                continue
+            require(re.fullmatch(r"ams_mel\.[A-Za-z][A-Za-z0-9_]*", module),
+                    "invalid public module name: " + module)
+            require(module.removeprefix("ams_mel.") not in names,
+                    "public module name shadows package export: " + module)
+            module_exports = self.export_names(module)
+            for name in module_exports:
+                require(name in names, "public module export is absent from package: " + module + "." + name)
+                require(self.resolve(module, name) == self.resolve("ams_mel", name),
+                        "public module export differs from package: " + module + "." + name)
+            public_modules.append({"name": module, "source": self.paths[module],
+                                   "doc": ast.get_docstring(self.modules[module]) or "",
+                                   "exports": module_exports})
         return {"schema": 1, "module": "ams_mel", "module_doc": ast.get_docstring(tree) or "",
-                "exports": exports, "sources": {
+                "exports": exports, "public_modules": public_modules, "sources": {
                     self.paths[m]: hashlib.sha256(text.encode()).hexdigest() for m, text in self.text.items()}}
 
 
@@ -501,6 +522,16 @@ def targets(model):
         for group in ("members", "fields", "attributes", "enum_members"):
             for member in item[group]:
                 result[item["name"] + "." + member["name"]] = result[item["name"]] + "#" + member["name"]
+    exports = {item["name"]: item for item in model["exports"]}
+    for module in model.get("public_modules", []):
+        short = module["name"].removeprefix("ams_mel.")
+        result[short] = "modules/" + short + ".html"
+        for name in module["exports"]:
+            result[short + "." + name] = result[name]
+            for group in ("members", "fields", "attributes", "enum_members"):
+                for member in exports[name][group]:
+                    member_name = name + "." + member["name"]
+                    result[short + "." + member_name] = result[member_name]
     return result
 
 
@@ -556,19 +587,21 @@ NAVIGATION = (
 )
 
 
-def navigation(prefix=""):
+def navigation(prefix="", modules=()):
     items = [('<a href="' + prefix + "../index.html" + '">Documentation portal</a>')]
     items.extend('<a href="' + prefix + path + '">' + label + "</a>" for path, label in NAVIGATION)
+    items.extend('<a href="' + prefix + "modules/" + module["name"].removeprefix("ams_mel.") +
+                 '.html"><code>' + html.escape(module["name"]) + "</code></a>" for module in modules)
     return '<nav aria-label="Python documentation"><ul>' + "".join("<li>" + item + "</li>" for item in items) + "</ul></nav>"
 
 
-def page(title, body, prefix="", scripts=()):
+def page(title, body, prefix="", scripts=(), modules=()):
     return ('<!doctype html>\n<html lang="en"><head><meta charset="utf-8">\n'
             '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
             "<title>" + html.escape(title) + " — AMS MEL Python</title>\n"
             '<link rel="stylesheet" href="' + prefix + 'assets/reference.css"></head>\n'
             '<body><a class="skip" href="#main">Skip to content</a>\n'
-            "<header><p>AMS MEL Python documentation</p>" + navigation(prefix) + "</header>\n"
+            "<header><p>AMS MEL Python documentation</p>" + navigation(prefix, modules) + "</header>\n"
             '<main id="main">' + body + "</main>\n"
             "<footer><p>Generated from the safe public Python source. Provider support remains runtime-specific.</p></footer>\n" +
             "".join('<script src="' + script + '" defer></script>\n' for script in scripts) +
@@ -628,10 +661,16 @@ def table_rows(headers, rows):
             "</tr>" for row in rows) + "</tbody></table></div>")
 
 
-def export_page(item, links):
+def export_page(item, links, modules=()):
     name = item["name"]
     body = "<h1><code>ams_mel." + html.escape(name) + "</code></h1>"
     body += '<p class="kind">' + html.escape(item["kind"].capitalize()) + " · " + source_link(item) + "</p>"
+    namespaces = [module for module in modules if name in module["exports"]]
+    if namespaces:
+        body += "<p>Public module: " + ", ".join(
+            reference(module["name"], links, "../", strict=True) for module in namespaces) + ". "
+        body += "Import " + ", ".join("<code>from " + html.escape(module["name"]) + " import " +
+                                    html.escape(name) + "</code>" for module in namespaces) + ".</p>"
     rejected_constructor = (item.get("constructor") or {}).get("direct_construction_error")
     if rejected_constructor:
         body += "<pre><code>class " + html.escape(name) + "</code></pre>"
@@ -679,18 +718,35 @@ def export_page(item, links):
                          "property": "Read-only property"}[member["binding"]]
         body += ("; inherited public operation" if member["inherited"] else "") + " · " + source_link(member) + "</p>"
         body += prose(member["doc"], links, "../", name) + "</section>"
-    return page("ams_mel." + name, body, "../")
+    return page("ams_mel." + name, body, "../", modules=modules)
+
+
+def module_page(module, exports, links, modules):
+    name = module["name"]
+    body = "<h1><code>" + html.escape(name) + "</code></h1>"
+    body += "<p>Public module · " + source_link({"source": module["source"], "line": 1}) + "</p>"
+    body += "<pre><code>from ams_mel import " + html.escape(name.removeprefix("ams_mel.")) + "</code></pre>"
+    body += prose(module["doc"], links, "../")
+    body += ("<h2>Public exports</h2><p>These names refer to the same objects exported by "
+             "<code>ams_mel</code>. Their canonical reference pages retain the existing URLs.</p>")
+    body += table_rows(("Name", "Kind", "Description"), [
+        [reference(name + "." + exported, links, "../", strict=True),
+         html.escape(exports[exported]["kind"]),
+         inline(exports[exported]["doc"].split("\n", 1)[0], links, "../", exported)]
+        for exported in sorted(module["exports"], key=str.casefold)])
+    return page(name, body, "../", modules=modules)
 
 
 def generate(root):
     root = Path(root)
     model = inventory(root)
     links = targets(model)
+    modules = model["public_modules"]
     files = {}
     entries = []
     for item in model["exports"]:
         name = item["name"]
-        files[links[name]] = export_page(item, links)
+        files[links[name]] = export_page(item, links, modules)
         entries.append({"name": name, "kind": item["kind"], "url": links[name],
                         "description": item["doc"].split("\n", 1)[0]})
         for group in ("members", "fields", "attributes", "enum_members"):
@@ -700,6 +756,24 @@ def generate(root):
                     "members": member.get("binding", "method"), "fields": "field",
                     "attributes": "attribute", "enum_members": "enum value"}[group],
                     "url": links[qualified], "description": member.get("doc", "").split("\n", 1)[0]})
+    exports = {item["name"]: item for item in model["exports"]}
+    canonical_entries = {entry["name"]: entry for entry in entries}
+    for module in modules:
+        short = module["name"].removeprefix("ams_mel.")
+        files[links[short]] = module_page(module, exports, links, modules)
+        entries.append({"name": module["name"], "kind": "module", "url": links[short],
+                        "description": module["doc"].split("\n", 1)[0]})
+        for name in module["exports"]:
+            qualified_names = [name] + [name + "." + member["name"]
+                for group in ("members", "fields", "attributes", "enum_members")
+                for member in exports[name][group]]
+            for qualified in qualified_names:
+                canonical_entries[qualified].setdefault("aliases", []).append(module["name"] + "." + qualified)
+    module_directory = ""
+    if modules:
+        module_directory = table_rows(("Module", "Public exports", "Description"), [
+            [reference(module["name"], links, strict=True), str(len(module["exports"])),
+             inline(module["doc"].split("\n", 1)[0], links)] for module in modules])
     directory = "<ul class=\"api-directory\">" + "".join(
         "<li>" + reference(item["name"], links, strict=True) + ' <span class="muted">' +
         html.escape(item["kind"]) + "</span></li>" for item in sorted(model["exports"], key=lambda e: e["name"].casefold())) + "</ul>"
@@ -711,13 +785,17 @@ def generate(root):
             member_directory += "".join("<li>" + reference(item["name"] + "." + member["name"], links,
                                                          strict=True) + "</li>" for member in members)
             member_directory += "</ul></details>"
-    search = ('<h1>Python API index</h1><p>Every name exported by <code>ams_mel.__all__</code> appears below. '
+    search = '<h1>Python API index</h1>'
+    if modules:
+        search += '<h2>Public modules</h2>' + module_directory
+    search += ('<p>Every name exported by <code>ams_mel.__all__</code> appears below. '
               'Search also includes methods, fields and named enum values. Private implementation modules are not application APIs.</p>'
               '<label for="api-search">Search the Python API</label><input id="api-search" type="search" '
               'autocomplete="off" placeholder="Name, method, field or description">'
               '<p id="search-status" role="status" aria-live="polite">The complete alphabetical directory is available below.</p>'
               '<ul id="search-results" hidden></ul><h2>Public exports</h2>' + directory + member_directory)
-    files["api-index.html"] = page("Python API index", search, scripts=("assets/search-index.js", "assets/search.js"))
+    files["api-index.html"] = page("Python API index", search,
+                                   scripts=("assets/search-index.js", "assets/search.js"), modules=modules)
     guide_paths = sorted((root / "docs/python").glob("*.html"))
     require(guide_paths, "missing authored Python guides")
     require({p.name for p in guide_paths} == {path for path, _ in NAVIGATION if path != "api-index.html"},
@@ -729,9 +807,11 @@ def generate(root):
         def replace(match):
             name = match.group(1)
             if name == "navigation":
-                return navigation()
+                return navigation(modules=modules)
             if name == "api-directory":
                 return directory
+            if name == "module-directory":
+                return module_directory
             if name.startswith("api:"):
                 return reference(name[4:], links, strict=True)
             raise ReferenceError("unknown Python guide token: " + name)
@@ -739,15 +819,16 @@ def generate(root):
         require("{{" not in content and "}}" not in content, "malformed Python guide token")
         files[path.name] = content.encode()
     source_paths = sorted({item["source"] for item in model["exports"]} |
-                          {member["source"] for item in model["exports"] for member in item["members"]})
+                          {member["source"] for item in model["exports"] for member in item["members"]} |
+                          {module["source"] for module in modules})
     for path in source_paths:
         content = (root / path).read_text(encoding="utf-8")
         lines = "".join('<span id="L' + str(number) + '">' + html.escape(line) + "</span>\n"
                         for number, line in enumerate(content.splitlines(), 1))
-        body = "<h1>Implementation source: <code>" + html.escape(path) + "</code></h1>"
+        body = "<h1>Python source: <code>" + html.escape(path) + "</code></h1>"
         body += "<p>This source view explains definitions; private names are implementation details, not additional supported public APIs.</p>"
         body += '<pre class="source"><code>' + lines + "</code></pre>"
-        files["source/" + source_name(path)] = page(path, body, "../")
+        files["source/" + source_name(path)] = page(path, body, "../", modules=modules)
     for name in ("reference.css", "search.js"):
         path = root / "docs/python" / name
         require(path.is_file() and not path.is_symlink(), "missing Python reference asset: " + name)
@@ -757,7 +838,9 @@ def generate(root):
                                       search_data.replace("<", "\\u003c") + ";\n").encode()
     operations = [member for item in model["exports"] for member in item["members"]]
     report = {"schema": 1, "inventory": model,
-              "counts": {"exports": len(model["exports"]), "members": len(operations),
+              "counts": {"exports": len(model["exports"]), "public_modules": len(modules),
+                         "public_module_exports": sum(len(module["exports"]) for module in modules),
+                         "members": len(operations),
                          "fields": sum(len(item["fields"]) for item in model["exports"]),
                          "attributes": sum(len(item["attributes"]) for item in model["exports"]),
                          "enum_values": sum(len(item["enum_members"]) for item in model["exports"]),

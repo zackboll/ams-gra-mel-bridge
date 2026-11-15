@@ -26,7 +26,8 @@
     provider library and its documented UTF-8 configuration to {{api:RFAdmin.open}}.
     The configuration text is provider-defined. The bridge invokes
     <code>createAdminMEL</code> once; it does not supply a universal grammar.</p>
-    <pre><code class="language-python">from ams_mel import MFAState, RFAdmin
+    <pre><code class="language-python">from ams_mel.common import MFAState
+from ams_mel.rf import RFAdmin
 
 
 def request_rf_state(provider_library, configuration,

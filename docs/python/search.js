@@ -15,7 +15,8 @@
     }
     const words = query.split(/\s+/);
     const matches = entries.filter(function (entry) {
-      const text = (entry.name + ' ' + entry.kind + ' ' + entry.description).toLocaleLowerCase();
+      const aliases = Array.isArray(entry.aliases) ? entry.aliases.join(' ') : '';
+      const text = (entry.name + ' ' + aliases + ' ' + entry.kind + ' ' + entry.description).toLocaleLowerCase();
       return words.every(function (word) { return text.includes(word); });
     });
     matches.forEach(function (entry) {
