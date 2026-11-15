@@ -115,6 +115,53 @@ typedef struct ams_mel_session_options_v1 {
     uint32_t max_async_requests;
 } ams_mel_session_options_v1;
 typedef struct ams_mel_ir_stream ams_mel_ir_stream;
+typedef struct ams_mel_ir_image_checkout ams_mel_ir_image_checkout;
+typedef struct ams_mel_ir_image_checkout_lease ams_mel_ir_image_checkout_lease;
+/* Opaque notifications only: no header, address, size, format or sample view.
+ * Cumulative saturating counters include rejected/null callbacks and releases
+ * after receiver closure. Read before closing the receiver. */
+typedef struct ams_mel_ir_image_checkout_counters_v1 {
+    uint64_t callbacks_received;
+    uint64_t checkouts_accepted;
+    uint64_t queue_overflow;
+    uint64_t callbacks_rejected;
+    uint64_t releases_succeeded;
+    uint64_t releases_uncertain;
+} ams_mel_ir_image_checkout_counters_v1;
+/* One-shot installation on an Attached control-only Image, before first Start.
+ * queue_capacity and max_checkouts are positive; queue_capacity <= max_checkouts.
+ * max_checkouts bounds queued + leased HOLD owners, not overlapping release
+ * generations. Preallocates max_checkouts + 2 HOLD, deferred and uncertain slots;
+ * excess deliveries are rejected/released or conservatively retained. No pool
+ * of image buffers is allocated. Creation slots must contain NULL and remain
+ * unchanged on failure. No additional provider listener is installed.
+ *
+ * Externally serialize public handle admission/destruction. One Receive at a
+ * time. Close may overlap an already-entered Receive (which captures its own
+ * graph); no new operation may begin on that handle once Close starts. Leases
+ * and channel Disable may run independently. Timeout is not cancellation.
+ * Receiver Close stops admission, wakes waiters and drains queued wrappers;
+ * live leases survive it. Neither Close disables/unregisters/detaches.
+ * Lease Close consumes the handle even on failure, never retries release, and
+ * reports actual provider Return separately (UINT32_MAX if none obtained).
+ * Uncertain release permanently retains wrapper/storage/provider graph. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_checkout_open(
+    ams_mel_ir_stream *image, size_t queue_capacity, size_t max_checkouts,
+    ams_mel_ir_image_checkout **output,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_checkout_receive(
+    ams_mel_ir_image_checkout *receiver, uint32_t timeout_ms,
+    ams_mel_ir_image_checkout_lease **output,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_checkout_get_counters(
+    const ams_mel_ir_image_checkout *receiver, ams_mel_ir_image_checkout_counters_v1 *output,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_checkout_close(
+    ams_mel_ir_image_checkout **receiver,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_checkout_lease_close(
+    ams_mel_ir_image_checkout_lease **lease, uint32_t *provider_return,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 typedef struct ams_mel_ir_frame_snapshot ams_mel_ir_frame_snapshot;
 typedef struct ams_mel_ir_image_metadata ams_mel_ir_image_metadata;
 typedef struct ams_mel_ir_image_metadata_event ams_mel_ir_image_metadata_event;

@@ -2166,7 +2166,13 @@ private:
 /* IRMEL-ADA-020 isolated application-buffer fixture. Existing acquisition
  * registration behavior is unchanged outside this explicit scenario prefix. */
 bool application_registration(const std::string& scenario)
-{ return scenario.starts_with("registration020-"); }
+{ return scenario.starts_with("registration020-") || scenario.starts_with("checkout021-"); }
+std::function<void(unsigned, bool)> checkout_delivery;
+void (*checkout_release_hook)(){};
+extern "C" __attribute__((visibility("default"))) void mock_checkout_deliver(unsigned count, int null_buffer)
+{ if (!checkout_delivery) std::abort(); checkout_delivery(count, null_buffer != 0); }
+extern "C" __attribute__((visibility("default"))) void mock_checkout_release_hook(void (*hook)())
+{ checkout_release_hook = hook; }
 void (*registration_reentry)(){};
 std::shared_ptr<irmel::Buffer> application_retained;
 extern "C" __attribute__((visibility("default"))) void mock_registration_reentry(void (*hook)())
@@ -2179,6 +2185,7 @@ class ApplicationRegistration {
     void *address_{};
     bool register_failed_{}, unregister_failed_{};
 public:
+    std::shared_ptr<irmel::Buffer> original() const { return registered_; }
     Return call(const std::string& scenario, std::shared_ptr<irmel::Buffer> buffer, bool removing)
     {
         record(removing ? "application_unregister_entered" : "application_register_entered");
@@ -2226,10 +2233,18 @@ public:
  * Queries are forbidden: control-only callbacks have no acquisition layout. */
 class ApplicationCheckout final : public irmel::Buffer {
     std::shared_ptr<irmel::Buffer> original_;
-    bool fail_, released_{};
+    bool fail_, released_{}, throws_{};
+    unsigned identity_{};
 public:
-    ApplicationCheckout(std::shared_ptr<irmel::Buffer> original, bool fail)
-        : original_{std::move(original)}, fail_{fail} {}
+    ApplicationCheckout(std::shared_ptr<irmel::Buffer> original, bool fail, bool throws = false,
+                        unsigned identity = 0)
+        : original_{std::move(original)}, fail_{fail}, throws_{throws}, identity_{identity} {}
+    ~ApplicationCheckout() override
+    {
+        if (identity_ && !released_) std::abort();
+        record("application_checkout_destroyed");
+        record(("checkout_destroyed_" + std::to_string(identity_)).c_str());
+    }
     Return init(void *, std::size_t, std::int64_t) override { std::abort(); }
     void *getBufferAddress() const override { std::abort(); }
     void *getImageAddress() const override { std::abort(); }
@@ -2243,7 +2258,11 @@ public:
         if (released_) std::abort();
         released_ = true;
         record("application_checkout_released");
-        return fail_ ? Return::Fail : Return::Success;
+        record(("checkout_released_" + std::to_string(identity_)).c_str());
+        auto hook = std::exchange(checkout_release_hook, nullptr);
+        if (hook) hook();
+        if (throws_ && original_) throw std::runtime_error("application checkout release exception");
+        return fail_ && original_ ? Return::Fail : Return::Success;
     }
 };
 
@@ -2254,11 +2273,28 @@ public:
         : scenario_{std::move(scenario)}, listener_{std::move(listener)},
           barrier_{callback_barrier}
     {
+        if (scenario_.starts_with("checkout021-")) {
+            checkout_delivery = [this](unsigned count, bool null_buffer) {
+                for (unsigned i = 0; i < count; ++i) {
+                    irmel::FrameHeader header; // deliberately unconfigured; never inspected
+                    std::shared_ptr<irmel::Buffer> checkout;
+                    if (!null_buffer) checkout = std::make_shared<ApplicationCheckout>(
+                        application_registration_.original(), scenario_ == "checkout021-fail" ||
+                        scenario_ == "checkout021-drain-provider-fail",
+                        scenario_ == "checkout021-throw", ++checkout_identity_);
+                    record("application_checkout_delivered");
+                    listener_->onImage(*this, header, std::move(checkout));
+                    record("application_checkout_returned");
+                }
+            };
+        }
         std::lock_guard lock{active_pool_mutex};
         active_pool = pool_;
     }
     ~MockImageChannel() override
     {
+        if (scenario_ == "checkout021-destruction-reentry") checkout_delivery(1U, false);
+        if (scenario_.starts_with("checkout021-")) checkout_delivery = {};
         stopping_ = true;
         if (scenario_.rfind("image-control-", 0U) == 0U && navigation_response_callback_) {
             /* Public metadata/channel owners may already be closed. Channel
@@ -2319,6 +2355,7 @@ public:
     }
     mel::RequestFor<Return> sendKeepAliveRep() override
     {
+        if (scenario_.starts_with("checkout021-")) checkout_delivery(1U, false);
         c2_send_boundary(1);
         record("keepalive_sent");
         if (scenario_ == "keepalive-send-throw") throw std::runtime_error("mock keepalive send exception");
@@ -2489,6 +2526,7 @@ public:
     {
         record("channel_enabled");
         standalone_enable_hook();
+        if (scenario_ == "checkout021-enable-callback") checkout_delivery(1U, false);
         if (application_registration(scenario_) || common_metadata_scenario(scenario_)) return Return::Success;
         if (scenario_ == "image-control-unexpected" ||
             scenario_ == "image-control-release-fail" ||
@@ -2522,6 +2560,7 @@ public:
     }
     Return disable() override
     {
+        if (scenario_ == "checkout021-disable-reentry") checkout_delivery(1U, false);
         if (application_registration(scenario_)) return Return::Success;
         if (standalone_disable_scenario(scenario_)) {
             record("channel_disabled");
@@ -2732,6 +2771,7 @@ public:
     Return registerMetadataCallback(NucCallback callback) override
     { return nuc_.register_callback(scenario_, *this, std::move(callback)); }
 private:
+    unsigned checkout_identity_{};
     MockCommonComms common_comms_{1U};
     /* Deterministic backpressure scenarios drive production explicitly from
      * the test instead of free-running, so buffer reuse can be asserted with

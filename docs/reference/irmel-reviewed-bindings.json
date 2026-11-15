@@ -364,11 +364,19 @@
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_frame_snapshot_close"
+        },
+        {
+          "path": "native/src/ir_stream.cpp",
+          "symbol": "ams_mel_ir_image_checkout_lease_close"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir-image.ads",
+          "symbol": "Close"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image-checkouts.ads",
           "symbol": "Close"
         }
       ],
@@ -380,9 +388,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_lease_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_image_checkout.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_checkout_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.",
+      "notes": "Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding. IRMEL-ADA-021 additionally receives actual opaque callback wrappers on control-only Image with active application registration; no getter, header or payload access. Exactly-once release uses the existing engine; uncertain release consumes the public lease and permanently retains ownership. No generic image acquisition parity.",
       "limitations": [],
       "representation": []
     },
@@ -2281,11 +2297,19 @@
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_stream_receive_snapshot"
+        },
+        {
+          "path": "native/src/ir_stream.cpp",
+          "symbol": "ams_mel_ir_image_checkout_receive"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir-image.ads",
+          "symbol": "Receive"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image-checkouts.ads",
           "symbol": "Receive"
         }
       ],
@@ -2297,9 +2321,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_image_checkout.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_checkout_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Full FrameHeader copied or leased, but image acceptance is strictly Mono8 single-band host memory.",
+      "notes": "Full FrameHeader copied or leased, but image acceptance is strictly Mono8 single-band host memory. IRMEL-ADA-021 additionally receives actual opaque callback wrappers on control-only Image with active application registration; no getter, header or payload access. Exactly-once release uses the existing engine; uncertain release consumes the public lease and permanently retains ownership. No generic image acquisition parity.",
       "limitations": [],
       "representation": []
     },
@@ -14792,12 +14824,12 @@
     "ada/src/ams-mel-status.ads": "309b6e11b9979a86661ea65807c534b156da3f42e84e451dfbb3226540127f06",
     "ada/src/ams-mel.adb": "5f3abf3e9ee264da4da5898ad7500ea1e550d5a7ce76563243463f1f287fe7db",
     "ada/src/ams-mel.ads": "8356a8d10aa905993f849affe0e01d23b4343a4f81b1f8d0704ba0366a9fc426",
-    "ada/src/ams-mel_c_api.ads": "f7e53d326a1ca56ecead6a683ab87e5507f0da11e0424fb466cb8176260f289e",
-    "native/include/ams_mel/abi.h": "b9fe142fc8d49f8437cd49544fb446bcd307de037a6c9c5160457918dc304417",
+    "ada/src/ams-mel_c_api.ads": "fd42458172f7d0e6b0b8eb1d0f4000c452afbf38499f4136b71210ee9ada89a9",
+    "native/include/ams_mel/abi.h": "fd9464b685564237d043106251386e1b87731f09dbd68f387c1d0c5834ff87f6",
     "native/src/abi.cpp": "a8a2c41770297b7bb5a3b0d8f8e50fce89ea275a596cc56d207fe41f345501b1",
     "native/src/common_channel_requests.cpp": "7a247e8df2186b1690209c3cf88e8eb86394ecc0753ec908b1ba6ec53988204b",
     "native/src/completion_probe.cpp": "b8470e409b4013f001039d800060eaeda4c045935c13e9c7e67c03dd5abfcb10",
-    "native/src/exports.map": "41bfb9c908e27509dc6d61237f279d43ddc5a8422c4bd2686f511605a8136913",
+    "native/src/exports.map": "e6f25197d9b5c48f60b65889171d3c418398e541c3dd846a7689c58e7e0087d5",
     "native/src/internal.hpp": "d3ccd4d633f6563fb26f56834f7ddae5802a64335402e04ee13c6318257f5b6b",
     "native/src/internal/common_channel_requests.hpp": "278a46d96ccd777c1c8ce999f72d6981dba3d49f8bca4a415c84f5233cd90e61",
     "native/src/internal/completion_probe.hpp": "00001e661c4aaf132920d9bdd06860454024db2a82371b59c699f61ce5b93a80",
@@ -14817,7 +14849,7 @@
     "native/src/ir_instrumentation.cpp": "23860e7960dcb96f9825d34178e0c60c2490efdf63d980107df4c38aef083e1f",
     "native/src/ir_navigation.cpp": "b86b2c1ec5545e2009b479ccd852303d7aa25cc54bc4abd4c10ff8ac5fbfcc00",
     "native/src/ir_nuc.cpp": "0c03402deaf1c1ea6779bd5f051e461e4c3b0428ce4657822ded23a3ed089fb4",
-    "native/src/ir_stream.cpp": "029936e60f566ab8811e88a57ee89192b5802a1f0f771c15f906f024374986cb",
+    "native/src/ir_stream.cpp": "8d05c6cb134f456e64496c602065af7fad129e629ea05e9f19e25328ccfcd169",
     "native/src/ir_track.cpp": "8d354425ada1479a9e7c18fd7ca2b94aa835b3575ba02167063569a4270aec36",
     "native/src/provider.cpp": "ec3fdbcc724fa61029947c744e99003418ac9cfe921f011d29e1b288d4acf792",
     "native/src/ir_stacked.cpp": "73033a7e866b4632d75a6f85b8af6270ad50585eb341326507a75bb3b5b0ac84",
@@ -14839,6 +14871,11 @@
     "native/src/internal/ir_buffer.hpp": "f6a61f833659dcdae895b583443f837f19fb128ff127d12bd0ba89371250ef30",
     "native/tests/test_channel_buffer_registration.c": "8e72e0f21b37f791d7a4ebdda8b6cdd4e42012a12e79d6b793d87ce137b07a26",
     "ada/tests/src/ams_mel_ir_registration_tests.adb": "2933d79cac4a6be92f01d1dbf24e94fd1bfbd4b2a158e17cfca002524a03f2a7",
-    "ada/tests/src/ams_mel_ir_registration_tests.ads": "3145334bbd3bd81e90dd68d73f76a5f5b5f5cde1ef95848c09adfe925253888c"
+    "ada/tests/src/ams_mel_ir_registration_tests.ads": "3145334bbd3bd81e90dd68d73f76a5f5b5f5cde1ef95848c09adfe925253888c",
+    "ada/src/ams-mel-ir-image-checkouts.ads": "e7f8adf5d3e43794e05f3eb6eace2b7a9e48afdd110b4d74f8f49f0fd13f0e51",
+    "ada/src/ams-mel-ir-image-checkouts.adb": "297102e6e99de76ac5430da8da6eb86ab62945105abc08d2a781c14bf53d69c2",
+    "native/tests/test_image_checkout.c": "ebfffb0e965293487406d243a57065205bc972f1d3dc7c3cfe33b6f703871dee",
+    "native/tests/test_image_checkout_allocation.cpp": "20447bf157bcd0fd681d651f29fab7bd9361f8b64b8674136382c1424ccccaff",
+    "ada/tests/src/ams_mel_ir_checkout_tests.adb": "00f1234ccd21d8dfec24b80d0c85bbb5a21c4766f1f923a2ae3156088b51b76b"
   }
 }

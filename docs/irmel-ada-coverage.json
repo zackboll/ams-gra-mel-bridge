@@ -1003,11 +1003,19 @@
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_frame_snapshot_close"
+        },
+        {
+          "path": "native/src/ir_stream.cpp",
+          "symbol": "ams_mel_ir_image_checkout_lease_close"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir-image.ads",
+          "symbol": "Close"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image-checkouts.ads",
           "symbol": "Close"
         }
       ],
@@ -1019,9 +1027,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_lease_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_image_checkout.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_checkout_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.",
+      "notes": "Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding. IRMEL-ADA-021 additionally receives actual opaque callback wrappers on control-only Image with active application registration; no getter, header or payload access. Exactly-once release uses the existing engine; uncertain release consumes the public lease and permanently retains ownership. No generic image acquisition parity.",
       "limitations": [],
       "representation": []
     },
@@ -2920,11 +2936,19 @@
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_stream_receive_snapshot"
+        },
+        {
+          "path": "native/src/ir_stream.cpp",
+          "symbol": "ams_mel_ir_image_checkout_receive"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir-image.ads",
+          "symbol": "Receive"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image-checkouts.ads",
           "symbol": "Receive"
         }
       ],
@@ -2936,9 +2960,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_image_checkout.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_checkout_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Full FrameHeader copied or leased, but image acceptance is strictly Mono8 single-band host memory.",
+      "notes": "Full FrameHeader copied or leased, but image acceptance is strictly Mono8 single-band host memory. IRMEL-ADA-021 additionally receives actual opaque callback wrappers on control-only Image with active application registration; no getter, header or payload access. Exactly-once release uses the existing engine; uncertain release consumes the public lease and permanently retains ownership. No generic image acquisition parity.",
       "limitations": [],
       "representation": []
     },
