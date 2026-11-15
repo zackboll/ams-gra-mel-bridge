@@ -68,6 +68,7 @@ class GeneratedSourceTests(unittest.TestCase):
         """Keep original Ada negatives behind the new isolated assembly boundary."""
         from check_doc_coverage import measure
         import rustdoc_publication as rustdoc
+        import python_publication as pythondoc
         directory.mkdir()
         shutil.copytree(self.output / 'pristine', directory / 'pristine')
         shutil.copytree(self.output / 'published', directory / 'ada-qualified')
@@ -80,7 +81,10 @@ class GeneratedSourceTests(unittest.TestCase):
             temp = Path(temp)
             epoch.export(self.repo, self.candidate, temp / 'source')
             files, record = rustdoc.generate(temp / 'source', temp / 'rust', context, temp / 'rust.log')
-        for name, data in rustdoc.assembled(presentation.files(directory / 'ada-qualified'), files).items():
+            python_files, python_record = pythondoc.generate(temp / 'source', context, temp / 'python.log')
+        assembled = pythondoc.assembled(
+            rustdoc.assembled(presentation.files(directory / 'ada-qualified'), files), python_files)
+        for name, data in assembled.items():
             path = directory / 'published' / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
@@ -88,6 +92,7 @@ class GeneratedSourceTests(unittest.TestCase):
         docs_ci.write(directory / 'coverage.json', report)
         docs_ci.write(directory / 'native-anchors.json', report['native'])
         docs_ci.write(directory / 'rustdoc.json', record)
+        docs_ci.write(directory / 'python-reference.json', python_record)
 
     def test_documented_addition_uses_actual_source_anchor_and_catalog(self):
         self.assertEqual(self.value['status'], 'mechanically-qualified')
