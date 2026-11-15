@@ -3402,6 +3402,11 @@ public:
         protect_.finish(*this, scenario_);
         calibration_.finish(*this, scenario_);
         calibration_status_.finish(*this, scenario_);
+        if (scenario_.rfind("c2-comms-r1-", 0U) == 0U && comms_callback_) {
+            irmel::ChannelCommsTestRep report{0xffffffffU, 0xffffffffU};
+            comms_callback_(*this, &report);
+            record("c2_comms_r1_late_callback");
+        }
         if (scenario_ == "comms-register-retain-fail" && comms_callback_) {
             irmel::ChannelCommsTestRep report{91U, 92U};
             record("retained_comms_callback_invoked");
@@ -3847,6 +3852,22 @@ public:
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)> callback) override
     {
         comms_callback_ = std::move(callback);
+        if (scenario_.rfind("c2-comms-r1-", 0U) == 0U) {
+            record("c2_comms_r1_registration");
+            irmel::ChannelCommsTestRep first{0x80000001U, 0xffffffffU};
+            comms_callback_(*this, &first);
+            auto hook = std::exchange(common_comms_reentry, nullptr);
+            if (!hook) std::abort();
+            hook();
+            irmel::ChannelCommsTestRep second{0xffffffffU, 0x80000000U};
+            comms_callback_(*this, &second);
+            record("c2_comms_r1_registration_returning");
+            if (scenario_.find("unknown-throw") != std::string::npos) throw 17;
+            if (scenario_.find("throw") != std::string::npos)
+                throw std::runtime_error("C2 comms registration exception");
+            if (scenario_.find("refuse") != std::string::npos) return Return::NotSupported;
+            if (scenario_.find("fail") != std::string::npos) return Return::Fail;
+        }
         if (common_metadata_scenario(scenario_)) common_comms_routes[2U] = [this](const auto& report) { comms_callback_(*this, &report); };
         if (scenario_ == "comms-register-retain-fail") return Return::Fail;
         return Return::Success;
@@ -6402,7 +6423,8 @@ public:
             record("channel_detach_failed");
             throw std::runtime_error("mock detach exception");
         }
-        if ((instance_ == "common-meta-detach-fail" ||
+        if ((instance_.rfind("c2-comms-r1-close-detach", 0U) == 0U ||
+             instance_ == "common-meta-detach-fail" ||
              instance_ == "stacked-detach-fail" ||
              instance_ == "stacked-enabled-detach-fail" ||
              instance_ == "stacked-open-detach-fail" ||
