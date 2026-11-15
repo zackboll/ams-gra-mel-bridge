@@ -29,9 +29,6 @@ def qualify(root, site, report, authority, actual):
 
     import source_epoch as epoch
     contract = authored_html.contract(root, site, report)
-    config = replace(load(root, 'docs/gnatdoc-enhance.toml'),
-                     guide_sha256=p.sha(epoch.canonical(contract)))
-    p.require(config.search, 'documentation search must be enabled')
     # Supply a reconstructed manifest in a disposable authority tree; never
     # rewrite checked source or trust a publication-provided manifest.
     with tempfile.TemporaryDirectory(prefix='mel-search-authority-') as temp:
@@ -43,8 +40,12 @@ def qualify(root, site, report, authority, actual):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(json.dumps(report['native']).encode() if
                              name == 'docs/gnatdoc-native-anchors.json' else (root / name).read_bytes())
-        (temporary / config.guide_manifest).write_bytes(epoch.canonical(contract))
-        config = replace(config, root=temporary)
+        configuration = 'docs/gnatdoc-enhance.toml'
+        (temporary / configuration).write_bytes((root / configuration).read_bytes())
+        (temporary / 'docs/gnatdoc-authored.json').write_bytes(epoch.canonical(contract))
+        config = replace(load(temporary, configuration),
+                         guide_sha256=p.sha(epoch.canonical(contract)))
+        p.require(config.search, 'documentation search must be enabled')
         native = snapshot(config, site)
         rendered = render(config, native)
         expected = records(config, native, rendered)
