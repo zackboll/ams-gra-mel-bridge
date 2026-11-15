@@ -14,10 +14,10 @@ class FoundationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.site = Path(self.temp.name)
-        for name in ("index.html", "ams_mel/index.html", "ams_mel_sys/index.html",
+        for name in ("index.html", "ams_mel/index.html", "ams_mel_sys/index.html", "ams_mel_common/index.html",
                      "ams_mel/struct.Session.html", "src-files.js", "crates.js",
                      "static.files/style.css", "src/ams_mel/lib.rs.html",
-                     "src/ams_mel_sys/lib.rs.html"):
+                     "src/ams_mel_sys/lib.rs.html", "src/ams_mel_common/lib.rs.html"):
             path = self.site / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("", encoding="utf-8")
@@ -27,7 +27,7 @@ class FoundationTests(unittest.TestCase):
         (self.site / "ams_mel/index.html").write_text(
             '<link href="../static.files/style.css"><a href="struct.Session.html#methods">'
             '<a href="https://doc.rust-lang.org/std/index.html">', encoding="utf-8")
-        self.assertEqual(foundation.verify_site(self.site), 6)
+        self.assertEqual(foundation.verify_site(self.site), 8)
 
     def test_missing_raw_reference_is_not_safe_reference_success(self):
         (self.site / "ams_mel_sys/index.html").unlink()
@@ -71,10 +71,10 @@ class FoundationTests(unittest.TestCase):
         def fake_run(command, directory, env, output, label):
             calls.append((command, env.copy()))
             if label in foundation.CRATES:
-                for name in ("index.html", "ams_mel/index.html", "ams_mel_sys/index.html",
+                for name in ("index.html", "ams_mel/index.html", "ams_mel_sys/index.html", "ams_mel_common/index.html",
                              "ams_mel/struct.Session.html", "src-files.js", "crates.js",
                              "static.files/style.css", "src/ams_mel/lib.rs.html",
-                             "src/ams_mel_sys/lib.rs.html"):
+                             "src/ams_mel_sys/lib.rs.html", "src/ams_mel_common/lib.rs.html"):
                     path = output / "target/doc" / name
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes((self.site / name).read_bytes())
@@ -88,7 +88,7 @@ class FoundationTests(unittest.TestCase):
             second = foundation.qualify(doctests=True)
         self.assertNotEqual(first, second)
         docs = [cmd for cmd, _ in calls if cmd[:2] == ["cargo", "doc"]]
-        self.assertEqual(len(docs), 4)
+        self.assertEqual(len(docs), 6)
         for command in docs:
             self.assertIn("--locked", command)
             self.assertIn("--no-deps", command)
@@ -99,7 +99,7 @@ class FoundationTests(unittest.TestCase):
             self.assertIn("--deny rustdoc::broken_intra_doc_links", env["RUSTDOCFLAGS"])
             self.assertIn("--warn missing_docs", env["RUSTDOCFLAGS"])
         report = json.loads((second / "qualification.json").read_text())
-        self.assertIn("ams_mel_sys/index.html", report["files"])
+        self.assertIn("ams_mel_sys/index.html", "ams_mel_common/index.html", report["files"])
 
 
 if __name__ == "__main__":

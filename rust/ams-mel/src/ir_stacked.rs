@@ -243,11 +243,11 @@ fn open_with(
         channel_type: sys::AMS_MEL_IR_CHANNEL_STACKED_IMAGE,
         platform_id: raw_uci_id(&config.platform_id),
         sensor_location: sys::AmsMelComponentLocationV1 {
-            offset_x_m: config.sensor_location.offset_x_m,
-            offset_y_m: config.sensor_location.offset_y_m,
-            offset_z_m: config.sensor_location.offset_z_m,
-            key: string_view(&config.sensor_location.key),
-            system_name: string_view(&config.sensor_location.system_name),
+            offset_x_m: config.sensor_location.offset_x_m(),
+            offset_y_m: config.sensor_location.offset_y_m(),
+            offset_z_m: config.sensor_location.offset_z_m(),
+            key: string_view(config.sensor_location.key()),
+            system_name: string_view(config.sensor_location.system_name()),
         },
     };
     let mut raw = ptr::null_mut();

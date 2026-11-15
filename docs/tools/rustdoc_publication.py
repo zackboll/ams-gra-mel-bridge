@@ -35,9 +35,11 @@ INSERTION = (b'<section aria-label="Rust reference"><h2>Rust reference</h2>\n'
              b'<p><a href="rust/ams_mel/index.html">Safe Rust application API (ams-mel)</a></p>\n'
              b'<p><a href="rust/ams_mel_sys/index.html">Low-level unsafe Rust FFI implementation '
              b'interface (ams-mel-sys)</a>; not the recommended application API.</p>\n'
+             b'<p><a href="rust/ams_mel_common/index.html">Shared Common MEL Rust values</a></p>\n'
              b'</section>\n')
 LANDING = (b'<!doctype html><html lang="en"><meta charset="utf-8">'
            b'<title>AMS MEL Rust reference</title><h1>AMS MEL Rust reference</h1>'
+           b'<p><a href="ams_mel_common/index.html">Shared Common MEL values</a></p>'
            b'<p><a href="ams_mel/index.html">Safe Rust application API</a></p>'
            b'<p><a href="ams_mel_sys/index.html">Low-level unsafe C ABI bindings: '
            b'FFI implementation interface, not the recommended application API</a></p>'
@@ -136,10 +138,12 @@ def graph(files, portal=False):
 
 def validate(files):
     required = ('index.html', 'ams_mel/index.html', 'ams_mel_sys/index.html',
+                'ams_mel_common/index.html',
                 'ams_mel/struct.Session.html', 'ams_mel_sys/fn.ams_mel_session_close.html',
                 'src-files.js', 'crates.js', 'help.html', 'settings.html')
     require(all(n in files for n in required), 'missing Rustdoc entry point')
-    for prefix in ('static.files/', 'src/ams_mel/', 'src/ams_mel_sys/', 'search.index/',
+    for prefix in ('static.files/', 'src/ams_mel/', 'src/ams_mel_sys/',
+                   'src/ams_mel_common/', 'search.index/',
                    'trait.impl/', 'type.impl/'):
         require(any(n.startswith(prefix) for n in files), 'missing Rustdoc asset family')
     require(files['index.html'] == LANDING, 'unauthorized Rust landing')

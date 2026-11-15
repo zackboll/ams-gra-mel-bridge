@@ -1392,16 +1392,16 @@ fn mfa_component(raw: &sys::AmsMelMfaComponentV1) -> Result<MfaComponent, Error>
         installation_details: InstallationDetails {
             // Text is NUL-free (`owned_text` rejects NUL), which is the
             // `ComponentLocation` invariant; offsets are copied bit-for-bit.
-            location: ComponentLocation {
-                offset_x_m: location.offset_x_m,
-                offset_y_m: location.offset_y_m,
-                offset_z_m: location.offset_z_m,
-                key: owned_text(location.key, "InstallationDetails.location.key")?,
-                system_name: owned_text(
+            location: ComponentLocation::new(
+                location.offset_x_m,
+                location.offset_y_m,
+                location.offset_z_m,
+                owned_text(location.key, "InstallationDetails.location.key")?,
+                owned_text(
                     location.system_name,
                     "InstallationDetails.location.system_name",
                 )?,
-            },
+            )?,
             orientation: euler(&details.orientation),
             boresight: euler(&details.boresight),
         },
