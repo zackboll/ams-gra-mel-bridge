@@ -1,7 +1,7 @@
 //! Provider-free IR crate consumer surface tests; no compatibility-façade dependency.
 use ams_mel_ir::{
-    AbiVersion, ComponentLocation, Error, ErrorKind, ImageStream, NavigationReport, Session,
-    RfMfaState, UciId,
+    AbiVersion, ComponentLocation, Error, ErrorKind, ImageStream, NavigationReport, RfMfaState,
+    Session, UciId,
 };
 
 #[test]

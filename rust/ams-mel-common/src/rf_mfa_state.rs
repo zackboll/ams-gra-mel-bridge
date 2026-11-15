@@ -111,4 +111,3 @@ impl TryFrom<u32> for RfMfaState {
             })
     }
 }
-

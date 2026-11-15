@@ -13,7 +13,9 @@ use std::rc::Rc;
 
 use ams_mel_sys as sys;
 
-use crate::{c_path, c_string, call_with_diagnostic, checked_bool, protocol, Error, ErrorKind, RfMfaState};
+use crate::{
+    c_path, c_string, call_with_diagnostic, checked_bool, protocol, Error, ErrorKind, RfMfaState,
+};
 
 /// Value placed in the native acceptance output before each command. A
 /// successful native call must overwrite it with exactly 0 or 1; if it does
