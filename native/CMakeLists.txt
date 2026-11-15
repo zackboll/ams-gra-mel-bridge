@@ -1209,6 +1209,29 @@ if(AMS_MEL_BUILD_TESTS)
 
     add_executable(test_channel_disable tests/test_channel_disable.c)
     add_executable(test_channel_buffer_registration tests/test_channel_buffer_registration.c)
+    add_executable(test_image_checkout tests/test_image_checkout.c)
+    add_executable(test_image_checkout_allocation tests/test_image_checkout_allocation.cpp)
+    target_compile_features(test_image_checkout_allocation PRIVATE cxx_std_20)
+    target_compile_definitions(test_image_checkout_allocation PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_image_checkout_allocation PRIVATE ams_mel::ams_mel_c)
+    add_dependencies(test_image_checkout_allocation mock_ir_provider)
+    ams_mel_warnings(test_image_checkout_allocation)
+    add_test(NAME image_checkout_allocation COMMAND test_image_checkout_allocation)
+    target_compile_features(test_image_checkout PRIVATE c_std_11)
+    set_target_properties(test_image_checkout PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_image_checkout PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_image_checkout PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_image_checkout mock_ir_provider)
+    ams_mel_warnings(test_image_checkout)
+    foreach(case IN ITEMS normal overflow reentry reentry-bound registration-reentry concurrent-release
+            wait-close enable-callback admission-failure fail throw no-registration no-receiver
+            full-acquisition drain-fail drain-provider-fail hold-exhaustion unregister-reentry
+            disable-reentry destruction-reentry close-reentry)
+        add_test(NAME image_checkout_${case} COMMAND test_image_checkout ${case})
+        set_tests_properties(image_checkout_${case} PROPERTIES TIMEOUT 30)
+    endforeach()
     target_compile_features(test_channel_buffer_registration PRIVATE c_std_11)
     set_target_properties(test_channel_buffer_registration PROPERTIES C_EXTENSIONS OFF)
     target_compile_definitions(test_channel_buffer_registration PRIVATE
