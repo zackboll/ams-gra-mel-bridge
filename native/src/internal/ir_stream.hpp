@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../internal.hpp"
+#include "channel_buffer_registration.hpp"
 
 #include <irmel/library/image/ImageChannel.h>
 
@@ -75,6 +76,7 @@ using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
  *   channel members or spinning, and adopts the published cleanup result
  *   instead of an earlier, now stale, Stop status. */
 struct ImageStreamState {
+    ams_mel_common::BufferRegistrations application_buffers;
     std::shared_ptr<CommsMetadataState> comms_metadata;
     bool comms_metadata_attempted{};
     /* Immutable operating mode; enabling control is not acquisition. */

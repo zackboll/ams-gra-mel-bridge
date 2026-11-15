@@ -1208,6 +1208,26 @@ if(AMS_MEL_BUILD_TESTS)
     add_test(NAME channel_disable_unsupported COMMAND test_channel_disable_unsupported)
 
     add_executable(test_channel_disable tests/test_channel_disable.c)
+    add_executable(test_channel_buffer_registration tests/test_channel_buffer_registration.c)
+    target_compile_features(test_channel_buffer_registration PRIVATE c_std_11)
+    set_target_properties(test_channel_buffer_registration PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_channel_buffer_registration PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_channel_buffer_registration PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_channel_buffer_registration mock_ir_provider)
+    ams_mel_warnings(test_channel_buffer_registration)
+    foreach(family c2 health stacked image)
+        foreach(case normal reentry concurrent register-bad-pointer register-fail register-fail-no-retain register-unsupported register-unimplemented register-throw register-retained unregister-fail unregister-throw retain-unregistered)
+            add_test(NAME channel_buffer_registration_${family}_${case}
+                COMMAND test_channel_buffer_registration ${family} ${case})
+            set_tests_properties(channel_buffer_registration_${family}_${case} PROPERTIES TIMEOUT 30)
+        endforeach()
+    endforeach()
+    foreach(case callback unregister-callback callback-fail)
+        add_test(NAME channel_buffer_registration_image_${case}
+            COMMAND test_channel_buffer_registration image ${case})
+        set_tests_properties(channel_buffer_registration_image_${case} PROPERTIES TIMEOUT 30)
+    endforeach()
     target_compile_features(test_channel_disable PRIVATE c_std_11)
     set_target_properties(test_channel_disable PROPERTIES C_EXTENSIONS OFF)
     target_compile_definitions(test_channel_disable PRIVATE

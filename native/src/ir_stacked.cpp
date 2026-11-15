@@ -1,12 +1,13 @@
 /* IRMEL-ADA-016: required channel details and common communications, even on
  * sensors without stack acquisition. No image buffers or listeners are created.
- * Application buffer registration/unregistration remain unbound; optional
- * LOS3D is not registered. */
+ * Application-owned buffers are supported separately from acquisition;
+ * optional LOS3D is not registered. */
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
 #include "internal/common_channel_requests.hpp"
 #include "internal/channel_disable.hpp"
+#include "internal/channel_buffer_registration.hpp"
 #include "internal/channel_comms_metadata.hpp"
 
 #include <irmel/library/stacked-image/StackedImageChannel.h>
@@ -92,6 +93,7 @@ enum class Lifecycle { Attached, Enabling, Enabled, Disabling, Failed, Closed };
  * Channel requests and temporary registration/query operations; it is never shared with
  * C2, Track, Health, Instrumentation or Image accounting. */
 struct StackedState {
+    ams_mel_common::BufferRegistrations application_buffers;
     std::shared_ptr<CommsMetadataState> comms_metadata;
     bool comms_metadata_attempted{};
     std::mutex mutex;
@@ -246,6 +248,15 @@ ams_mel_status_t stacked_capability(const std::shared_ptr<StackedState>& state,
 } // namespace
 
 struct ams_mel_ir_stacked { std::shared_ptr<StackedState> state; };
+namespace {
+bool reconcile_application_buffer(ams_mel_ir_buffer& buffer) noexcept
+{
+    auto state = std::static_pointer_cast<StackedState>(buffer.channel_owner);
+    return ams_mel_common::reconcile_buffer(buffer, state->mutex,
+        state->application_buffers, [] { return true; });
+}
+} // namespace
+
 namespace ams_mel_common {
 CommonChannelAccess common_from_stacked(const ams_mel_ir_stacked *owner)
 {
@@ -296,10 +307,17 @@ CommonChannelAccess common_from_stacked(const ams_mel_ir_stacked *owner)
                 [](const std::shared_ptr<StackedState>& claimed) noexcept {
                     try { return finish_request(claimed); }
                     catch (...) { retain_failed(claimed); return false; }
-                }, retain_failed, result);
+                }, retain_failed, result, &state->application_buffers.operation);
             diagnostic(status == AMS_MEL_OK ? "" : "Stacked Disable failed or unavailable",
                        out, capacity, required);
             return status;
+        },
+        [](const std::shared_ptr<void>& erased, ams_mel_ir_buffer& buffer,
+           bool removing, ams_mel_ir_return_t *result) noexcept {
+            auto state = std::static_pointer_cast<StackedState>(erased);
+            return buffer_registration(state, state->mutex, state->lifecycle,
+                Lifecycle::Attached, true, state->application_buffers, state->channel,
+                buffer, removing, result, reconcile_application_buffer, [] { return true; });
         }};
 }
 } // namespace ams_mel_common
@@ -444,6 +462,8 @@ extern "C" ams_mel_status_t ams_mel_ir_stacked_enable(
     std::shared_ptr<irmel::Channel> channel;
     {
         std::lock_guard lock{state->mutex};
+        if (state->application_buffers.operation || state->application_buffers.uncertain)
+                return AMS_MEL_PROVIDER_FAILED;
         if (state->lifecycle == Lifecycle::Enabled) return AMS_MEL_OK;
         if (state->lifecycle != Lifecycle::Attached) {
             diagnostic("Stacked channel is not attached", out, capacity, required);
@@ -504,6 +524,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stacked_close(
         bool now = false;
         {
             std::lock_guard lock{state->mutex};
+            if (state->application_buffers.count) return AMS_MEL_PROVIDER_FAILED;
             /* New common requests are refused from here on; admitted ones
              * keep their claim and own the graph until completion. */
             state->lifecycle = Lifecycle::Closed;

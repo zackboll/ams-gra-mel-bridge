@@ -3,7 +3,11 @@ private with AMS.MEL_C_API;
 
 package AMS.MEL.IR.Buffer is
    --  Standalone provider Buffer with stable, zero-initialized bridge-owned
-   --  host bytes. No registration, acquisition, image view or checkout release.
+   --  host bytes. Channel.Register_Buffer retains its native graph without
+   --  transferring ownership. No acquisition, image view or checkout release.
+   --  While registration is active or uncertain, property/byte/flag operations
+   --  and Close raise Provider_Error. Successful unregister must also reconcile
+   --  remaining provider ownership before these operations become available.
    --  Serialize operations and closure on each owner. GPU/RDMA flags are only
    --  provider bookkeeping, never physical GPU/RDMA allocation promises.
 
@@ -118,6 +122,27 @@ package AMS.MEL.IR.Buffer is
    --  extra provider shared owner exists, retain the graph instead of freeing it.
    --  @param Object Owner cleared only after proven ordinary cleanup.
    --  @exception Provider_Error Cleanup is uncertain; native graph stays retained.
+
+   procedure Register_With_Channel (Channel : Channel_View; Object : in out Host_Buffer);
+   --  Implementation entry shared with Channel.Register_Buffer; retains native
+   --  resources without transferring this limited owner's public ownership.
+   --  @param Channel Weak view of an attached disabled required-family channel
+   --  from the same native Session; Image must be control-only.
+   --  @param Object Initialized unregistered Buffer; bytes and flags are blocked
+   --  after entry until successful unregister and safe ownership reconciliation.
+   --  @exception Provider_Error Invalid association/lifecycle, duplicate,
+   --  provider refusal or exception; actual Return is reported when available.
+   --  Refusal after entry conservatively retains the graph for explicit cleanup.
+
+   procedure Unregister_From_Channel (Channel : Channel_View; Object : in out Host_Buffer);
+   --  Implementation entry shared with Channel.Unregister_Buffer. Successful
+   --  logical unregister does not prove callback quiescence; retained provider
+   --  ownership or unresolved Image checkouts continue to block access/Close.
+   --  @param Channel Same concrete disabled channel used for registration.
+   --  @param Object Original limited owner, preserved unchanged on failure.
+   --  @exception Provider_Error Wrong association/lifecycle, duplicate unregister,
+   --  refusal or exception; actual Return is reported when available. Unresolved
+   --  ownership may retain the native graph until process exit; no release call.
 
 private
    type Host_Buffer is new Ada.Finalization.Limited_Controlled with record
