@@ -3,6 +3,13 @@
 //! `ams_mel_rf_data_quantize_duration`, `ams_mel_rf_data_get_mfa_info`,
 //! `ams_mel_rf_mfa_info_view`, `ams_mel_rf_mfa_info_close`, and
 //! `ams_mel_rf_data_close` C exports. No C ABI is added or changed.
+//!
+//! [`RfData`] exposes provider version, live duration quantization, and copied
+//! [`RfMfaInfo`] capability values. It does not expose safe Rust RF C2,
+//! ProductRx, Virtual Aperture, RF Jobs, transmit operations, waveform handling,
+//! or data processing. Broader native C ABI support is not safe Rust support.
+//! Capability reports describe the provider, not hardware qualification or
+//! independently measured RF performance.
 
 use std::mem;
 use std::path::Path;
@@ -27,22 +34,55 @@ use crate::{
 /// [`from_raw`](Self::from_raw) is canonical: it never produces `Unknown` for
 /// a published value. [`as_raw`](Self::as_raw) returns the exact raw value for
 /// every variant, including `Unknown`.
+/// These are format identifiers only: this API neither decodes nor transfers
+/// the corresponding data. Use the conversion methods, not Rust enum layout,
+/// for the numeric representation.
+///
+/// ```
+/// use ams_mel::RfJobDataFormat;
+/// assert_eq!(RfJobDataFormat::ComplexInt16.as_raw(), 3);
+/// let future = RfJobDataFormat::from_raw(0xF000_0001);
+/// assert_eq!(future, RfJobDataFormat::Unknown(0xF000_0001));
+/// assert_eq!(future.as_raw(), 0xF000_0001);
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum RfJobDataFormat {
+    /// Direct samples as signed 8-bit integers (raw `0`).
     DirectInt8,
+    /// Direct samples as signed 16-bit integers (raw `1`).
     DirectInt16,
+    /// Complex IQ (real/imaginary) signed 8-bit integer pairs (raw `2`).
     ComplexInt8,
+    /// Complex IQ (real/imaginary) signed 16-bit integer pairs (raw `3`),
+    /// matching the pinned `MELComplex<int16_t>` data type.
     ComplexInt16,
+    /// AMS GRA VITA49.2 Base Set signal-data packet, 512-byte storage (raw `4`).
+    /// Storage capacity is not the header-derived valid serialized packet length.
     AmsVitaSmall,
+    /// AMS GRA VITA49.2 Base Set signal-data packet, 1,024-byte storage (raw `5`),
+    /// not necessarily the valid serialized packet length.
     AmsVitaMedium,
+    /// AMS GRA VITA49.2 Base Set signal-data packet, 8,192-byte storage (raw `6`),
+    /// not necessarily the valid serialized packet length.
     AmsVitaLarge,
+    /// AMS GRA VITA49.2 Base Set signal-data packet, 32,768-byte storage (raw `7`),
+    /// not necessarily the valid serialized packet length.
     AmsVitaExtraLarge,
+    /// Published PDW type-1 format identifier (raw `8`); no payload layout is exposed here.
     PdwType1,
+    /// Published PDW type-2 format identifier (raw `9`); no payload layout is exposed here.
     PdwType2,
+    /// Published PDW type-3 format identifier (raw `10`); no payload layout is exposed here.
     PdwType3,
+    /// Local Function defined type-1 format identifier (raw `11`).
     LfType1,
+    /// Local Function defined type-2 format identifier (raw `12`).
     LfType2,
+    /// Local Function defined type-3 format identifier (raw `13`).
     LfType3,
+    /// Unrecognized format with its original raw `u32` representation.
+    /// [`from_raw`](Self::from_raw) uses this only for values outside `0..=13`;
+    /// direct construction does not enforce that canonical mapping.
     Unknown(u32),
 }
 
@@ -109,7 +149,9 @@ impl From<RfJobDataFormat> for u32 {
 /// `min_hz > max_hz` is reported exactly as the provider produced it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RfFrequencyRange {
+    /// Provider-reported minimum frequency in Hz, unchanged.
     pub min_hz: f64,
+    /// Provider-reported maximum frequency in Hz, unchanged.
     pub max_hz: f64,
 }
 
@@ -120,22 +162,48 @@ pub struct RfFrequencyRange {
 /// `Femtoseconds` value, with no unit conversion. The frequency-range vectors
 /// are, in order, `getRxFrequencyRanges`, `getTxFrequencyRanges`, and
 /// `getSampleFrequencyRange` for this face, in the provider's order.
+/// Negative timing values and duplicate or reversed ranges are preserved,
+/// not interpreted as valid scheduling or RF operating limits by the binding.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RfFaceInfo {
+    /// Provider-defined `FaceID` from `getFaceIDs()`, not a vector index.
     pub face_id: u32,
+    /// Provider reports support for receive (RX) operation on this face.
     pub supports_receive: bool,
+    /// Provider reports support for transmit (TX) operation on this face;
+    /// this does not enable safe Rust transmission.
     pub supports_transmit: bool,
+    /// Provider requires association of this face's endpoints and data pipes.
+    /// This snapshot performs no association and creates no endpoints.
     pub requires_endpoint_association: bool,
+    /// Signed femtoseconds required to process automatic gain control after
+    /// data collection, reported by `getAGCProcessingTime()`.
     pub agc_processing_time_fs: i64,
+    /// Minimum advance arrival time for a JobRequest so the scheduler can
+    /// adjudicate it, in signed femtoseconds.
     pub min_job_request_lead_time_fs: i64,
+    /// Maximum advance arrival time before job start at which a JobRequest
+    /// is accepted for consideration, in signed femtoseconds. Together with
+    /// the minimum lead time, this describes the provider's request window.
     pub max_job_request_lead_time_fs: i64,
+    /// Required advance arrival time of an interval relative to the job's
+    /// actual start and each successive interval start, in signed femtoseconds.
     pub min_job_detail_lead_time_fs: i64,
+    /// Minimum gap from a transmit event to a subsequent receive event,
+    /// in signed femtoseconds.
     pub tx_rx_switching_time_fs: i64,
+    /// Minimum gap from a receive event to a subsequent transmit event,
+    /// in signed femtoseconds.
     pub rx_tx_switching_time_fs: i64,
+    /// Minimum gap between transmit events, in signed femtoseconds.
     pub tx_tx_switching_time_fs: i64,
+    /// Minimum gap between receive events, in signed femtoseconds.
     pub rx_rx_switching_time_fs: i64,
+    /// Provider-reported supported RX frequency ranges in Hz, retaining order and duplicates.
     pub rx_frequency_ranges: Vec<RfFrequencyRange>,
+    /// Provider-reported supported TX frequency ranges in Hz, retaining order and duplicates.
     pub tx_frequency_ranges: Vec<RfFrequencyRange>,
+    /// Provider-reported supported sample-frequency ranges in Hz, retaining order and duplicates.
     pub sample_frequency_ranges: Vec<RfFrequencyRange>,
 }
 
@@ -149,13 +217,31 @@ pub struct RfFaceInfo {
 /// independent of `faces.len()`; upstream publishes no requirement that the
 /// two agree. `supported_data_formats` and `faces` keep the provider's
 /// collection order.
+/// All collections preserve the native snapshot's order and duplicates; the
+/// pinned provider interface supplies face IDs and formats as ordered sets.
+/// Snapshot construction queries individual getters, not an atomic hardware
+/// observation. This is the complete bridged v1 record, not all upstream
+/// `RFMFAInfo` facilities (for example, physical and TX power-mode data).
 #[derive(Clone, Debug, PartialEq)]
 pub struct RfMfaInfo {
+    /// Provider's `getNumFaces()` count, not recomputed from [`faces`](Self::faces).
     pub reported_num_faces: u64,
+    /// Provider reports that its implementation includes open additions;
+    /// no particular addition or behavior is inferred from this flag.
     pub contains_open_additions: bool,
+    /// Finest scheduler time quantum for constructing job timelines, in signed
+    /// femtoseconds. Upstream directs job durations to be multiples of this
+    /// resolution; use [`RfData::quantize_duration`] for the provider's result,
+    /// not locally inferred rounding. Zero and negative reports are preserved.
     pub scheduler_resolution_fs: i64,
+    /// Maximum bytes permitted in JobInterval user-defined context data,
+    /// reported by `getMaxNumUserDefinedContextBytes()`. No context is allocated.
     pub max_user_defined_context_bytes: u64,
+    /// Provider-supported format identifiers, preserving native collection order
+    /// and unknown values through [`RfJobDataFormat::Unknown`].
     pub supported_data_formats: Vec<RfJobDataFormat>,
+    /// Per-face copies for `getFaceIDs()` in native collection order, without
+    /// reconciling identifiers or length with [`reported_num_faces`](Self::reported_num_faces).
     pub faces: Vec<RfFaceInfo>,
 }
 
@@ -173,7 +259,8 @@ pub struct RfMfaInfo {
 ///   `Ok(())` without calling native code, and every provider operation fails
 ///   with [`ErrorKind::ProviderFailed`] without a provider call.
 /// - On successful shutdown the bridge destroys the provider DataMEL *before*
-///   unloading its provider library.
+///   releasing this owner's provider-library reference. Other owners or
+///   retained native resources can keep the library loaded.
 /// - If shutdown throws, the error is returned and the owner is closed. The
 ///   native bridge intentionally retains the uncertain provider graph and
 ///   library for the rest of the process; this binding never retries shutdown
@@ -185,6 +272,14 @@ pub struct RfMfaInfo {
 /// The owner is intentionally neither `Send` nor `Sync`, and every provider
 /// operation and Close take `&mut self`, so the native requirement that
 /// operations on one owner be externally serialized is enforced statically.
+/// Returned [`ProviderVersion`] and [`RfMfaInfo`] values own their data and
+/// remain valid after closure; the snapshot types may be sent and shared
+/// independently of this non-`Send`, non-`Sync` owner.
+///
+/// The broader C ABI can defer DataMEL shutdown until its last native child
+/// is released. This safe owner exposes no child-creation API and leaks no raw
+/// handle, so its copied snapshots do not defer shutdown. Neither explicit
+/// closure nor Drop promises cancellation or unconditional provider unload.
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
@@ -223,6 +318,12 @@ impl RfData {
     /// Loads `provider_library`, resolves its `createDataMEL` factory and
     /// calls it once with `configuration`.
     ///
+    /// Configuration is provider-specific UTF-8 passed verbatim, not parsed by
+    /// Rust. Loading executes provider code and requires a trusted library with
+    /// a compatible pinned C++ MEL ABI; the C facade does not sandbox it.
+    ///
+    /// # Errors
+    ///
     /// The path must be valid UTF-8 and neither argument may contain an
     /// embedded NUL; both are rejected as [`ErrorKind::InvalidArgument`]
     /// before any native call. Native failures keep their categories, for
@@ -230,7 +331,8 @@ impl RfData {
     /// [`ErrorKind::SymbolNotFound`], [`ErrorKind::FactoryFailed`] for a null
     /// factory result, [`ErrorKind::InternalError`] for allocation failure,
     /// and [`ErrorKind::ProviderException`] for a throwing factory. A failed
-    /// open leaves no owner, and the bridge has already unloaded the provider.
+    /// open leaves no owner, and the bridge releases its library reference;
+    /// independent owners can still keep the provider loaded.
     pub fn open(
         provider_library: impl AsRef<Path>,
         configuration: impl AsRef<str>,
@@ -274,6 +376,7 @@ impl RfData {
 
     /// Returns `true` until [`close`](Self::close) or Drop has consumed the
     /// native owner.
+    /// This is a local ownership check, not a provider health or hardware-state query.
     pub fn is_open(&self) -> bool {
         !self.raw.is_null()
     }
@@ -282,8 +385,14 @@ impl RfData {
     /// protocol as
     /// [`Session::provider_version`](crate::Session::provider_version): a
     /// size query, exactly sized buffers (lengths include the terminal NUL),
-    /// then the complete copy. Strings are never truncated. Malformed native
-    /// output is [`ErrorKind::ProtocolInconsistency`] or
+    /// then the complete copy. Strings are never truncated. The returned
+    /// [`ProviderVersion`] owns its strings and remains valid after closure;
+    /// it reports provider version information, not the facade ABI version
+    /// or hardware qualification.
+    ///
+    /// # Errors
+    ///
+    /// Malformed native output is [`ErrorKind::ProtocolInconsistency`] or
     /// [`ErrorKind::InvalidUtf8`]; provider failures keep their native
     /// category and diagnostic length, and the owner stays open. A closed
     /// owner returns [`ErrorKind::ProviderFailed`] without a provider call.
@@ -306,6 +415,12 @@ impl RfData {
     /// Input and output are exact signed femtosecond counts. The provider's
     /// result is authoritative: no quantization is computed in Rust and
     /// [`RfMfaInfo::scheduler_resolution_fs`] is never used as a substitute.
+    /// The upstream intent is quantization to the MFA's finest supported time
+    /// quantum for job timing. Rust imposes no sign restriction, clamping,
+    /// rounding direction, or tie-breaking policy on the provider's result.
+    ///
+    /// # Errors
+    ///
     /// Provider exceptions are [`ErrorKind::ProviderException`] and
     /// allocation failures [`ErrorKind::InternalError`]; the owner stays open.
     /// A closed owner returns [`ErrorKind::ProviderFailed`] without a provider
@@ -335,17 +450,27 @@ impl RfData {
     ///
     /// The native snapshot is validated and copied while alive, then closed
     /// exactly once on every path, including conversion and allocation
-    /// failures. If a provider getter throws, no partial snapshot is returned
+    /// failures. Returned values remain valid after this owner closes. Getter
+    /// results retain original units, signed precision, identifiers, collection
+    /// order, duplicates, and unknown format values. There is no normalization,
+    /// hardware validation, or atomicity guarantee across provider getters.
+    ///
+    /// # Errors
+    ///
+    /// If a provider getter throws, no partial snapshot is returned
     /// and the owner stays open, so a later snapshot may succeed. Malformed
     /// native spans or Booleans are [`ErrorKind::ProtocolInconsistency`]. A
     /// closed owner returns [`ErrorKind::ProviderFailed`] without a provider
-    /// call.
+    /// call. Allocation failures are [`ErrorKind::InternalError`]; provider
+    /// exceptions are [`ErrorKind::ProviderException`]. A native snapshot-close
+    /// failure is reported if conversion succeeded; conversion errors take
+    /// precedence when both fail. No partial value escapes.
     pub fn mfa_info(&mut self) -> Result<RfMfaInfo, Error> {
         let data = self.live()?;
         snapshot_with(data, mfa_info_from_raw)
     }
 
-    /// Shuts down and releases the provider DataMEL exactly once.
+    /// Consumes the native owner and attempts provider DataMEL shutdown once.
     ///
     /// The owner is consumed whether or not provider shutdown succeeds; on
     /// return [`is_open`](Self::is_open) is always `false`. A throwing
@@ -353,6 +478,18 @@ impl RfData {
     /// with the provider diagnostic). The native bridge then intentionally
     /// retains the uncertain provider graph and library, and shutdown is never
     /// retried. Repeated calls return `Ok(())` without native calls.
+    /// Returned version and capability values remain valid. Drop uses best-effort
+    /// cleanup without reporting errors; explicit closure is required to observe
+    /// the result. Successful shutdown releases this owner's library reference,
+    /// not necessarily every reference in the process.
+    ///
+    /// # Errors
+    /// Returns native shutdown errors, including [`ErrorKind::ProviderException`].
+    /// A native lifecycle bookkeeping failure is [`ErrorKind::InternalError`]
+    /// and retains the uncertain provider graph. A successful native result
+    /// that fails to consume the handle is [`ErrorKind::ProtocolInconsistency`];
+    /// Rust abandons that handle rather than retrying uncertain cleanup.
+    /// The Rust owner is closed in every case.
     pub fn close(&mut self) -> Result<(), Error> {
         if self.raw.is_null() {
             return Ok(());

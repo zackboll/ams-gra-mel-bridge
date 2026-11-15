@@ -1,6 +1,11 @@
 //! Safe RF Admin state control (RUST-MEL-001) over the existing
 //! `ams_mel_rf_admin_open`, `ams_mel_rf_admin_command_state`, and
 //! `ams_mel_rf_admin_close` C exports. No C ABI is added or changed.
+//!
+//! [`RfAdmin`] loads its own provider object independently of [`RfData`](crate::RfData)
+//! and the IR [`Session`](crate::Session). This module exposes synchronous state
+//! command acceptance only, not RF C2, state telemetry, or a hardware-transition
+//! completion interface.
 
 use std::path::Path;
 use std::ptr;
@@ -26,23 +31,49 @@ const UNWRITTEN_ACCEPTANCE: u32 = u32::MAX;
 /// exist, so an out-of-range state cannot be constructed through safe Rust.
 /// Raw values are admitted only through the checked `TryFrom<u32>`
 /// conversion, which rejects `MAX_EXCLUSIVE` (15) and every larger value.
+///
+/// ```
+/// use ams_mel::{ErrorKind, RfMfaState};
+/// assert_eq!(RfMfaState::OperateRxOnly.as_raw(), 8);
+/// assert_eq!(RfMfaState::try_from(6)?, RfMfaState::Standby);
+/// assert_eq!(RfMfaState::try_from(15).unwrap_err().kind(), &ErrorKind::InvalidArgument);
+/// # Ok::<(), ams_mel::Error>(())
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[repr(u32)]
 pub enum RfMfaState {
+    /// State has not been set (`0`).
     NotSet = sys::AMS_MEL_IR_MFA_STATE_NOT_SET,
+    /// Subsystem state is unknown (`1`).
     Unknown = sys::AMS_MEL_IR_MFA_STATE_UNKNOWN,
+    /// Subsystem is not installed (`2`).
     NotInstalled = sys::AMS_MEL_IR_MFA_STATE_NOT_INSTALLED,
+    /// Subsystem is not powered up (`3`).
     Off = sys::AMS_MEL_IR_MFA_STATE_OFF,
+    /// Bootstrap and initial operational flight program (OFP) load (`4`).
     PreInitialization = sys::AMS_MEL_IR_MFA_STATE_PRE_INITIALIZATION,
+    /// Initialization and mission-data load (`5`).
     Initialization = sys::AMS_MEL_IR_MFA_STATE_INITIALIZATION,
+    /// Initialization complete; ready to transition to operation (`6`).
     Standby = sys::AMS_MEL_IR_MFA_STATE_STANDBY,
+    /// Subsystem may perform its enabled capabilities (`7`).
     Operate = sys::AMS_MEL_IR_MFA_STATE_OPERATE,
+    /// Subsystem may perform its enabled receive-only capabilities (`8`).
     OperateRxOnly = sys::AMS_MEL_IR_MFA_STATE_OPERATE_RX_ONLY,
+    /// Transmit-only operation state (`9`).
     OperateTxOnly = sys::AMS_MEL_IR_MFA_STATE_OPERATE_TX_ONLY,
+    /// Performing or having performed the maintenance procedure (`10`).
     Maintenance = sys::AMS_MEL_IR_MFA_STATE_MAINTENANCE,
+    /// State-commanded calibration that interrupts other functions (`11`),
+    /// distinct from calibration initiated through a BIT command without a state change.
     Calibration = sys::AMS_MEL_IR_MFA_STATE_CALIBRATION,
+    /// State-commanded initiated built-in test (BIT) that interrupts other
+    /// functions (`12`), distinct from BIT commands that need no state change.
     InitiatedBit = sys::AMS_MEL_IR_MFA_STATE_INITIATED_BIT,
+    /// Performing or having performed shutdown (`13`); the published state
+    /// definition specifies no subsystem messages once shutdown completes.
     Shutdown = sys::AMS_MEL_IR_MFA_STATE_SHUTDOWN,
+    /// Subsystem cannot perform all normal activities (`14`).
     Degraded = sys::AMS_MEL_IR_MFA_STATE_DEGRADED,
 }
 
@@ -83,6 +114,9 @@ impl TryFrom<u32> for RfMfaState {
 
     /// Checked raw conversion. Values 15 (`MAX_EXCLUSIVE`) and above return
     /// [`ErrorKind::InvalidArgument`]; they are never mapped to a state.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::InvalidArgument`] for any value outside `0..=14`.
     fn try_from(raw: u32) -> Result<Self, Error> {
         Self::ALL
             .iter()
@@ -164,6 +198,12 @@ impl RfAdmin {
     /// Loads `provider_library`, resolves its `createAdminMEL` factory and
     /// calls it once with `configuration`.
     ///
+    /// Configuration is provider-specific UTF-8 passed verbatim, not parsed by
+    /// Rust. Loading executes provider code and requires a trusted library with
+    /// a compatible pinned C++ MEL ABI; the C facade does not sandbox it.
+    ///
+    /// # Errors
+    ///
     /// The path must be valid UTF-8 and neither argument may contain an
     /// embedded NUL; both are rejected as [`ErrorKind::InvalidArgument`]
     /// before any native call. Native failures keep their categories, for
@@ -214,6 +254,7 @@ impl RfAdmin {
 
     /// Returns `true` until [`close`](Self::close) or Drop has consumed the
     /// native owner.
+    /// This is a local ownership check, not a provider health or hardware-state query.
     pub fn is_open(&self) -> bool {
         !self.raw.is_null()
     }
@@ -222,7 +263,13 @@ impl RfAdmin {
     ///
     /// Returns `Ok(true)` if the provider accepted the command and `Ok(false)`
     /// if it rejected it normally. Neither value proves that the hardware
-    /// reached `state`. Provider failures (for example a null UCI_Control or
+    /// reached `state`. A successful native submission alone does not imply
+    /// acceptance: rejection is still `Ok(false)`. No transition is awaited,
+    /// and no cancellation or completion notification is supplied.
+    ///
+    /// # Errors
+    ///
+    /// Provider failures (for example a null UCI_Control or
     /// StatusControl), provider exceptions, invalid arguments and malformed
     /// native output return `Err`, and the owner stays open. A closed owner
     /// returns [`ErrorKind::ProviderFailed`] without calling native code.
@@ -249,7 +296,7 @@ impl RfAdmin {
         acceptance(accepted)
     }
 
-    /// Shuts down and releases the provider AdminMEL exactly once.
+    /// Consumes the native owner and attempts provider AdminMEL shutdown once.
     ///
     /// The owner is consumed whether or not provider shutdown succeeds; on
     /// return [`is_open`](Self::is_open) is always `false`. A throwing
@@ -257,6 +304,15 @@ impl RfAdmin {
     /// with the provider diagnostic). The native bridge then intentionally
     /// retains the uncertain provider object and library, and shutdown is
     /// never retried. Repeated calls return `Ok(())` without native calls.
+    /// Successful shutdown destroys AdminMEL before releasing this owner's
+    /// library reference; other owners or retained resources may keep the
+    /// library loaded. This is not a hardware-state command or a cancellation API.
+    ///
+    /// # Errors
+    /// Returns native shutdown errors, including [`ErrorKind::ProviderException`].
+    /// A successful native result that fails to consume the handle is
+    /// [`ErrorKind::ProtocolInconsistency`]; Rust abandons that handle rather
+    /// than retrying uncertain cleanup. The Rust owner is closed in either case.
     pub fn close(&mut self) -> Result<(), Error> {
         if self.raw.is_null() {
             return Ok(());
