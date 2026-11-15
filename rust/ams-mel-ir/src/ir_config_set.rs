@@ -10,7 +10,7 @@ use std::{ptr, rc::Rc};
 /// Embedded NUL bytes are rejected at submission; empty text is valid.
 ///
 /// ```no_run
-/// use ams_mel::{ConfigSetCommand, ControlChannel, Error, ReturnResult};
+/// use ams_mel_ir::{ConfigSetCommand, ControlChannel, Error, ReturnResult};
 ///
 /// fn configure(channel: &mut ControlChannel) -> Result<ReturnResult, Error> {
 ///     let mut command = ConfigSetCommand::new(301);

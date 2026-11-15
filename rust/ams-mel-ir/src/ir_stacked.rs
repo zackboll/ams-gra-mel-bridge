@@ -10,7 +10,7 @@ const CLOSED: &str = "IR Stacked channel is closed";
 /// No dimensions, pixel format, stack geometry or acquisition storage is inferred.
 ///
 /// ```no_run
-/// use ams_mel::{ChannelType, Error, Session, StackedConfig};
+/// use ams_mel_ir::{ChannelType, Error, Session, StackedConfig};
 /// fn attach(session: &Session) -> Result<(), Error> {
 ///     let capabilities = session.capabilities()?;
 ///     if let Some(c) = capabilities.iter()
@@ -86,11 +86,11 @@ impl Session {
 ///
 /// ```compile_fail
 /// fn send<T: Send>() {}
-/// send::<ams_mel::StackedChannel>();
+/// send::<ams_mel_ir::StackedChannel>();
 /// ```
 /// ```compile_fail
 /// fn sync<T: Sync>() {}
-/// sync::<ams_mel::StackedChannel>();
+/// sync::<ams_mel_ir::StackedChannel>();
 /// ```
 #[derive(Debug)]
 pub struct StackedChannel {
