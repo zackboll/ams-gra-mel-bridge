@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Python RF Admin — AMS GRA MEL Bridge</title>
+  <link rel="stylesheet" href="assets/reference.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header>
+  <p>AMS MEL Python documentation</p>
+  {{navigation}}
+</header>
+<main id="main">
+  <h1>RF Admin</h1>
+  <p>{{api:RFAdmin}} is an independent AdminMEL owner. It opens its own provider
+  factory and has no IR Session parent. The safe Python RF surface consists of this
+  owner, state-command acceptance and shutdown; RF data, product reception, virtual
+  apertures and job interfaces are not exposed.</p>
+
+  <section id="open">
+    <h2>Open with provider configuration</h2>
+    <p>First set up the native facade as described in
+    <a href="getting-started.html#load-facade">getting started</a>. Then pass the
+    provider library and its documented UTF-8 configuration to {{api:RFAdmin.open}}.
+    The configuration text is provider-defined. The bridge invokes
+    <code>createAdminMEL</code> once; it does not supply a universal grammar.</p>
+    <pre><code class="language-python">from ams_mel import MFAState, RFAdmin
+
+
+def request_rf_state(provider_library, configuration,
+                     desired_state: MFAState):
+    with RFAdmin.open(provider_library, configuration) as admin:
+        return admin.command_state(desired_state)
+</code></pre>
+    <p>The example takes the desired state from its caller. Opening or entering the
+    context does not choose a state or infer a provider transition sequence.</p>
+  </section>
+
+  <section id="state-result">
+    <h2>Interpret state-command acceptance</h2>
+    <p>{{api:RFAdmin.command_state}} accepts {{api:MFAState}} or an integer in the
+    published range <code>0..14</code>; Boolean values are rejected. The method
+    returns <code>True</code> if the provider accepts the request and
+    <code>False</code> for normal refusal. A successful call does not prove that
+    hardware reached the requested state, that RF emission occurred or that other
+    provider interfaces are available.</p>
+    <p>Missing interfaces, provider exceptions, invalid input and malformed native
+    results raise {{api:MelError}}. Inspect its structured {{api:ErrorKind}} and
+    diagnostics. The binding has no implicit transition table, background polling,
+    retry loop or asynchronous RF request owner. An application's next state request
+    must follow its provider's actual contract.</p>
+    <p>{{api:RFAdmin.is_open}} describes the local public handle. It does not report
+    provider health or the current hardware state.</p>
+  </section>
+
+  <section id="close">
+    <h2>Shutdown and synchronization</h2>
+    <p>Externally serialize every operation and Close on one RFAdmin owner. The GIL
+    does not provide the required native ownership synchronization. The owner retains
+    no Python parent; native code manages provider-library lifetime.</p>
+    <p>{{api:RFAdmin.close}} consumes the public handle and attempts shutdown once,
+    including when shutdown reports failure. Repeated close is harmless and does
+    not repeat uncertain shutdown. Explicit close and normal context exit report
+    failures; exceptional context exit preserves the body exception, and finalization
+    is non-raising. A shutdown exception can require permanent native graph retention,
+    so local closure is not proof of provider unload.</p>
+    <p>For the shared error model, finite diagnostic behavior and context-manager
+    rules, see <a href="ownership-and-errors.html">ownership and errors</a>.</p>
+  </section>
+</main>
+<footer><p>AMS MEL Python documentation. Provider support remains runtime-specific.</p></footer>
+</body>
+</html>

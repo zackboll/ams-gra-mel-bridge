@@ -25,6 +25,8 @@ class PositionSolutionState(IntEnum):
 
 @dataclass(frozen=True)
 class NorthEastDown:
+    """Three independent north/east/down components used for navigation speed or acceleration."""
+
     north: float
     east: float
     down: float
@@ -96,11 +98,15 @@ class NavigationReport:
 
 @dataclass(frozen=True)
 class NavigationCompleted:
+    """Terminal navigation result containing the owned response; callback reception is independent."""
+
     response: NavigationResponse
 
 
 @dataclass(frozen=True)
 class NavigationRejected:
+    """Terminal navigation MEL rejection with the exact code and complete description."""
+
     code: MelErrorCode
     description: str
 

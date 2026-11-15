@@ -1,4 +1,10 @@
-"""Safe Python sessions, IR streams/C2/Instrumentation/Health, and RF Admin.
+"""Safe Python sessions, IR Image/Stacked/C2/Instrumentation/Health, and RF Admin.
+
+Session discovery returns complete owned capability snapshots without attaching
+channels. ImageStream supports host-memory Mono8 acquisition or a control-only
+attachment, plus explicit navigation submission and independent metadata
+receivers. StackedImage provides attachment, enablement and common services;
+stacked acquisition is not exposed. RFAdmin uses an independent provider factory.
 
 IR C2 provides asynchronous :class:`ModeRequest` and :class:`ReturnRequest`
 owners. BIT support is limited to the empty/no-op profile; payload-bearing BIT
@@ -8,7 +14,7 @@ CommsTest reports. Request timeout and close do not cancel provider work.
 
 Common Channel: :meth:`ControlChannel.channel_view`,
 :meth:`ImageStream.channel_view`, :meth:`InstrumentationChannel.channel_view`,
-and :meth:`HealthStatusChannel.channel_view`
+:meth:`HealthStatusChannel.channel_view`, and :meth:`StackedChannel.channel_view`
 return a weak :class:`ChannelView` offering
 the inherited KeepAlive (the existing :class:`ReturnRequest`), CommsTest
 (:class:`CommsRequest`), and a complete Python-owned
@@ -17,7 +23,8 @@ the inherited KeepAlive (the existing :class:`ReturnRequest`), CommsTest
 family state: keeping a View alive keeps no typed owner, Session, provider
 channel, or provider library alive, and the View holds no reference to its
 Python source. After the source is torn down the View is still open (it still
-owns its wrapper) but every operation fails with ``PROVIDER_FAILED``.
+owns its wrapper) but channel operations fail with ``PROVIDER_FAILED``;
+closing the weak wrapper remains independent of the source channel.
 
 Operations using one owner must follow the native external-serialization
 contract. At most one receive operation may consume an :class:`ImageStream` at

@@ -109,11 +109,15 @@ class StackedChannel:
         self._close_state = "consumed"
 
     def __enter__(self) -> StackedChannel:
+        """Return this existing open owner without starting or enabling provider work."""
+
         self._require_open()
         return self
 
     def __exit__(self, exception_type: object, exception: object, traceback: object) -> bool:
         # Context cleanup is automatic, not an explicit detach retry request.
+        """Close on context exit, preserving an exception raised by the with body."""
+
         if self._close_state == "live":
             if exception_type is None:
                 self.close()

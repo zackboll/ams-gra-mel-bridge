@@ -135,10 +135,14 @@ class RFAdmin:
         )
 
     def __enter__(self) -> RFAdmin:
+        """Return this existing open owner without starting or enabling provider work."""
+
         self._require_open()
         return self
 
     def __exit__(self, exception_type: object, exception: object, traceback: object) -> bool:
+        """Close on context exit, preserving an exception raised by the with body."""
+
         if exception_type is None:
             self.close()
         else:
