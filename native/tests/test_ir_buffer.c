@@ -13,6 +13,70 @@ static ams_mel_session *session(const char *scenario)
     CHECK(ams_mel_session_open(AMS_MEL_TEST_MOCK_PROVIDER, scenario, "", &s, D) == AMS_MEL_OK);
     return s;
 }
+static size_t event_count(const char *path, const char *event)
+{
+    FILE *log = fopen(path, "r");
+    char events[32768];
+    size_t count = 0;
+    CHECK(log);
+    const size_t length = fread(events, 1, sizeof events - 1, log);
+    CHECK(!ferror(log) && feof(log));
+    events[length] = '\0';
+    CHECK(fclose(log) == 0);
+    for (const char *next = events; (next = strstr(next, event)) != NULL; next += strlen(event))
+        ++count;
+    return count;
+}
+static void check_preserved_buffer(ams_mel_ir_buffer *b, ams_mel_ir_buffer *saved)
+{
+    ams_mel_ir_buffer_info_v1 info;
+    uint8_t bytes[16];
+    CHECK(b == saved);
+    CHECK(ams_mel_ir_buffer_get_info(b, &info, D) == AMS_MEL_OK);
+    CHECK(info.storage_size == sizeof bytes && info.provider_size == 16);
+    CHECK(info.initialized_context == -7 && info.provider_context == -7);
+    CHECK(info.buffer_address_matches == 1);
+    CHECK(ams_mel_ir_buffer_read_storage(b, 0, bytes, sizeof bytes, D) == AMS_MEL_OK);
+    for (size_t i = 0; i < sizeof bytes; ++i) CHECK(bytes[i] == 0xa5);
+}
+static void output_slot_preservation(const char *path)
+{
+    ams_mel_session *s = session("foundation-normal");
+    ams_mel_ir_buffer *b = NULL;
+    uint32_t result = 55;
+    uint8_t bytes[16];
+    const uint64_t sizes[] = {16, 0, UINT64_MAX, (uint64_t)INT64_MAX + 1};
+    CHECK(ams_mel_ir_buffer_open(s, 16, -7, NULL, &result, D) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(result == UINT32_MAX);
+    CHECK(ams_mel_ir_buffer_open(s, 16, -7, &b, NULL, D) == AMS_MEL_INVALID_ARGUMENT && !b);
+    CHECK(event_count(path, "buffer_factory_called") == 0);
+    CHECK(event_count(path, "foundation_buffer_initialized") == 0);
+    CHECK(ams_mel_ir_buffer_open(s, 16, -7, &b, &result, D) == AMS_MEL_OK);
+    CHECK(b && result == 0);
+    ams_mel_ir_buffer *const saved = b;
+    memset(bytes, 0xa5, sizeof bytes);
+    CHECK(ams_mel_ir_buffer_write_storage(b, 0, bytes, sizeof bytes, D) == AMS_MEL_OK);
+    for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; ++i) {
+        result = 55;
+        CHECK(ams_mel_ir_buffer_open(s, sizes[i], 99, &b, &result, D) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(result == UINT32_MAX);
+        check_preserved_buffer(b, saved);
+        CHECK(event_count(path, "buffer_factory_called") == 1);
+        CHECK(event_count(path, "foundation_buffer_initialized") == 1);
+        CHECK(event_count(path, "foundation_buffer_destroyed_with_storage") == 0);
+    }
+    CHECK(ams_mel_ir_buffer_open(s, 16, 99, &b, NULL, D) == AMS_MEL_INVALID_ARGUMENT);
+    check_preserved_buffer(b, saved);
+    CHECK(event_count(path, "buffer_factory_called") == 1);
+    CHECK(event_count(path, "foundation_buffer_initialized") == 1);
+    CHECK(event_count(path, "foundation_buffer_destroyed_with_storage") == 0);
+    CHECK(ams_mel_ir_buffer_close(&b, D) == AMS_MEL_OK && !b);
+    CHECK(event_count(path, "foundation_buffer_destroyed_with_storage") == 1);
+    CHECK(ams_mel_session_close(&s, D) == AMS_MEL_OK && !s);
+    CHECK(event_count(path, "control_destroyed") == 1);
+    CHECK(event_count(path, "manager_destroyed") == 1);
+    CHECK(event_count(path, "library_unloaded") == 1);
+}
 static void success(const char *scenario, int64_t context, int parent_first)
 {
     ams_mel_session *s = session(scenario);
@@ -151,6 +215,7 @@ int main(void)
     const int fd = mkstemp(path);
     CHECK(fd >= 0 && close(fd) == 0);
     CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
+    output_slot_preservation(path);
     success("foundation-normal", 23, 0);
     success("foundation-normal", 0, 1);
     success("foundation-normal", INT64_MIN, 0);

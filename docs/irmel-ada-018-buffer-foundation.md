@@ -288,3 +288,40 @@ compatibility, not a C boundary alone, is necessary. Providers must honor their
 published object/host-memory lifetime contract and not perform unsynchronized
 access to standalone storage. No hardware, credentials, containers or build-time
 downloads are required by ordinary qualification.
+
+## IRMEL-ADA-018-R1 — preserve caller-owned output handles
+
+Starting HEAD: `691aee1c38f5c60bd62ec5182274ead90be8f2b5`. Open previously
+cleared the output slot before validation, losing the caller's reference when
+it contained a live Buffer. The correction removes that write and checks both
+`output != nullptr` and `*output == nullptr` before owner/storage allocation,
+factory resolution, `getBuffer`, or `init`. The sole owner publication remains
+`*output = owner.release()` after successful initialization. Every failure leaves
+the caller's slot unchanged: an initially null slot stays null, and a live slot
+keeps its original owner. The independent provider Return sentinel remains
+`UINT32_MAX` until an upstream Return is actually obtained.
+
+The compiled-C `output_slot_preservation` regression in `ir_buffer_foundation`
+uses a real owner, rejects reopen with valid/invalid sizes and a null Return
+pointer, and checks pointer identity, properties, stable address classification,
+and stored bytes after every rejection. Existing mock logs require exactly one
+factory call, initialization and destruction, then normal Control/manager/DSO
+cleanup. Null-output validation and successful initially-null Open are covered;
+the existing factory-failure cases still require null slots and the sentinel.
+No mock instrumentation or cleanup/retention behavior changed.
+
+Red/green evidence: `ctest --test-dir native/build-tests -R
+'^ir_buffer_foundation$' --output-on-failure` failed against the original
+implementation at the live-slot reopen check (exit 8), then passed **1/1** with
+the correction. Before main reconciliation, `make test-native`,
+`make test-python`, and `make test-rust` passed (658 native, 586 Python, 530 Rust
+including 50 doctests; 10 existing opt-in ignores). The final combined-tree
+qualification and exact pushed-HEAD hosted status are recorded below and in the
+PR delivery comment; no superseded-HEAD CI is treated as corrective evidence.
+
+Private Ada Open initializes its owner to null; Python/Rust declarations and
+surrounding failure tests do not assume clearing a live slot. No public Ada API,
+C signature/layout, export, or coverage classification changed. Only the
+reviewed implementation digest and its checker anchor are refreshed for the
+corrected native bytes; the coverage report remains unchanged at 57 safe-Ada
+operations. Real-provider qualification remains outside this correction.

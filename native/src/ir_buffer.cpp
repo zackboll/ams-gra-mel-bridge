@@ -56,10 +56,9 @@ extern "C" ams_mel_status_t ams_mel_ir_buffer_open(
     ams_mel_ir_buffer **output, std::uint32_t *result,
     char *d, std::size_t cap, std::size_t *required) noexcept
 {
-    if (output) *output = nullptr;
     if (result) *result = UINT32_MAX;
     return boundary(d, cap, required, [&]() -> ams_mel_status_t {
-        if (!session || !session->state || !output || !result || !size ||
+        if (!output || *output || !session || !session->state || !result || !size ||
             size > static_cast<std::uint64_t>(INT64_MAX) ||
             size > std::numeric_limits<std::size_t>::max() ||
             size > std::vector<std::uint8_t>{}.max_size()) return AMS_MEL_INVALID_ARGUMENT;
