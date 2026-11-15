@@ -62,10 +62,52 @@ class CoverageTests(unittest.TestCase):
                                           "symbol": "ams_mel_ir_capability_list_create"}])
         self.assertEqual(entry["ada"], [{"path": "ada/src/ams-mel-ir-discovery.ads",
                                        "symbol": "Capabilities"}])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
         for payload in ("attachChannel(", "detachChannel("):
             self.assertEqual(self.operation("Control", payload)["status"], "partial")
+
+    def test_standalone_buffer_foundation_not_registration_or_release(self):
+        methods = {"init": "safe_ada", "getSize": "safe_ada", "getContext": "safe_ada",
+                   "getFlags": "safe_ada", "setFlags": "safe_ada", "addFlag": "safe_ada",
+                   "getBufferAddress": "partial", "getImageAddress": "partial"}
+        for method, status in methods.items():
+            entry = self.operation("Buffer", method + "(")
+            self.assertEqual(entry["status"], status)
+            self.assertTrue(any(e["path"] == "native/src/ir_buffer.cpp" for e in entry["native"]))
+            self.assertTrue(any(e["path"] == "ada/src/ams-mel-ir-buffer.ads" for e in entry["ada"]))
+            self.assertIn({"path": "native/tests/test_ir_buffer.c", "symbol": "main"}, entry["tests"])
+            self.assertIn({"path": "ada/tests/src/ams_mel_ir_buffer_tests.adb", "symbol": "Run"}, entry["tests"])
+        release = self.operation("Buffer", "release()")
+        self.assertEqual(release["status"], "partial")
+        self.assertFalse(any(e["path"] == "native/src/ir_buffer.cpp" for e in release["native"]))
+        types = {e["id"].rsplit("::", 1)[-1]: e for e in self.coverage["types"]}
+        self.assertEqual(types["Buffer"]["status"], "partial")
+        self.assertEqual(types["BufferFlag"]["status"], "safe_ada")
+        self.assertTrue(all(e["status"] == "represented" for e in types["Buffer"]["representation"]))
+        for entry in self.coverage["operations"]:
+            if "::Channel::registerBuffer(" in entry["id"] or "::Channel::unregisterBuffer(" in entry["id"]:
+                self.assertFalse(any(e["path"] == "native/src/ir_buffer.cpp" for e in entry["native"]))
+
+    def test_standalone_buffer_needs_real_native_export(self):
+        path = self.root / "native/src/exports.map"
+        path.write_text(path.read_text().replace("        ams_mel_ir_buffer_get_flags;\n", ""))
+        self.reject("missing native export")
+
+    def test_standalone_buffer_safe_api_has_no_native_address_or_release(self):
+        source = (self.root / "ada/src/ams-mel-ir-buffer.ads").read_text()
+        public = source.split("\nprivate\n")[0]
+        declarations = audit.uncomment(public)
+        # Ada comments are stripped separately: the shared lexer handles C++.
+        import re
+        declarations = re.sub(r"--[^\n]*", "", declarations)
+        self.assertNotRegex(declarations, r"\bSystem\s*\.|\bInterfaces\.C\b|\bImport\b")
+        self.assertNotRegex(declarations, r"(?i)\b(?:function|procedure)\s+(?:release|register|unregister)\b")
+
+    def test_standalone_buffer_safe_ada_needs_compiled_c_evidence(self):
+        entry = self.operation("Buffer", "getFlags(")
+        entry["tests"] = [e for e in entry["tests"] if not e["path"].endswith(".c")]
+        self.reject("safe Ada claim lacks C/Ada tests")
 
     def test_image_control_attachment_is_separate_from_acquisition(self):
         entry = self.operation("Control", "attachChannel(")
@@ -80,8 +122,8 @@ class CoverageTests(unittest.TestCase):
         profiles = {e["name"]: e["status"] for e in self.coverage["image_capabilities"]}
         self.assertEqual(profiles["Control-only Image attachment"], "safe_ada")
         self.assertEqual(profiles["Mono8 single-band"], "safe_ada")
-        for name in ("Higher-bit-depth monochrome", "RGB", "Bayer", "Multiband",
-                     "Generic application-managed buffers"):
+        self.assertEqual(profiles["Generic application-managed buffers"], "partial")
+        for name in ("Higher-bit-depth monochrome", "RGB", "Bayer", "Multiband"):
             self.assertEqual(profiles[name], "missing")
         for payload in ("attachChannel(", "detachChannel("):
             self.assertEqual(self.operation("Control", payload)["status"], "partial")
@@ -95,7 +137,7 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(next(e for e in coverage["types"] if e["id"].endswith("::StackedImageChannel"))["status"], "partial")
         self.assertEqual(next(e for e in coverage["image_capabilities"] if e["name"] == "StackedImage")["status"], "partial")
         self.assertEqual(self.operation("StackedImageChannel", "registerMetadataCallback(")["status"], "missing")
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in coverage["operations"]), 57)
 
     def test_common_comms_metadata_four_families_not_seven(self):
         operation = self.operation("Channel", "ChannelCommsTestRep")
@@ -115,7 +157,7 @@ class CoverageTests(unittest.TestCase):
             "ImageChannel": "safe_ada", "StackedImageChannel": "safe_ada",
             "InstrumentationChannel": "missing", "TrackChannel": "missing",
             "SchedulingChannel": "missing"})
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
     def test_control_discovery_needs_c_and_ada_tests(self):
         entry = self.operation("Control", "getCapabilities()")
@@ -172,7 +214,7 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual([f["upstream"] for f in command["representation"]],
                          ["getCommandID", "getEraseCommandType"])
         self.assertTrue(all(f["status"] == "represented" for f in command["representation"]))
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
     def test_c2_system_response_slice_is_independent_and_scoped(self):
         # IRMEL-ADA-008: exactly the C2 overload moves to safe_ada with its own
@@ -195,7 +237,7 @@ class CoverageTests(unittest.TestCase):
         for name in ("SystemTrackDataResponse", "CommandStatus"):
             entry = next(t for t in self.coverage["types"] if t["id"] == "ir:type:ams::iface::irmel::" + name)
             self.assertEqual(entry["status"], "safe_ada")
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
     def test_c2_system_response_evidence_removal_fails_closed(self):
         self.operation("C2Channel", "send(SystemTrackDataResponse)")["tests"] = []
@@ -231,7 +273,7 @@ class CoverageTests(unittest.TestCase):
             self.assertTrue(all(f["status"] == "represented" for f in types[name]["representation"]))
         self.assertEqual(types["RowCol"]["status"], "safe_ada")
         self.assertEqual(types["RowCol"]["native"][0]["symbol"], "ams_mel_ir_track_metadata_open")
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
     def test_line_of_sight_quaternion_slice_is_exact(self):
         # IRMEL-ADA-010: exactly the ImageChannel LineOfSightQuaternion registration
@@ -266,7 +308,7 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(types["ForwardRightDown"]["status"], "safe_ada")
         self.assertEqual(types["ForwardRightDown"]["native"][0]["symbol"], "ams_mel_ir_image_odm_open")
         self.assertEqual(self.operation("ImageChannel", "LOS3D_KinematicsType")["status"], "missing")
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
     def test_scheduling_foundation_is_owner_only(self):
         # IRMEL-ADA-011 foundation remains unchanged. IRMEL-ADA-012 and IRMEL-ADA-013 permit
@@ -310,7 +352,7 @@ class CoverageTests(unittest.TestCase):
                    or ("/irmel-types/" in h["path"] and h["path"].rsplit("/", 1)[1] in types_closure)]
         self.assertEqual(len(closure), 20)
         self.assertTrue(all(headers[h["id"]]["vendored"] for h in closure))
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
     def test_execute_task_ack_complete_and_only_scheduling_callback(self):
         operation = self.operation("SchedulingChannel", "ExecuteTaskAck")
@@ -323,7 +365,7 @@ class CoverageTests(unittest.TestCase):
         operations = [e for e in self.coverage["operations"] if "SchedulingChannel::" in e["id"]]
         self.assertEqual(sum(e["status"] == "safe_ada" for e in operations), 2)
         self.assertEqual(sum(e["status"] == "missing" for e in operations), 9)
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
     def test_execute_task_ack_needs_c_and_ada_evidence(self):
         self.operation("SchedulingChannel", "ExecuteTaskAck")["tests"] = []
@@ -361,7 +403,7 @@ class CoverageTests(unittest.TestCase):
                         for a in m["declaration"].split(",") if a.split("///")[0].strip()]
         self.assertEqual(alternatives[11:], ["Reserved%d" % n for n in range(1, 7)] + ["NumTaskTypes"])
         self.assertEqual(types["SchedulingChannel"]["status"], "partial")
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
     def test_task_executing_needs_c_and_ada_evidence(self):
         self.operation("SchedulingChannel", "TaskExecutingRep")["tests"] = []
@@ -452,7 +494,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"] == "ir:type:ams::iface::irmel::CmdResp")
         alternatives = [a.strip() for m in enum["members"] for a in m["declaration"].split(",")]
         self.assertEqual(alternatives, ["OK", "Unavailable", "Unsupported"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
     def test_calibration_configuration_slice_is_complete_and_independent(self):
         send = self.operation("C2Channel", "send(CalibrationConfigurationCmd)")
@@ -473,7 +515,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationControlInterfaces"))
         self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
                          ["NotSet", "SubsystemCalibrationCommand", "SubsystemStateCommand", "MaxExclusive"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
     def test_calibration_status_slice_is_complete_and_independent(self):
         send = self.operation("C2Channel", "send(CalibrationStatusCmd)")
@@ -504,7 +546,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationResult"))
         self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
                          ["NotSet", "Completed", "Failed", "Interrupted", "NotCalibrated", "MaxExclusive"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 50)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
 
     def test_calibration_status_nested_item_omission_is_detected(self):
         entry = next(t for t in self.coverage["types"] if t["id"].endswith("::SubsystemCompletedCalibration"))

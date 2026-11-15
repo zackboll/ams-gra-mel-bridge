@@ -30,6 +30,7 @@ with AMS_MEL_IR_Track_Update_Tests;
 with AMS_MEL_IR_Track_System_Data_Tests;
 with AMS_MEL_IR_Scheduling_Tests;
 with AMS_MEL_IR_Stacked_Tests;
+with AMS_MEL_IR_Buffer_Tests;
 with AMS_MEL_IR_Comms_Metadata_Tests;
 with AMS_MEL_IR_Scheduling_Ack_Tests;
 with AMS_MEL_IR_Scheduling_Task_Executing_Tests;
@@ -276,6 +277,7 @@ begin
    AMS_MEL_IR_Track_System_Data_Tests.Run (Provider_Path);
    AMS_MEL_IR_Scheduling_Tests.Run (Provider_Path);
    AMS_MEL_IR_Stacked_Tests.Run (Provider_Path);
+   AMS_MEL_IR_Buffer_Tests.Run (Provider_Path);
    AMS_MEL_IR_Comms_Metadata_Tests.Run (Provider_Path);
    AMS_MEL_IR_Scheduling_Ack_Tests.Run (Provider_Path);
    AMS_MEL_IR_Scheduling_Task_Executing_Tests.Run (Provider_Path);

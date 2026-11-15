@@ -654,7 +654,79 @@ public:
 };
 class MockManager final : public API_Manager {
 public:
+    explicit MockManager(std::string name) : instance{std::move(name)} {}
+    std::string instance;
+    std::shared_ptr<irmel::Buffer> retained_buffer;
     ~MockManager() override { record("manager_destroyed"); }
+};
+
+/* Standalone scenarios do not use MockBuffer or any acquisition pool counter.
+ * Destruction reads every initialized byte while storage must still be alive. */
+class FoundationBuffer final : public irmel::Buffer {
+public:
+    explicit FoundationBuffer(std::string scenario) : scenario_{std::move(scenario)} {}
+    ~FoundationBuffer() override
+    {
+        if (address_) {
+            volatile std::uint8_t observed{};
+            for (std::size_t i = 0; i < size_; ++i) observed = address_[i];
+            (void)observed;
+        }
+        record("foundation_buffer_destroyed_with_storage");
+    }
+    Return init(void *address, std::size_t size, std::int64_t context) override
+    {
+        if (address_ || !address || !size) std::abort();
+        address_ = static_cast<std::uint8_t *>(address);
+        size_ = size;
+        context_ = context;
+        record("foundation_buffer_initialized");
+        if (scenario_ == "foundation-init-throw") throw std::runtime_error{"init exception"};
+        if (scenario_ == "foundation-init-refuse") return Return::NotSupported;
+        return Return::Success;
+    }
+    void *getBufferAddress() const override
+    {
+        if (scenario_ == "foundation-info-throw") throw std::runtime_error{"getter exception"};
+        return scenario_ == "foundation-address-mismatch" ? nullptr : address_;
+    }
+    void *getImageAddress() const override
+    {
+        if (scenario_ == "foundation-image-null") return nullptr;
+        if (scenario_ == "foundation-image-outside")
+            return reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(address_) - 1U);
+        return address_ + size_ - 1U;
+    }
+    std::int64_t getSize() const override
+    { return scenario_ == "foundation-properties" ? -42 : static_cast<std::int64_t>(size_); }
+    std::int64_t getContext() const override
+    { return scenario_ == "foundation-properties" ? INT64_MIN : context_; }
+    Return release() override { std::abort(); }
+    Return getFlags(std::vector<irmel::BufferFlag>& values) const override
+    {
+        if (scenario_ == "foundation-get-throw") throw std::runtime_error{"getFlags exception"};
+        if (scenario_ == "foundation-get-refuse") return Return::NotImplemented;
+        values = flags_;
+        if (scenario_ == "foundation-unknown-flag")
+            values.push_back(static_cast<irmel::BufferFlag>(3U));
+        return Return::Success;
+    }
+    void addFlag(irmel::BufferFlag flag) override
+    {
+        if (scenario_ == "foundation-add-throw") throw std::runtime_error{"addFlag exception"};
+        flags_.push_back(flag);
+    }
+    void setFlags(const std::vector<irmel::BufferFlag>& values) override
+    {
+        if (scenario_ == "foundation-set-throw") throw std::runtime_error{"setFlags exception"};
+        flags_ = values;
+    }
+private:
+    std::string scenario_;
+    std::uint8_t *address_{};
+    std::size_t size_{};
+    std::int64_t context_{};
+    std::vector<irmel::BufferFlag> flags_;
 };
 
 /* Deterministic provider-side buffer pool, modelled directly on pinned Squall
@@ -6827,7 +6899,7 @@ std::shared_ptr<API_Manager> getAPI_Manager(const std::string& instance)
     if (instance == "bad-alloc-manager") throw std::bad_alloc{};
     if (instance == "throw-manager") throw std::runtime_error("mock manager exception");
     if (instance == "null-manager") return {};
-    return std::make_shared<MockManager>();
+    return std::make_shared<MockManager>(instance);
 }
 extern "C" __attribute__((visibility("default")))
 std::shared_ptr<ams::iface::irmel::Control> getControl(
@@ -6841,9 +6913,20 @@ std::shared_ptr<ams::iface::irmel::Control> getControl(
 }
 extern "C" __attribute__((visibility("default")))
 std::shared_ptr<ams::iface::irmel::Buffer> getBuffer(
-    std::string_view instance, std::shared_ptr<API_Manager>)
+    std::string_view instance, std::shared_ptr<API_Manager> manager)
 {
     record("buffer_factory_called");
+    if (instance.starts_with("foundation-")) {
+        const auto actual = std::dynamic_pointer_cast<MockManager>(manager);
+        if (!actual || actual->instance != instance) std::abort();
+        record("foundation_instance_manager_verified");
+        if (instance == "foundation-factory-null") return {};
+        if (instance == "foundation-factory-throw") throw std::runtime_error{"factory exception"};
+        if (instance == "foundation-factory-allocation") throw std::bad_alloc{};
+        auto buffer = std::make_shared<FoundationBuffer>(std::string{instance});
+        if (instance == "foundation-retained") actual->retained_buffer = buffer;
+        return buffer;
+    }
     if (instance == "buffer-factory-null") return {};
     if (instance == "buffer-factory-bad-alloc") throw std::bad_alloc{};
     return std::make_shared<MockBuffer>(std::string{instance}, callback_barrier);

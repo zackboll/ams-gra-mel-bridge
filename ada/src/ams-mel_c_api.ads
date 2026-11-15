@@ -28,6 +28,84 @@ private package AMS.MEL_C_API is
 
    subtype Size_T is Interfaces.C.size_t;
    type Session_Handle is new System.Address;
+   type Buffer_Handle is new System.Address;
+   Null_Buffer : constant Buffer_Handle := Buffer_Handle (System.Null_Address);
+   type IR_Buffer_Info_V1 is record
+      Storage_Size           : Interfaces.Unsigned_64;
+      Initialized_Context    : Interfaces.Integer_64;
+      Provider_Size          : Interfaces.Integer_64;
+      Provider_Context       : Interfaces.Integer_64;
+      Buffer_Address_Matches : Interfaces.Unsigned_32;
+      Image_Location         : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   function IR_Buffer_Open
+     (Session             : Session_Handle;
+      Size                : Interfaces.Unsigned_64;
+      Context             : Interfaces.Integer_64;
+      Output              : access Buffer_Handle;
+      Provider_Return     : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_buffer_open";
+   function IR_Buffer_Get_Info
+     (Handle              : Buffer_Handle;
+      Output              : access IR_Buffer_Info_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_buffer_get_info";
+   function IR_Buffer_Get_Flags
+     (Handle              : Buffer_Handle;
+      Flags               : System.Address;
+      Capacity            : Size_T;
+      Count               : access Size_T;
+      Provider_Return     : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_buffer_get_flags";
+   function IR_Buffer_Set_Flags
+     (Handle              : Buffer_Handle;
+      Flags               : System.Address;
+      Count               : Size_T;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_buffer_set_flags";
+   function IR_Buffer_Add_Flag
+     (Handle              : Buffer_Handle;
+      Flag                : Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_buffer_add_flag";
+   function IR_Buffer_Read_Storage
+     (Handle              : Buffer_Handle;
+      Offset              : Interfaces.Unsigned_64;
+      Bytes               : System.Address;
+      Count               : Size_T;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_buffer_read_storage";
+   function IR_Buffer_Write_Storage
+     (Handle              : Buffer_Handle;
+      Offset              : Interfaces.Unsigned_64;
+      Bytes               : System.Address;
+      Count               : Size_T;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_buffer_write_storage";
+   function IR_Buffer_Close
+     (Handle              : access Buffer_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_buffer_close";
+
    Null_Session         : constant Session_Handle := Session_Handle (System.Null_Address);
    type Stream_Handle is new System.Address;
    Null_Stream          : constant Stream_Handle := Stream_Handle (System.Null_Address);
