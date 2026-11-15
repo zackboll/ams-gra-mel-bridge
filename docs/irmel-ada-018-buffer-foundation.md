@@ -175,8 +175,65 @@ policy regressions (75), and coverage controls (66) passed.
 Main advanced during qualification to
 `8a2d409b53b90161bee01dcdd2f3641480d178d6` by merging PRs #205 and #207.
 Those changes contain the Rust minimal consumer and Rust IR documentation, with
-no native/Ada Buffer overlap. They will be reconciled by ordinary merge commit,
-not history rewriting. Final integrated results follow after completion.
+no native/Ada Buffer overlap. They were reconciled by ordinary merge commit
+`eb73f549032751c5149400efb8d397f8def8d463`, not history rewriting. The
+finalization-comment follow-up is `09f773d8d01ed68ab4b21d68ad4bbfffb1c34e33`.
+
+### Completed local commands
+
+Commands execute from the repository root in the pinned Alire GNAT 16.1.0 /
+GPRbuild 26.0.1 environment (`alr -C ada/tests exec -- ...` with an explicit
+return to the repository root). No native/Ada builds sharing artifacts overlap.
+
+| Command | Result |
+|---|---|
+| `make format-ada` | passed |
+| `make check-ada-format` | passed |
+| `make test-native` | 658/658 passed, active checks with `-Werror` |
+| `make test-python` | 586 passed; includes native prerequisite and bytecode compilation |
+| `make test-rust` | 510 passed, 9 existing ignored opt-in cases; includes 40 doctests and native prerequisite |
+| `make test-ada` | complete smoke suite passed, including standalone Buffer |
+| `make check-ir-api-coverage` | 66 regression controls passed |
+| `make check` | passed, including both production/test tree isolation directions, repeated 658-test suite, formatting, Ada and whitespace/newlines |
+| `alr -C ada build` | passed |
+| `alr -C ada/tests run` | complete smoke suite passed, including standalone Buffer |
+| `make check-ada-docs-changed` | 16 public declarations; no annotation gaps |
+| `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` | passed on merged main |
+| `cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings` | passed on merged main |
+| `RUSTDOCFLAGS='-D warnings' cargo doc --manifest-path rust/Cargo.toml --workspace --no-deps` | passed on merged main |
+| `ada/tests/bin/ams_mel_ir_buffer_example .../libmock_ir_provider.so foundation-normal` | passed; provider size 64, owned bytes/flags verified after parent Close |
+
+The sequence above ran in exactly the requested order; main integration happened
+before `make check`/Alire qualification. A complete sequence is also rerun after
+integration so Rust's newly merged consumer/documentation tests are included.
+
+GNATdoc current-source generation used the pinned 26.0.0 generator through
+`docs/tools/docs_ci.py build`, on clean committed source at `09f773d...`.
+Buffer public documentation is **55/55 (100%)**, with **zero Buffer warnings**.
+Whole-tree informational coverage is 5071/5103 (99.3729%), with 124 existing
+whole-tree diagnostics preserved. The initial two private Finalize diagnostics
+were fixed with trailing documentation, without changing warning policy.
+Both pristine and enhanced sites and source-bound manifests were generated;
+no documentation deployment was attempted.
+
+Release qualification used a separate `/tmp/irmel-ada-018-release` CMake tree:
+
+```sh
+CC=/usr/bin/gcc CXX=/usr/bin/g++ cmake -S native -B /tmp/irmel-ada-018-release \
+  -DAMS_MEL_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build /tmp/irmel-ada-018-release --parallel 2 \
+  --target test_ir_buffer test_ir_buffer_allocation test_ir_stream
+ctest --test-dir /tmp/irmel-ada-018-release --output-on-failure \
+  -R 'ir_buffer|ir_stream_contract'
+```
+
+All **3/3 Release tests passed**, including allocation injection and the existing
+Mono8 contract. Every first-party target uses warnings as errors, and C test
+CHECKs remain active with NDEBUG. The initial Release regex selected the two
+Buffer tests only; the corrected regex above additionally ran Mono8.
+
+Integrated rerun outcomes and exact final-HEAD hosted status are reported in the
+PR qualification update and delivery response, not guessed while running.
 
 ## Exclusions and unresolved provider semantics
 
