@@ -125,7 +125,7 @@ def run(site, output):
             page.keyboard.press('Home')
             expect(links.first).to_be_focused()
             page.keyboard.press('ArrowDown')
-            expect(links.last).to_be_focused()
+            expect(links.nth(1)).to_be_focused()
             page.keyboard.press('ArrowUp')
             expect(links.first).to_be_focused()
             page.keyboard.press('Escape')
