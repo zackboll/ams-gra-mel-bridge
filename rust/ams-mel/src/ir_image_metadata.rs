@@ -16,14 +16,18 @@ use crate::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum BadPixelReason {
+    /// Published unknown bad-pixel reason (0); not a fallback for unpublished values.
     Unknown = sys::AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN,
 }
 
 /// Provider coordinates, without inferring their origin or renumbering them.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BadPixel {
+    /// Provider row coordinate; no zero/one-based origin or rounding rule is inferred.
     pub row: u32,
+    /// Provider column coordinate; no zero/one-based origin or rounding rule is inferred.
     pub column: u32,
+    /// Published bad-pixel reason category.
     pub reason: BadPixelReason,
 }
 
@@ -31,8 +35,11 @@ pub struct BadPixel {
 /// independent of `pixels.len()` and never used to truncate the copied vector.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BadPixelList {
+    /// Independent provider-reported list size; its unit is not inferred from the vector length.
     pub reported_size: u32,
+    /// Independent provider-reported pixel count, not substituted for the copied vector length.
     pub reported_count: u32,
+    /// Complete ordered bad-pixel vector, retaining duplicates.
     pub pixels: Vec<BadPixel>,
 }
 
@@ -40,7 +47,9 @@ pub struct BadPixelList {
 /// does not explicitly document a time denominator; none is inferred here.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AzimuthElevation {
+    /// Azimuth in radians; rate uses do not establish a time denominator.
     pub azimuth_rad: f64,
+    /// Elevation in radians; rate uses do not establish a time denominator.
     pub elevation_rad: f64,
 }
 
@@ -49,12 +58,20 @@ pub struct AzimuthElevation {
 pub struct LineOfSightReport {
     /// Exact signed system-time nanoseconds; no epoch is inferred.
     pub system_time_ns: i64,
+    /// Provider pointing-angle pair in radians, relative to the sensor; no frame conversion.
     pub pointing_angle: AzimuthElevation,
+    /// Provider pointing-rate pair; the upstream time denominator is unspecified.
     pub pointing_angle_rates: AzimuthElevation,
+    /// Provider indication that the MFA is at scan speed, not derived from the rates by Rust.
     pub at_speed: bool,
+    /// Provider indication of tolerance of the desired position; Rust applies no tolerance.
     pub in_tolerance: bool,
+    /// Published platform Euler attitude, copied without reference-frame conversion.
     pub platform_attitude: Euler,
+    /// Provider validity bits for at-speed, in-tolerance and platform attitude.
+    /// All 32 bits survive; the pin does not assign individual bit positions here.
     pub validity_flag_bitfield: u32,
+    /// Provider image rotation in radians, without normalization.
     pub image_rotation_rad: f64,
 }
 
@@ -63,7 +80,10 @@ pub struct LineOfSightReport {
 pub struct LineOfSightEuler {
     /// Exact signed system-time nanoseconds; no epoch is inferred.
     pub system_time_ns: i64,
+    /// Published Euler attitude; see [`Euler`] for sequence and reference conventions.
     pub attitude: Euler,
+    /// Published LOS Euler angle rates at `system_time_ns`, in radians per second.
+    /// No additional reference convention or conversion is imposed.
     pub attitude_rates: Euler,
 }
 
@@ -72,26 +92,42 @@ pub struct LineOfSightEuler {
 /// completion state is inferred from its identifiers.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NavigationResponse {
+    /// Signed native system-time count in nanoseconds; no clock or epoch is inferred.
     pub system_time_ns: i64,
+    /// Provider command correlation ID, preserving all 32 bits; not a completion indicator.
     pub command_id: u32,
+    /// Provider request correlation ID, preserving all 32 bits; no correlation is inferred by Rust.
     pub request_id: u32,
 }
 
 /// Exactly the four native families, with their published discriminants 1..=4.
 /// Every payload is fully owned and can outlive all native owners and the DSO.
+///
+/// The bridge receives `BadPixelList`, `LineOfSightReport`, `LineOfSightEuler`
+/// and `NavigationReportResp` callbacks. Rust deeply copies the active record
+/// and its collections before releasing the native event. This is metadata,
+/// not image samples or request completion. NUC temperature, optical distortion
+/// and quaternion LOS have separate opt-in owners; camera-command responses
+/// have no safe Rust reception API in this slice.
 #[derive(Clone, Debug, PartialEq)]
 #[repr(u32)]
 pub enum ImageMetadataEvent {
+    /// Complete bad-pixel metadata, including independent reported size/count fields.
     BadPixelList(BadPixelList) = sys::AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST,
+    /// Published pointing report, without interpretation of validity bits.
     LineOfSightReport(LineOfSightReport) = sys::AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_REPORT,
+    /// Euler line-of-sight attitude and independent attitude rates.
     LineOfSightEuler(LineOfSightEuler) = sys::AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_EULER,
+    /// Navigation response metadata; arrival does not complete a Rust request handle.
     NavigationResponse(NavigationResponse) = sys::AMS_MEL_IR_IMAGE_METADATA_NAVIGATION_RESPONSE,
 }
 
 /// Saturating native callback activity snapshots, not Rust Receive-call counts.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ImageMetadataCounters {
+    /// Saturating count of native callback entries, including entries after consumption becomes inactive.
     pub events_received: u64,
+    /// Saturating count of incoming events dropped at capacity; existing queued events are not evicted.
     pub events_dropped_queue_full: u64,
     /// Includes malformed payloads and callback allocation failures. These do
     /// not automatically fail the stream.
@@ -158,6 +194,14 @@ impl ImageMetadataStream {
 
     /// One native Receive; zero polls. Deeply copies the selected payload and
     /// closes its event before returning. Errors and unwind also release it.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::Timeout`] if the active queue remains empty for `timeout_ms` milliseconds
+    /// (zero polls); timeout does not cancel registration or native work. After queued values drain,
+    /// stopped consumption reports [`ErrorKind::StreamStopped`] and native callback failure can report
+    /// [`ErrorKind::ProviderFailed`]. A locally closed owner reports `ProviderFailed`. Invalid views,
+    /// enums or text and copy-allocation failures are errors, not partial values; native event cleanup
+    /// is still attempted. Returned values are independent of the stream, parent channel and provider.
     pub fn receive(&mut self, timeout_ms: u32) -> Result<ImageMetadataEvent, Error> {
         let raw = self.live()?;
         self.receive_event_with(&EVENT_OPS, |out, d, c, r| {
@@ -184,6 +228,13 @@ impl ImageMetadataStream {
         event.copy_with(event_from_raw)
     }
 
+    /// Copies the current saturating native callback counters without resetting them.
+    /// Counts describe callback activity, not queue depth or Rust receive calls.
+    ///
+    /// # Errors
+    /// A closed owner returns [`ErrorKind::ProviderFailed`]. Native query/cleanup and diagnostic
+    /// failures retain their error categories; malformed successful native output is a protocol error.
+    /// The returned counter value is a snapshot, not a receive count or a liveness guarantee.
     pub fn counters(&mut self) -> Result<ImageMetadataCounters, Error> {
         let raw = self.live()?;
         self.counters_with(|out, d, c, r| {
@@ -206,6 +257,12 @@ impl ImageMetadataStream {
     }
 
     /// Idempotent consumption Close; callbacks can remain retained natively.
+    ///
+    /// # Errors
+    /// Native cleanup failures retain their categories and diagnostics; inconsistent successful
+    /// owner output is a protocol error. See the owner's lifecycle contract for whether a failed
+    /// release retains a retryable handle or consumes the one release attempt. No outcome implies
+    /// cancellation of pending work or immediate callback quiescence.
     pub fn close(&mut self) -> Result<(), Error> {
         close_owned(&mut self.raw, self.close_op)
     }

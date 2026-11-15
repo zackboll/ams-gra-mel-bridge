@@ -43,7 +43,10 @@ macro_rules! native_enum {
         #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
         #[repr(u32)]
         pub enum $name {
-            $($variant = $value),+
+            $(
+                /// Published alternative; see the enum's value table for its numeric association and meaning.
+                $variant = $value
+            ),+
         }
 
         impl $name {
@@ -77,6 +80,18 @@ macro_rules! native_enum {
 native_enum! {
     /// Native HealthStatus metadata family (`ams_mel_ir_health_metadata_kind_t`)
     /// in the published registration order. Discriminants are exactly 1..=6.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `MfaStatus` | 1 | Published mfa status category. |
+    /// | `BitStatus` | 2 | Published bit status category. |
+    /// | `SubsystemStatus` | 3 | Published subsystem status category. |
+    /// | `DiscreteStatus` | 4 | Published discrete status category. |
+    /// | `SecurityAudit` | 5 | Published security audit category. |
+    /// | `MfaStatusDetailed` | 6 | Published mfa status detailed category. |
     HealthMetadataKind {
         MfaStatus = sys::AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS,
         BitStatus = sys::AMS_MEL_IR_HEALTH_METADATA_BIT_STATUS,
@@ -89,6 +104,16 @@ native_enum! {
 
 native_enum! {
     /// Common MEL `StateTransitionStatus` (`ams_mel_state_transition_status_t`).
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `NotTransitioning` | 1 | Published not transitioning category. |
+    /// | `ShuttingDown` | 2 | Published shutting down category. |
+    /// | `Transitioning` | 3 | Published transitioning category. |
     StateTransitionStatus {
         NotSet = sys::AMS_MEL_STATE_TRANSITION_NOT_SET,
         NotTransitioning = sys::AMS_MEL_STATE_TRANSITION_NOT_TRANSITIONING,
@@ -99,6 +124,21 @@ native_enum! {
 
 native_enum! {
     /// Common MEL `ComponentState` (`ams_mel_component_state_t`).
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `Unknown` | 1 | Published unknown category (not an unknown-number fallback). |
+    /// | `NotInstalled` | 2 | Published not installed category. |
+    /// | `Off` | 3 | Published off category. |
+    /// | `Initializing` | 4 | Published initializing category. |
+    /// | `Operational` | 5 | Published operational category. |
+    /// | `Degraded` | 6 | Published degraded category. |
+    /// | `Disabled` | 7 | Published disabled category. |
+    /// | `Faulted` | 8 | Published faulted category. |
     ComponentState {
         NotSet = sys::AMS_MEL_COMPONENT_STATE_NOT_SET,
         Unknown = sys::AMS_MEL_COMPONENT_STATE_UNKNOWN,
@@ -114,6 +154,18 @@ native_enum! {
 
 native_enum! {
     /// Common MEL `TemperatureState` (`ams_mel_temperature_state_t`).
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `UnderTemp` | 1 | Published under temp category. |
+    /// | `Normal` | 2 | Published normal category. |
+    /// | `OverTempWarning` | 3 | Published over temp warning category. |
+    /// | `OverTempDegraded` | 4 | Published over temp degraded category. |
+    /// | `OverTempShutdown` | 5 | Published over temp shutdown category. |
     TemperatureState {
         NotSet = sys::AMS_MEL_TEMPERATURE_STATE_NOT_SET,
         UnderTemp = sys::AMS_MEL_TEMPERATURE_STATE_UNDER_TEMP,
@@ -126,6 +178,17 @@ native_enum! {
 
 native_enum! {
     /// Common MEL `BIT_Result` (`ams_mel_bit_result_t`).
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `Pass` | 1 | Published pass category. |
+    /// | `Fail` | 2 | Published fail category. |
+    /// | `Interrupted` | 3 | Published interrupted category. |
+    /// | `NotTested` | 4 | Published not tested category. |
     BitResult {
         NotSet = sys::AMS_MEL_BIT_RESULT_NOT_SET,
         Pass = sys::AMS_MEL_BIT_RESULT_PASS,
@@ -137,6 +200,17 @@ native_enum! {
 
 native_enum! {
     /// Common MEL `FaultSeverity` (`ams_mel_fault_severity_t`).
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `Nominal` | 1 | Published nominal category. |
+    /// | `Caution` | 2 | Published caution category. |
+    /// | `Warning` | 3 | Published warning category. |
+    /// | `Failed` | 4 | Published failed category. |
     FaultSeverity {
         NotSet = sys::AMS_MEL_FAULT_SEVERITY_NOT_SET,
         Nominal = sys::AMS_MEL_FAULT_SEVERITY_NOMINAL,
@@ -148,6 +222,16 @@ native_enum! {
 
 native_enum! {
     /// Common MEL `FaultState` (`ams_mel_fault_state_t`).
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `Set` | 1 | Published set category. |
+    /// | `Cleared` | 2 | Published cleared category. |
+    /// | `Unknown` | 3 | Published unknown category (not an unknown-number fallback). |
     FaultState {
         NotSet = sys::AMS_MEL_FAULT_STATE_NOT_SET,
         Set = sys::AMS_MEL_FAULT_STATE_SET,
@@ -159,6 +243,19 @@ native_enum! {
 native_enum! {
     /// IR MEL subsystem `Failure` category (`ams_mel_ir_failure_t`): a reported
     /// category, not a numeric severity scale or bitmask.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `Na` | 0 | Published N/A category. |
+    /// | `Critical` | 1 | No heartbeat message, in the published subsystem Failure domain. |
+    /// | `Major` | 2 | Published major category. |
+    /// | `Parametric` | 3 | Published parametric category. |
+    /// | `Informational` | 4 | Published informational category. |
+    /// | `Available` | 5 | No failure. |
+    /// | `NotPresent` | 6 | Subsystem not physically or simulated-ly installed. |
     FailureLevel {
         Na = sys::AMS_MEL_IR_FAILURE_NA,
         Critical = sys::AMS_MEL_IR_FAILURE_CRITICAL,
@@ -172,6 +269,23 @@ native_enum! {
 
 native_enum! {
     /// IR MEL `CSCIMode` (`ams_mel_ir_csci_mode_t`).
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `Unknown` | 0 | Published unknown category (not an unknown-number fallback). |
+    /// | `Unused` | 1 | Published unused category. |
+    /// | `Initialization` | 2 | Published initialization category. |
+    /// | `Maintenance` | 3 | Published maintenance category. |
+    /// | `Idle` | 4 | Published idle category. |
+    /// | `Operational` | 5 | Published operational category. |
+    /// | `Vsa` | 6 | Published vsa category. |
+    /// | `QuickLook` | 7 | Published quick look category. |
+    /// | `Track` | 8 | Published track category. |
+    /// | `Imaging` | 9 | Published imaging category. |
+    /// | `Noise` | 10 | Published noise category. |
     CsciMode {
         Unknown = sys::AMS_MEL_IR_CSCI_MODE_UNKNOWN,
         Unused = sys::AMS_MEL_IR_CSCI_MODE_UNUSED,
@@ -189,6 +303,15 @@ native_enum! {
 
 native_enum! {
     /// `MFA_SecurityAuditRecord::OutcomeEnum` (`ams_mel_security_outcome_t`).
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `Failure` | 1 | Published failure category. |
+    /// | `Success` | 2 | Published success category. |
     SecurityOutcome {
         NotSet = sys::AMS_MEL_SECURITY_OUTCOME_NOT_SET,
         Failure = sys::AMS_MEL_SECURITY_OUTCOME_FAILURE,
@@ -198,6 +321,17 @@ native_enum! {
 
 native_enum! {
     /// `MFA_SecurityAuditRecord::SeverityEnum` (`ams_mel_security_severity_t`).
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `Critical` | 1 | No heartbeat message, in the published subsystem Failure domain. |
+    /// | `Error` | 2 | Published error category. |
+    /// | `Informational` | 3 | Published informational category. |
+    /// | `Warning` | 4 | Published warning category. |
     SecuritySeverity {
         NotSet = sys::AMS_MEL_SECURITY_SEVERITY_NOT_SET,
         Critical = sys::AMS_MEL_SECURITY_SEVERITY_CRITICAL,
@@ -215,6 +349,20 @@ native_enum! {
 
 native_enum! {
     /// `SecurityAuthenticationType::SecurityAuthenticationEnum`.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `SubsystemAuthentication` | 1 | Published subsystem authentication category. |
+    /// | `ServiceAuthentication` | 2 | Published service authentication category. |
+    /// | `ConfigFileAuthentication` | 3 | Published config file authentication category. |
+    /// | `OfpAuthentication` | 4 | Published ofp authentication category. |
+    /// | `MdfAuthentication` | 5 | Published mdf authentication category. |
+    /// | `OtherFileAuthentication` | 6 | Published other file authentication category. |
+    /// | `OtherDeviceAuthentication` | 7 | Published other device authentication category. |
     SecurityAuthenticationCategory {
         NotSet = 0,
         SubsystemAuthentication = 1,
@@ -229,6 +377,19 @@ native_enum! {
 
 native_enum! {
     /// `SecurityIntegrityType::SecurityIntegrityEnum`.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `ConfigFileIntegrityCheck` | 1 | Published config file integrity check category. |
+    /// | `BootloaderIntegrityCheck` | 2 | Published bootloader integrity check category. |
+    /// | `OfpIntegrityCheck` | 3 | Published ofp integrity check category. |
+    /// | `MdfIntegrityCheck` | 4 | Published mdf integrity check category. |
+    /// | `OtherFileIntegrityCheck` | 5 | Published other file integrity check category. |
+    /// | `OtherIntegrityCheck` | 6 | Published other integrity check category. |
     SecurityIntegrityCategory {
         NotSet = 0,
         ConfigFileIntegrityCheck = 1,
@@ -242,6 +403,17 @@ native_enum! {
 
 native_enum! {
     /// `SecurityFileManagementType::SecurityFileManagementEnum`.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `ConfigFileUpdate` | 1 | Published config file update category. |
+    /// | `OfpUpdate` | 2 | Published ofp update category. |
+    /// | `MdfUpdate` | 3 | Published mdf update category. |
+    /// | `OtherFileUpdate` | 4 | Published other file update category. |
     SecurityFileManagementCategory {
         NotSet = 0,
         ConfigFileUpdate = 1,
@@ -253,6 +425,19 @@ native_enum! {
 
 native_enum! {
     /// `SecurityKeyManagementType::SecurityKeyManagementEnum`.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `KeyLoad` | 1 | Published key load category. |
+    /// | `KeyGeneration` | 2 | Published key generation category. |
+    /// | `KeyUpdate` | 3 | Published key update category. |
+    /// | `KeyDeletion` | 4 | Published key deletion category. |
+    /// | `CertificateLoad` | 5 | Published certificate load category. |
+    /// | `CertificateDeletion` | 6 | Published certificate deletion category. |
     SecurityKeyManagementCategory {
         NotSet = 0,
         KeyLoad = 1,
@@ -266,6 +451,17 @@ native_enum! {
 
 native_enum! {
     /// `SecuritySystemType::SecuritySystemEnum`.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `Startup` | 1 | Published startup category. |
+    /// | `Shutdown` | 2 | Published shutdown category. |
+    /// | `Reset` | 3 | Published reset category. |
+    /// | `Fault` | 4 | Published fault category. |
     SecuritySystemCategory {
         NotSet = 0,
         Startup = 1,
@@ -277,6 +473,16 @@ native_enum! {
 
 native_enum! {
     /// `SecuritySanitizationType::SecuritySanitizationEnum`.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `NotSet` | 0 | Value not set. |
+    /// | `Zeroization` | 1 | Published zeroization category. |
+    /// | `Sanitization` | 2 | Published sanitization category. |
+    /// | `ClassifiedDataErase` | 3 | Published classified data erase category. |
     SecuritySanitizationCategory {
         NotSet = 0,
         Zeroization = 1,
@@ -285,26 +491,41 @@ native_enum! {
     }
 }
 
-/// Roll/pitch/yaw triple (`ams_mel_euler_v1`), copied bit-for-bit.
+/// Roll/pitch/yaw storage triple (`ams_mel_euler_v1`), copied without conversion.
+///
+/// The pinned Euler declaration describes angular orientation/boresight as a
+/// **yaw, pitch, roll** sequence relative to the host System frame, centered on
+/// its navigational center; angular components are radians. Storage/getter order
+/// here remains roll, pitch, yaw. Reuse for attitude rates does not establish a
+/// time denominator, and containing navigation/LOS fields do not establish a
+/// stronger external reference convention or cause a frame transformation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Euler {
+    /// Roll component; radians for angles, with rate units determined by the containing record.
     pub roll: f64,
+    /// Pitch component; radians for angles, with rate units determined by the containing record.
     pub pitch: f64,
+    /// Yaw component; radians for angles, with rate units determined by the containing record.
     pub yaw: f64,
 }
 
 /// Common MEL `ForeignKey` (`ams_mel_foreign_key_v1`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ForeignKey {
+    /// Opaque provider key text, copied without parsing or normalization.
     pub key: String,
+    /// Provider name of the system in which the foreign key is meaningful.
     pub system_name: String,
 }
 
 /// Component installation (`ams_mel_installation_details_v1`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct InstallationDetails {
+    /// Component location copied in the published representation, without a frame transform.
     pub location: ComponentLocation,
+    /// Component orientation as the published Euler sequence relative to its host System.
     pub orientation: Euler,
+    /// Component boresight as the published Euler sequence relative to its host System.
     pub boresight: Euler,
 }
 
@@ -313,26 +534,37 @@ pub struct InstallationDetails {
 pub struct TemperatureStatus {
     /// Degrees Celsius exactly as reported; special values are not normalized.
     pub temperature_c: f64,
+    /// Reported state in the containing record's published domain.
     pub state: TemperatureState,
 }
 
 /// One MFA component (`ams_mel_mfa_component_v1`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct MfaComponent {
+    /// Provider component UCI identity, including its descriptive label.
     pub component_id: UciId,
+    /// Reported state in the containing record's published domain.
     pub state: ComponentState,
+    /// Reported component temperature and its independent temperature-state category.
     pub temperature: TemperatureStatus,
+    /// Provider foreign key identifying the installation location.
     pub installation_location_id: ForeignKey,
+    /// Copied installation location, orientation and boresight.
     pub installation_details: InstallationDetails,
 }
 
 /// MFA `About` identification (`ams_mel_about_v1`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct About {
+    /// Provider model text; no format or version encoding is inferred.
     pub model: String,
+    /// Provider serial-number text, preserved without interpretation.
     pub serial_number: String,
+    /// Provider software-version text; no numeric encoding is inferred.
     pub software_version: String,
+    /// Provider bootloader software-version text.
     pub bootloader_software_version: String,
+    /// Provider hardware-version text.
     pub hardware_version: String,
 }
 
@@ -343,10 +575,15 @@ pub struct About {
 /// `ams_mel_ir_mfa_state_t`), shared by RF Admin and IR MEL.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MfaStatus {
+    /// Reported state in the containing record's published domain.
     pub state: RfMfaState,
+    /// Provider description of the MFA state, copied as UTF-8.
     pub state_description: String,
+    /// Provider description of the MFA mode, copied as UTF-8.
     pub mode_description: String,
+    /// Reported state-transition category, independent of the state description.
     pub transition_status: StateTransitionStatus,
+    /// Copied provider model, serial and version strings.
     pub about: About,
     /// Components in provider order.
     pub components: Vec<MfaComponent>,
@@ -355,27 +592,35 @@ pub struct MfaStatus {
 /// One active BIT (`ams_mel_active_bit_v1`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ActiveBit {
+    /// UCI BIT identity, distinct from the numeric selectors used by BIT commands.
     pub bit_id: UciId,
     /// Signed estimated completion time count in nanoseconds.
     pub estimated_completion_time_ns: i64,
+    /// Provider estimated percentage, copied without clamping or range validation.
     pub estimated_percent_complete: f64,
 }
 
 /// One item of a completed BIT (`ams_mel_completed_bit_item_v1`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompletedBitItem {
+    /// Provider BIT item name, including empty text.
     pub bit_item_name: String,
+    /// Reported BIT result; not a Rust error or inferred physical outcome.
     pub result: BitResult,
+    /// Provider failure-reason text, retained even for other result categories.
     pub fail_reason: String,
 }
 
 /// One completed BIT (`ams_mel_completed_bit_v1`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompletedBit {
+    /// UCI BIT identity, distinct from the numeric selectors used by BIT commands.
     pub bit_id: UciId,
     /// Signed time tag in nanoseconds.
     pub time_tag_ns: i64,
+    /// Reported BIT result; not a Rust error or inferred physical outcome.
     pub result: BitResult,
+    /// Provider failure-reason text, retained even for other result categories.
     pub fail_reason: String,
     /// Nested BIT items in provider order.
     pub bit_items: Vec<CompletedBitItem>,
@@ -384,32 +629,45 @@ pub struct CompletedBit {
 /// One fault data entry (`ams_mel_fault_data_v1`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FaultData {
+    /// Opaque provider key text, copied without parsing or normalization.
     pub key: String,
+    /// Opaque provider value text, copied without conversion.
     pub value: String,
+    /// Provider format description; not parsed by the bridge.
     pub format: String,
+    /// Provider unit description; not interpreted or converted by the bridge.
     pub units: String,
 }
 
 /// One fault ambiguity group (`ams_mel_fault_ambiguity_group_v1`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FaultAmbiguityGroup {
+    /// Ordered diagnostic-test UCI identities in this ambiguity group.
     pub diagnostic_test_ids: Vec<UciId>,
+    /// Ordered component UCI identities, preserving duplicates.
     pub component_ids: Vec<UciId>,
 }
 
 /// One fault (`ams_mel_fault_v1`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Fault {
+    /// Provider fault UCI identity.
     pub fault_id: UciId,
+    /// Reported severity category; the bridge applies no policy based on it.
     pub severity: FaultSeverity,
+    /// Reported state in the containing record's published domain.
     pub state: FaultState,
+    /// Ordered fault key/value/format/unit records, fully owned.
     pub fault_data: Vec<FaultData>,
     /// Signed detection time in nanoseconds.
     pub detection_time_ns: i64,
+    /// Opaque provider fault-code text, not parsed as a number.
     pub fault_code: String,
+    /// Provider description of the fault.
     pub fault_description: String,
     /// Implicated component IDs in provider order.
     pub component_ids: Vec<UciId>,
+    /// Ordered fault ambiguity groups with all nested identities copied.
     pub ambiguity_groups: Vec<FaultAmbiguityGroup>,
 }
 
@@ -417,38 +675,54 @@ pub struct Fault {
 /// keeps provider order and duplicates.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BitStatus {
+    /// Active BIT records in provider order, preserving duplicates.
     pub active_bits: Vec<ActiveBit>,
+    /// Completed BIT records in provider order, preserving duplicates.
     pub completed_bits: Vec<CompletedBit>,
+    /// Fault records in provider order, preserving duplicates.
     pub faults: Vec<Fault>,
 }
 
 /// One dependent subsystem (`ams_mel_ir_subsystem_dep_info_v1`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SubsystemDependency {
+    /// Provider subsystem identifier in the containing record's representation.
     pub subsystem_id: u32,
+    /// Provider criticality value, copied unchanged without inventing a severity scale.
     pub criticality: u32,
+    /// Reported subsystem failure category, not a bitmask or Rust failure.
     pub failure: FailureLevel,
 }
 
 /// Four-part CSCI version (`ams_mel_ir_version_v1`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CsciVersion {
+    /// Published CSCI version source value, copied without interpretation.
     pub source: u32,
+    /// Published major revision component, preserving all 32 bits.
     pub major_revision: u32,
+    /// Published minor revision component, preserving all 32 bits.
     pub minor_revision: u32,
+    /// Published engineering revision component, preserving all 32 bits.
     pub engineering_revision: u32,
 }
 
 /// One CSCI record (`ams_mel_ir_subsystem_csci_info_v1`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CsciInfo {
+    /// Provider CSCI name text, copied without interpretation.
     pub csci: String,
+    /// Published mode value; no state/mode compatibility rule is imposed by this binding.
     pub mode: CsciMode,
+    /// Copied four-part CSCI version.
     pub version: CsciVersion,
+    /// Provider criticality value, copied unchanged without inventing a severity scale.
     pub criticality: u32,
+    /// Reported subsystem failure category, not a bitmask or Rust failure.
     pub failure: FailureLevel,
     /// Provider BIT report counter, copied as the full `u32`.
     pub bit_report: u32,
+    /// Provider connection-established flag; not a liveness probe.
     pub connection_established: bool,
 }
 
@@ -459,13 +733,21 @@ pub struct CsciInfo {
 /// `subsystems` and `csci` collections.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SubsystemStatus {
+    /// Provider subsystem identifier in the containing record's representation.
     pub subsystem_id: u32,
+    /// Provider criticality value, copied unchanged without inventing a severity scale.
     pub criticality: u32,
+    /// Provider status sequence number, preserved without ordering inference.
     pub status_sequence_number: u32,
+    /// Reported subsystem failure category, not a bitmask or Rust failure.
     pub failure: FailureLevel,
+    /// Independent provider-reported subsystem count; does not truncate the copied collection.
     pub subsystem_count: u32,
+    /// Dependent subsystem records in provider order.
     pub subsystems: Vec<SubsystemDependency>,
+    /// Independent provider-reported CSCI count; does not truncate the copied collection.
     pub csci_count: u32,
+    /// Complete CSCI records in provider order, independent of `csci_count`.
     pub csci: Vec<CsciInfo>,
 }
 
@@ -474,14 +756,18 @@ pub struct SubsystemStatus {
 /// duplicate and empty names survive.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NameValuePair {
+    /// Provider name text, preserving empty and duplicate names in ordered pair lists.
     pub name: String,
+    /// Opaque provider value text, copied without conversion.
     pub value: String,
 }
 
 /// One security artifact (`ams_mel_security_artifact_v1`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SecurityArtifact {
+    /// Provider component UCI identity, including its descriptive label.
     pub component_id: UciId,
+    /// Provider associated UCI identity for this artifact.
     pub associated_id: UciId,
 }
 
@@ -489,6 +775,19 @@ native_enum! {
     /// Selected `MFA_SecurityAuditRecord::SecurityEventType` alternative
     /// (`ams_mel_security_event_kind_t`), including the empty `None`
     /// (`std::monostate`) alternative.
+    ///
+    /// Published associations are categories, not a quality ordering or a bitmask.
+    /// Names retain the pinned interface meaning; no provider policy is inferred.
+    ///
+    /// | Alternative | Value | Meaning |
+    /// |---|---:|---|
+    /// | `None` | 0 | No security-event subtype (monostate). |
+    /// | `Authentication` | 1 | Published authentication category. |
+    /// | `Integrity` | 2 | Published integrity category. |
+    /// | `FileManagement` | 3 | Published file management category. |
+    /// | `KeyManagement` | 4 | Published key management category. |
+    /// | `System` | 5 | Published system category. |
+    /// | `Sanitization` | 6 | Published sanitization category. |
     SecurityEventKind {
         None = sys::AMS_MEL_SECURITY_EVENT_NONE,
         Authentication = sys::AMS_MEL_SECURITY_EVENT_AUTHENTICATION,
@@ -513,33 +812,56 @@ native_enum! {
 pub enum SecurityEvent {
     /// Upstream `std::monostate`: no security-event subtype.
     None,
+    /// Authentication security event and its kind-specific identities.
     Authentication {
+        /// Category in this alternative's published domain; not interchangeable with other security categories.
         category: SecurityAuthenticationCategory,
+        /// Provider detail text, deeply copied as UTF-8 without parsing.
         details: String,
+        /// Provider subsystem UCI identity, including its descriptive label.
         subsystem_id: UciId,
+        /// Provider service UCI identity, including its descriptive label.
         service_id: UciId,
+        /// Provider MDF UCI identity, including its descriptive label.
         mdf_id: UciId,
     },
+    /// Integrity security event and its MDF identity.
     Integrity {
+        /// Category in this alternative's published domain; not interchangeable with other security categories.
         category: SecurityIntegrityCategory,
+        /// Provider detail text, deeply copied as UTF-8 without parsing.
         details: String,
+        /// Provider MDF UCI identity, including its descriptive label.
         mdf_id: UciId,
     },
+    /// File-management security event and its MDF identity.
     FileManagement {
+        /// Category in this alternative's published domain; not interchangeable with other security categories.
         category: SecurityFileManagementCategory,
+        /// Provider detail text, deeply copied as UTF-8 without parsing.
         details: String,
+        /// Provider MDF UCI identity, including its descriptive label.
         mdf_id: UciId,
     },
+    /// Key-management security event.
     KeyManagement {
+        /// Category in this alternative's published domain; not interchangeable with other security categories.
         category: SecurityKeyManagementCategory,
+        /// Provider detail text, deeply copied as UTF-8 without parsing.
         details: String,
     },
+    /// System security event.
     System {
+        /// Category in this alternative's published domain; not interchangeable with other security categories.
         category: SecuritySystemCategory,
+        /// Provider detail text, deeply copied as UTF-8 without parsing.
         details: String,
     },
+    /// Sanitization security event.
     Sanitization {
+        /// Category in this alternative's published domain; not interchangeable with other security categories.
         category: SecuritySanitizationCategory,
+        /// Provider detail text, deeply copied as UTF-8 without parsing.
         details: String,
     },
 }
@@ -562,14 +884,19 @@ impl SecurityEvent {
 /// Complete `MFA_SecurityAuditRecord` (`ams_mel_security_audit_record_v1`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SecurityAuditRecord {
+    /// Provider security-event UCI identity.
     pub security_event_id: UciId,
     /// Signed event timestamp in nanoseconds.
     pub event_timestamp_ns: i64,
+    /// Provider subsystem UCI identity, including its descriptive label.
     pub subsystem_id: UciId,
     /// Security artifacts in provider order.
     pub artifacts: Vec<SecurityArtifact>,
+    /// Selected security-event alternative, retaining its kind-specific category and fields.
     pub event: SecurityEvent,
+    /// Provider-reported security outcome, not a bridge policy decision.
     pub outcome: SecurityOutcome,
+    /// Reported severity category; the bridge applies no policy based on it.
     pub severity: SecuritySeverity,
 }
 
@@ -582,11 +909,17 @@ pub struct SecurityAuditRecord {
 /// alternatives of ordered pairs, deliberately not maps.
 #[derive(Clone, Debug, PartialEq)]
 pub enum HealthMetadataEvent {
+    /// MFA state, transition category, descriptive strings and component records.
     MfaStatus(MfaStatus),
+    /// Active/completed BITs and faults using the shared HealthStatus representation.
     BitStatus(BitStatus),
+    /// Subsystem status with independent reported counts and ordered CSCI records.
     SubsystemStatus(SubsystemStatus),
+    /// Ordered discrete-status name/value pairs, preserving duplicate and empty names.
     DiscreteStatus(Vec<NameValuePair>),
+    /// Complete security-audit record with its selected kind-specific event.
     SecurityAudit(SecurityAuditRecord),
+    /// Ordered detailed-status name/value pairs, distinct from discrete status.
     MfaStatusDetailed(Vec<NameValuePair>),
 }
 
@@ -727,6 +1060,14 @@ impl HealthMetadataStream {
     /// [`ErrorKind::InvalidUtf8`]) and never partially returned; its native
     /// event is still released. A closed owner returns
     /// [`ErrorKind::ProviderFailed`] without a native call.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::Timeout`] if the active queue remains empty for `timeout_ms` milliseconds
+    /// (zero polls); timeout does not cancel registration or native work. After queued values drain,
+    /// stopped consumption reports [`ErrorKind::StreamStopped`] and native callback failure can report
+    /// [`ErrorKind::ProviderFailed`]. A locally closed owner reports `ProviderFailed`. Invalid views,
+    /// enums or text and copy-allocation failures are errors, not partial values; native event cleanup
+    /// is still attempted. Returned values are independent of the stream, parent channel and provider.
     pub fn receive(&mut self, timeout_ms: u32) -> Result<HealthMetadataEvent, Error> {
         let metadata = self.live()?;
         let mut event = NativeEvent::new(&NATIVE_EVENT_OPS);
@@ -751,6 +1092,11 @@ impl HealthMetadataStream {
     /// Copies the current saturating native callback counters. They remain
     /// readable after the HealthStatus channel is closed. A closed owner
     /// returns [`ErrorKind::ProviderFailed`] without a native call.
+    ///
+    /// # Errors
+    /// A closed owner returns [`ErrorKind::ProviderFailed`]. Native query/cleanup and diagnostic
+    /// failures retain their error categories; malformed successful native output is a protocol error.
+    /// The returned counter value is a snapshot, not a receive count or a liveness guarantee.
     pub fn counters(&mut self) -> Result<HealthMetadataCounters, Error> {
         let metadata = self.live()?;
         let mut raw = sys::AmsMelIrC2MetadataCountersV1::default();
@@ -774,6 +1120,12 @@ impl HealthMetadataStream {
     /// native waiter. It does not unregister provider callbacks or close the
     /// HealthStatus channel. Repeated Close returns `Ok(())` without a native
     /// call.
+    ///
+    /// # Errors
+    /// Native cleanup failures retain their categories and diagnostics; inconsistent successful
+    /// owner output is a protocol error. See the owner's lifecycle contract for whether a failed
+    /// release retains a retryable handle or consumes the one release attempt. No outcome implies
+    /// cancellation of pending work or immediate callback quiescence.
     pub fn close(&mut self) -> Result<(), Error> {
         if self.raw.is_null() {
             return Ok(());

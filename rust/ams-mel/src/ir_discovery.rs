@@ -36,6 +36,12 @@ impl Session {
     ///     Ok(capabilities)
     /// }
     /// ```
+    ///
+    /// # Errors
+    /// Native query, snapshot conversion or temporary-owner cleanup failures return their
+    /// native category and diagnostic. Invalid UTF-8, unpublished enums and malformed counts/views
+    /// are rejected without a partial snapshot. Allocation failures return InternalError.
+    /// Discovery does not attach or enable channels or establish that advertised operations work.
     pub fn capabilities(&self) -> Result<Vec<ChannelCapability>, Error> {
         discover(&NativeDiscoveryCalls(self.raw))
     }

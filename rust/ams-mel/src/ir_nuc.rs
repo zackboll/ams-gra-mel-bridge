@@ -18,16 +18,22 @@ use crate::{
 /// Original upstream PixelValue alternative; width is never inferred from magnitude.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NucPixelValue {
+    /// Original unsigned 8-bit pixel alternative; no magnitude-based width selection.
     U8(u8),
+    /// Original unsigned 16-bit pixel alternative; no magnitude-based width selection.
     U16(u16),
+    /// Original unsigned 32-bit pixel alternative; all bits are retained.
     U32(u32),
 }
 
 /// Exactly the three published TempPointType values (0, 1, 2).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NucPointType {
+    /// Published NUC point category (0).
     NucPoint,
+    /// Published MFA temperature-estimate category (1).
     MfaEstimate,
+    /// Published other temperature-point category (2).
     Other,
 }
 
@@ -39,22 +45,42 @@ pub struct NucTempPoint {
     pub timestamp_ns: i64,
     /// Band kind and vacuum wavelength limits in meters.
     pub frame_band: BandInfo,
+    /// Original unsigned pixel-value alternative, retaining its U8/U16/U32 width.
     pub pixel: NucPixelValue,
     /// Exact Kelvin double, including nonfinite values and signed zero.
     pub temperature_k: f64,
+    /// Published temperature-point category, not inferred from the temperature or pixel.
     pub point_type: NucPointType,
 }
 
 /// Complete ordered point vector, preserving duplicates and empty messages.
+///
+/// The bridge receives `NUC_TempData` callbacks from an Image or Health channel.
+/// Rust copies every publicly readable point, including the exact pixel variant,
+/// signed timestamp, band and Kelvin temperature, before releasing the native
+/// event. Values survive parent/stream closure and provider unload. The private
+/// upstream optional temperature error has no accessor and remains unavailable;
+/// no absence, calibration quality or uncertainty is inferred from its omission.
+///
+/// ```
+/// use ams_mel::{NucPixelValue, NucTempData};
+/// let empty_message = NucTempData { points: Vec::new() };
+/// assert!(empty_message.points.is_empty());
+/// // Width is part of the value, even when both magnitudes fit in eight bits.
+/// assert_ne!(NucPixelValue::U8(7), NucPixelValue::U16(7));
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct NucTempData {
+    /// Complete ordered temperature-point vector, retaining duplicates and empty messages.
     pub points: Vec<NucTempPoint>,
 }
 
 /// Native saturating callback counters (not Rust Receive call counts).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NucCounters {
+    /// Saturating count of native callback entries, including entries after consumption becomes inactive.
     pub events_received: u64,
+    /// Saturating count of incoming events dropped at capacity; existing queued events are not evicted.
     pub events_dropped_queue_full: u64,
     /// Includes callback allocation failures; these do not fail the stream.
     pub malformed_or_unsupported: u64,
@@ -76,10 +102,14 @@ impl NucOpenError {
         }
     }
 
+    /// Native/safe-layer error category and diagnostic, independent of a provider Return.
     pub fn error(&self) -> &Error {
         &self.error
     }
 
+    /// Provider Return only when native code published a known value.
+    /// Local failures, exceptions and unknown values yield `None`; diagnostics
+    /// are never parsed to invent a registration result.
     pub fn registration(&self) -> Option<CommandReturn> {
         self.registration
     }
@@ -191,6 +221,14 @@ impl NucStream {
     /// StreamStopped, ProviderFailed and other categories. Validates and copies
     /// every point while an event guard is alive, then closes the event before
     /// returning. Conversion failure or unwind also releases the event.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::Timeout`] if the active queue remains empty for `timeout_ms` milliseconds
+    /// (zero polls); timeout does not cancel registration or native work. After queued values drain,
+    /// stopped consumption reports [`ErrorKind::StreamStopped`] and native callback failure can report
+    /// [`ErrorKind::ProviderFailed`]. A locally closed owner reports `ProviderFailed`. Invalid views,
+    /// enums or text and copy-allocation failures are errors, not partial values; native event cleanup
+    /// is still attempted. Returned values are independent of the stream, parent channel and provider.
     pub fn receive(&mut self, timeout_ms: u32) -> Result<NucTempData, Error> {
         let raw = self.live()?;
         self.receive_event_with(&EVENT_OPS, |out, d, c, r| {
@@ -214,6 +252,13 @@ impl NucStream {
         event.into_owned()
     }
 
+    /// Copies the current saturating native callback counters without resetting them.
+    /// Counts describe callback activity, not queue depth or Rust receive calls.
+    ///
+    /// # Errors
+    /// A closed owner returns [`ErrorKind::ProviderFailed`]. Native query/cleanup and diagnostic
+    /// failures retain their error categories; malformed successful native output is a protocol error.
+    /// The returned counter value is a snapshot, not a receive count or a liveness guarantee.
     pub fn counters(&mut self) -> Result<NucCounters, Error> {
         let raw = self.live()?;
         let mut counters = sys::AmsMelIrC2MetadataCountersV1::default();
@@ -229,6 +274,12 @@ impl NucStream {
     }
 
     /// Idempotent public Close; no callback unregistration or parent closure.
+    ///
+    /// # Errors
+    /// Native cleanup failures retain their categories and diagnostics; inconsistent successful
+    /// owner output is a protocol error. See the owner's lifecycle contract for whether a failed
+    /// release retains a retryable handle or consumes the one release attempt. No outcome implies
+    /// cancellation of pending work or immediate callback quiescence.
     pub fn close(&mut self) -> Result<(), Error> {
         close_owned(&mut self.raw, self.close_op)
     }

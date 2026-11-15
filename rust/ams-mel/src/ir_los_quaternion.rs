@@ -16,9 +16,13 @@ use crate::{
 /// Opposite signs remain distinct; no frame conversion or attitude is inferred.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Quaternion {
+    /// Quaternion X component in the published XYZW order.
     pub x: f64,
+    /// Quaternion Y component in the published XYZW order.
     pub y: f64,
+    /// Quaternion Z component in the published XYZW order.
     pub z: f64,
+    /// Quaternion W (scalar) component in the published XYZW order.
     pub w: f64,
 }
 
@@ -27,10 +31,32 @@ pub struct Quaternion {
 /// subnormal, extreme and nonfinite values. NaN payload bits are not promised
 /// beyond the native contract. Reception is not attitude estimation or evidence
 /// of physical accuracy. Values outlive every native owner and provider code.
+///
+/// The bridge receives the conditionally supported `LineOfSightQuaternion`
+/// callback through [`crate::ImageStream::open_line_of_sight_quaternion`]. Rust
+/// copies all three published getters before closing the native event. No
+/// quaternion-to-Euler conversion, covariance, validity interpretation or
+/// additional reference-frame convention is supplied by this API.
+///
+/// ```
+/// use ams_mel::{ForwardRightDown, LineOfSightQuaternion, Quaternion};
+/// let value = LineOfSightQuaternion {
+///     system_time_ns: -1,
+///     q_xyzw: Quaternion { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
+///     pqr_rps: ForwardRightDown { forward: 0.0, right: 0.0, down: 0.0 },
+/// };
+/// assert_eq!(value.q_xyzw.w, 1.0); // construction does not normalize or validate
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LineOfSightQuaternion {
+    /// Signed native system-time count in nanoseconds; no clock or epoch is inferred.
     pub system_time_ns: i64,
+    /// Published aperture LOS quaternion in XYZW order at `system_time_ns`.
+    /// Upstream specifies the navigation frame: North/East/Down relative to
+    /// wander North. Rust neither normalizes it nor converts its frame.
     pub q_xyzw: Quaternion,
+    /// Rotation rates about the image-coordinate forward/right/down axes,
+    /// in radians per second (P/Q/R respectively), not navigation-frame rates.
     pub pqr_rps: ForwardRightDown,
 }
 
@@ -50,6 +76,7 @@ impl LineOfSightQuaternionOpenError {
         }
     }
 
+    /// Native/safe-layer error category and diagnostic, independent of a provider Return.
     pub fn error(&self) -> &Error {
         &self.error
     }
@@ -86,6 +113,15 @@ type Close<T> = unsafe extern "C" fn(*mut *mut T, *mut c_char, usize, *mut usize
 /// waits for callback quiescence. Native physical teardown must ensure quiescence
 /// before provider unload. Drop is best-effort and does not panic. An uncertain
 /// release is never retried (fail-safe loss of ownership can leak native state).
+///
+/// Registration is opt-in and independent of ordinary Image metadata, NUC and
+/// optical distortion. Zero capacity fails locally without consuming it; every
+/// actual native attempt, including refusal or failure, consumes this callback's
+/// one-shot. An unsuccessful registration publishes no stream and is not retried.
+/// Native callback state can remain inactive and retained until safe teardown.
+/// Inspect [`LineOfSightQuaternionOpenError::registration`] for a Return only
+/// when native code actually published one; optional support is not guaranteed.
+/// This unique owner is neither `Send` nor `Sync`.
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
@@ -163,6 +199,14 @@ impl LineOfSightQuaternionStream {
     /// Exactly one native Receive. Zero polls; other timeouts pass unchanged.
     /// The native event remains guarded through validation/copy and is closed
     /// before returning any owned value, including on conversion error/unwind.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::Timeout`] if the active queue remains empty for `timeout_ms` milliseconds
+    /// (zero polls); timeout does not cancel registration or native work. After queued values drain,
+    /// stopped consumption reports [`ErrorKind::StreamStopped`] and native callback failure can report
+    /// [`ErrorKind::ProviderFailed`]. A locally closed owner reports `ProviderFailed`. Invalid views,
+    /// enums or text and copy-allocation failures are errors, not partial values; native event cleanup
+    /// is still attempted. Returned values are independent of the stream, parent channel and provider.
     pub fn receive(&mut self, timeout_ms: u32) -> Result<LineOfSightQuaternion, Error> {
         let raw = self.live()?;
         self.receive_event_with(&EVENT_OPS, |out, d, c, r| {
@@ -190,6 +234,11 @@ impl LineOfSightQuaternionStream {
     }
 
     /// Native saturating callback counts, identical to ordinary Image metadata.
+    ///
+    /// # Errors
+    /// A closed owner returns [`ErrorKind::ProviderFailed`]. Native query/cleanup and diagnostic
+    /// failures retain their error categories; malformed successful native output is a protocol error.
+    /// The returned counter value is a snapshot, not a receive count or a liveness guarantee.
     pub fn counters(&mut self) -> Result<ImageMetadataCounters, Error> {
         let raw = self.live()?;
         self.counters_with(|out, d, c, r| {
@@ -212,6 +261,12 @@ impl LineOfSightQuaternionStream {
     }
 
     /// Idempotent after consumption. One release attempt, even on uncertainty.
+    ///
+    /// # Errors
+    /// Native cleanup failures retain their categories and diagnostics; inconsistent successful
+    /// owner output is a protocol error. See the owner's lifecycle contract for whether a failed
+    /// release retains a retryable handle or consumes the one release attempt. No outcome implies
+    /// cancellation of pending work or immediate callback quiescence.
     pub fn close(&mut self) -> Result<(), Error> {
         close_owned(&mut self.raw, self.close_op)
     }
