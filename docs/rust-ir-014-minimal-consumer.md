@@ -316,3 +316,25 @@ aggregate qualification (rather than leaving only the provider targets).
 Final commit/tree identities and final-HEAD hosted run/synthetic-merge evidence
 are recorded on the delivery PR, avoiding a self-referential commit hash here.
 Independent review is still required even after passing hosted checks.
+
+## Mainline integration during delivery
+
+After initial local qualification and successful hosted Bootstrap run
+43655382809 and Documentation run 43655382808, main advanced to
+`8892834fb41f3929083df898e472e20160212f79` (PRs #202 and #203).
+It was incorporated with ordinary merge
+`0473ac9e5a5cf529a4e639e318d6f3ee6a719c6d`; no published history was rewritten.
+Those mainline changes include native/Ada common CommsTest reception and raw
+mirrors, but still no public safe Rust Health/Image/Stacked metadata receiver.
+The application's safe Rust parity boundary is unchanged. The task diff against
+updated main remains exactly the four task-owned new paths.
+
+The above numeric results/transcript/library hash describe the initially
+qualified tree, not silently the integrated facade. All gate commands, actual
+reference-provider Debug/Release runs, runtime library identity, and aggregate
+checks are rerun for the integrated source. Integrated counts, exact hashes,
+stdout comparison, final commit/tree, hosted runs and synthetic-merge identity
+are recorded as delivery evidence on PR #205. Keep **HOSTED_CI_PENDING** until
+those final-source runs complete. The imported Ada changes were formatted with
+`make format-ada` before builds; it changed no files. Pinned formatting is checked
+again by the aggregate gate. No new API or provider change belongs to this task.
