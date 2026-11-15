@@ -110,7 +110,8 @@ def run(site, executable, output):
                         color('body', 'backgroundColor', palette['page'], 'main background')
                         color('body', 'color', palette['text'], 'main text')
                         color('.sidebar', 'backgroundColor', palette['nav'], 'sidebar background')
-                        color('.sidebar', 'borderRightColor', palette['border'], 'sidebar border')
+                        if width > 800:  # Native mobile navigation intentionally removes this border.
+                            color('.sidebar', 'borderRightColor', palette['border'], 'sidebar border')
                         color('h1', 'color', palette['text'], 'heading text')
                         color('.docblock a', 'color', palette['link'], 'documentation link')
                         color('.docblock pre', 'backgroundColor', palette['code'], 'code background')
