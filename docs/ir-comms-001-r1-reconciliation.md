@@ -264,6 +264,17 @@ completion, rather than repeatedly committing self-referential status updates.
 **READY_FOR_INDEPENDENT_REVIEW** requires those final local/hosted results in the
 PR; no pending result in this snapshot counts as a pass. Prior passing results
 above remain scoped to their recorded source. This is not approval or merge authorization.
+
+Main subsequently advanced to `9d25891123d5bd85ed5b06316ff962536f7f071f`, tree
+`681c95cb6c011b5c474fd5e8ab85597104ed3e71` (Ada documentation/checker cleanup).
+Conflict-free normal merge `959f874f1f9259b767d320a980c2b2d15968f016`, tree
+`19a3854da9453b90d5b83d820c0b9952dd45eaca`, integrates it. The preceding
+aggregate run was interrupted, not passed. `make format-ada` ran through the
+installed Alire environment before the restarted qualification and made no
+changes. No native inputs, public ABI or raw binding declarations changed.
+Final gate/hosted results for this merge and later evidence-only commits are
+recorded in PR #208; earlier results are not substituted for them.
+
 After corrective review/merge, recommend
 closing #204 as superseded rather than merging its duplicate foundation. Do not
 close #204 automatically.
