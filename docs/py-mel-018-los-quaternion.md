@@ -224,6 +224,9 @@ remaining commands are recorded with immutable identities in the PR):
 | `make native` | PASS, warning-as-error production build |
 | `make test-native` | PASS, 821/821 CTests |
 | `make test-python` | PASS, 710 tests, zero failures/skips; includes all 24 quaternion tests and compilation |
+| `make test-rust` | PASS, 608 tests; 15 existing ignored subprocess entry functions, no failures |
+| `make test-policy` | PASS, 263 tests across ten suites |
+| `make check-ir-api-coverage` | PASS, 70 controls; existing classifications unchanged |
 | `python3 -W error -m unittest test_ir_image_los_quaternion test_ir_image_optical_distortion_map test_package_layout test_import_identity test_abi -v` | PASS, 114 tests before the final two added regression cases |
 | `python3 -W error -m compileall -q python/ams_mel python/tests/test_ir_image_los_quaternion.py` | PASS |
 | `python3 scripts/check_final_newlines.py` | PASS after newline correction |
@@ -249,6 +252,14 @@ Current-Git documentation qualification uses the installed pinned enhancer
 This documents the reproducible command, not an unexecuted pass. The delivery
 PR records its actual result together with final-head hosted status. Local
 documentation output is non-deployable and does not replace hosted evidence.
+
+The documented current-Git documentation command subsequently passed (exit 0)
+on commit `0151b157ce420da9dd616dcb66665c842a51fd5d`, tree
+`2f4a067a252c3d47b2aa86143720bba3dda442b5`: source-derived coverage
+5,145/5,146, 101 informational GNATdoc warnings; locked/offline Rustdoc 1.98.1
+produced 1,497 HTML files and 652 assets. These are measured earlier-source
+results, not a waiver for final-head repetitions after this evidence update.
+The PR records the exact final-source repetition and hosted run identities.
 
 Commands run from `/home/zboll/git/ams-py-mel-018`. GNAT-dependent checks use the
 installed GNAT 16.1.0 and GPRbuild 26.0.1 directories under
