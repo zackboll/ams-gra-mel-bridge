@@ -24,16 +24,18 @@ The <a href="guides/api-map.html#selection">package selection guide</a>
 connects developer tasks to these separate families.</p>
 {{package-directory}}
 <h2>Documentation status</h2>
-<p>Public API documentation is complete under the strict source/rendered-identity
-model: <strong>4,294 / 4,295</strong> measured elements are documented, with zero
-public documentation gaps. The one uncredited source-visible alias,
-<code>AMS.MEL.IR.Health_Status.Metadata.Status</code>, renames
+<p>The package directory and native declaration destinations are checked against
+the source used to build this site. Documentation coverage and GNATdoc warnings
+are measured for that build and retained as diagnostics; a successful build does
+not assert that every public element is documented. See
+<a href="guides/getting-started.html#documentation-diagnostics">the current-build
+reports</a> for coverage, warnings and the source commit.</p>
+<p>The source-visible alias
+<code>AMS.MEL.IR.Health_Status.Metadata.Status</code> renames
 <code>AMS.MEL.Status</code>. GNATdoc 26.0.0 does not render that package-renaming
-section. This is a known renderer limitation, not a missing implemented API or
-a provider capability. Follow {{package:AMS.MEL.Status}} for its target.</p>
-<p>The native inventory remains 1,238 source declarations and 1,237 rendered
-sections, with one exact renderer exception. These numbers measure documentation
-identity, not full upstream feature support.</p>
+section; it remains an explicit renderer exception in the source/native
+reconciliation. Follow {{package:AMS.MEL.Status}} for its target. Documentation
+coverage and upstream feature coverage measure different things.</p>
 <h2>Provider capability and evidence</h2>
 <p>Runtime providers determine optional capabilities. Mock tests establish bridge
 semantics, ownership and conversion behavior, not physical RF behavior. Historical

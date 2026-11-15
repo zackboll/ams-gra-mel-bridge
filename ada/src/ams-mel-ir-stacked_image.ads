@@ -5,8 +5,9 @@ with AMS.MEL.IR.Channel;
 --  Required StackedImage channel ownership and common communications, including
 --  sensors with no stack acquisition capability. No buffers, image listeners,
 --  stack callbacks or optional LOS3D metadata registration are created. Required
---  buffer registration/unregistration and common communications metadata remain
---  unbound; Disable is available only as Close cleanup. This is not a receiver.
+--  buffer registration/unregistration remains unbound; Disable is available only
+--  as Close cleanup. Communications metadata is available through
+--  AMS.MEL.IR.Channel.Metadata using As_Channel. This is not a stack receiver.
 --  Missing discovery is an expected Provider_Error and does not poison Session.
 
 package AMS.MEL.IR.Stacked_Image is
