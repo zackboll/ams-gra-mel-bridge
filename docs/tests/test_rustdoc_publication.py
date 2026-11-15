@@ -132,6 +132,31 @@ class AssemblyTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'noncanonical/duplicate'):
                     ci.verify(ROOT, self.directory, ci.epoch.sha(raw))
 
+    def test_rust_mime_policy_does_not_apply_to_ada(self):
+        # Same real HTTP framing/byte checks; only the scoped MIME selection changes.
+        from test_live_docs_site import server
+        from http.server import BaseHTTPRequestHandler
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-Type', 'font/woff2')
+                self.send_header('Content-Length', '4')
+                self.end_headers()
+                self.wfile.write(b'font')
+
+            def log_message(self, *args):
+                pass
+
+        with server(Handler) as base:
+            record, body = live.get_entity(base + 'rust/font.woff2', base, b'font', rustdoc=True)
+            self.assertTrue(record['comparison'])
+            self.assertEqual(body, b'font')
+            for name, flag in (('assets/font.woff2', True), ('assets/font.woff2', False)):
+                record, body = live.get_entity(base + name, base, b'font', rustdoc=flag)
+                self.assertFalse(record['comparison'])
+                self.assertIsNone(body)
+
     def test_live_exhaustively_checks_every_file_with_bounded_workers(self):
         published = self.directory / 'published'
         published.mkdir()
