@@ -383,10 +383,11 @@ def validate(published, pristine, root=ROOT, audit_path=None):
     """Current-source independent verification; no historical count authority."""
     import source_epoch
     from example_sources import References
+    destination = audit_destination(audit_path, root, pristine, published) if audit_path is not None else None
     report = measure(pristine, root)
     result = source_epoch.verify_presentation(Path(pristine), Path(root), report,
         References(root, pristine, ledger=report['native']), Path(published), deep=True)
-    if audit_path is not None:
+    if destination is not None:
         destination = audit_destination(audit_path, root, pristine, published)
         with destination.open('x', encoding='utf-8') as stream:
             json.dump(result['type_occurrences'], stream, indent=2, sort_keys=True)
