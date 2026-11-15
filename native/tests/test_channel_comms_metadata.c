@@ -89,6 +89,18 @@ static void check_report(uint32_t command, uint32_t request)
     CALL(ams_mel_ir_channel_comms_metadata_receive, metadata, 0, &report);
     CHECK(report.command_id == command && report.request_id == request);
 }
+static void *concurrent_submit(void *argument)
+{
+    const unsigned i = *(const unsigned *)argument;
+    ams_mel_ir_channel_comms_test_request_v1 input = {UINT32_MAX - i, 0, 0x80000000U + i};
+    ams_mel_ir_channel_comms_request *request = NULL;
+    ams_mel_ir_channel_comms_test_result_v1 result;
+    CALL(ams_mel_ir_channel_submit_comms_test, view, &input, &request);
+    CALL(ams_mel_ir_channel_comms_request_wait, request, 1000, &result);
+    CHECK(result.command_id == input.command_id && result.request_id == input.request_id);
+    CALL(ams_mel_ir_channel_comms_request_close, &request);
+    return NULL;
+}
 int main(int argc, char **argv)
 {
     ams_mel_session *session = NULL;
@@ -146,12 +158,23 @@ int main(int argc, char **argv)
         CALL(ams_mel_ir_channel_from_stream, image, &view);
         CALL(ams_mel_ir_channel_from_stream, image, &second);
     }
-    if (!strcmp(which, "disable-fail")) {
+    if (!strcmp(which, "disable-fail") || !strcmp(which, "enabled")) {
         if (health) CALL(ams_mel_ir_health_enable, health);
         if (stacked) CALL(ams_mel_ir_stacked_enable, stacked);
         if (image) CALL(ams_mel_ir_stream_start, image);
     }
     CHECK(ams_mel_ir_channel_comms_metadata_open(view, 0, &metadata, &registration, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(ams_mel_ir_channel_comms_metadata_open(view, 2, NULL, &registration, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(ams_mel_ir_channel_comms_metadata_open(view, 2, &metadata, NULL, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(ams_mel_ir_channel_comms_metadata_open(view, 2, &metadata, &registration, NULL, 1, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(ams_mel_ir_channel_comms_metadata_open(view, SIZE_MAX, &metadata, &registration, NULL, 0, NULL) == AMS_MEL_INTERNAL_ERROR);
+    CHECK(!metadata && count(log, "common_comms_registration\n") == 0);
+    if (!strcmp(which, "expired")) {
+        close_typed();
+        CHECK(ams_mel_ir_channel_comms_metadata_open(view, 2, &metadata, &registration, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+        CHECK(!metadata && count(log, "common_comms_registration\n") == 0);
+        goto done;
+    }
     if (!strcmp(which, "zero")) {
         ams_mel_ir_channel_capability *capability = NULL;
         const ams_mel_ir_channel_capability_v1 *cap = NULL;
@@ -170,6 +193,12 @@ int main(int argc, char **argv)
         CHECK(ams_mel_ir_channel_comms_metadata_open(second, 2, &duplicate, &registration, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
         CHECK(!duplicate); CHECK(count(log, "common_comms_registration\n") == 1);
         if (failed) goto done;
+    }
+    if (metadata) {
+        CHECK(registration == AMS_MEL_IR_RETURN_SUCCESS);
+        CHECK(ams_mel_ir_channel_comms_metadata_open(view, 2, &metadata, &registration, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(ams_mel_ir_channel_comms_metadata_receive(metadata, 0, NULL, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(ams_mel_ir_channel_comms_metadata_get_counters(metadata, NULL, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
     }
     if (!strcmp(which, "register-reentry")) {
         CHECK(!health && !image && !stacked && !view);
@@ -199,6 +228,17 @@ int main(int argc, char **argv)
         check_report(0x80000000U, 0xf0000000U); check_report(0x80000001U, 0xf0000001U);
         CALL(ams_mel_ir_channel_comms_metadata_get_counters, metadata, &counters);
         CHECK(counters.events_received == 6 && counters.events_dropped_queue_full == 4);
+    } else if (!strcmp(which, "concurrent")) {
+        pthread_t threads[8]; unsigned indices[8];
+        for (i = 0; i < 8; ++i) { indices[i] = i; CHECK(!pthread_create(&threads[i], NULL, concurrent_submit, &indices[i])); }
+        for (i = 0; i < 8; ++i) CHECK(!pthread_join(threads[i], NULL));
+        CALL(ams_mel_ir_channel_comms_metadata_get_counters, metadata, &counters);
+        CHECK(counters.events_received == 8 && counters.events_dropped_queue_full == 6);
+        for (i = 0; i < 2; ++i) {
+            CALL(ams_mel_ir_channel_comms_metadata_receive, metadata, 0, &report);
+            CHECK(report.command_id >= UINT32_MAX - 7);
+            CHECK(report.request_id == 0x80000000U + (UINT32_MAX - report.command_id));
+        }
     } else if (!strcmp(which, "async") || !strcmp(which, "async-typed")) {
         pthread_t closer;
         int typed = !strcmp(which, "async-typed");
@@ -266,6 +306,7 @@ int main(int argc, char **argv)
         CALL(ams_mel_ir_c2_metadata_close, &c2_metadata); CALL(ams_mel_ir_channel_close, &c2_view); CALL(ams_mel_ir_c2_close, &c2);
     }
 done:
+    if (!strcmp(which, "owner-first")) CALL(ams_mel_ir_channel_comms_metadata_close, &metadata);
     CALL(ams_mel_ir_channel_close, &view); CALL(ams_mel_ir_channel_close, &second);
     close_typed(); CALL(ams_mel_session_close, &session);
     CALL(ams_mel_ir_channel_comms_metadata_close, &metadata); CALL(ams_mel_ir_channel_comms_metadata_close, &metadata);
