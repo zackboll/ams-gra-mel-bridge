@@ -198,7 +198,9 @@ constexpr std::size_t no_retention_slot = static_cast<std::size_t>(-1);
  * own ordinary first-release path. */
 constexpr std::size_t retained_reserve_size = 64U;
 struct RetainedReserveSlot {
-    RetainedBufferNode node;
+    /* Intentionally never destroyed, including static destruction: provider
+     * code may already be shutting down then. Construct once without allocation. */
+    alignas(RetainedBufferNode) unsigned char storage[sizeof(RetainedBufferNode)];
     std::atomic<bool> claimed{};
 };
 RetainedReserveSlot retained_reserve[retained_reserve_size];
@@ -209,7 +211,7 @@ RetainedBufferNode *claim_reserved_node() noexcept
         bool expected = false;
         if (slot.claimed.compare_exchange_strong(expected, true,
                                                  std::memory_order_acq_rel))
-            return &slot.node;
+            return ::new (static_cast<void *>(slot.storage)) RetainedBufferNode{};
     }
     return nullptr;
 }
@@ -588,6 +590,14 @@ enum class Lifecycle {
 };
 
 struct CallbackState {
+    struct Checkout {
+        std::shared_ptr<irmel::Buffer> buffer;
+        std::size_t retention{no_retention_slot};
+    };
+    bool checkout_installed{}, checkout_open{}, checkout_started{};
+    std::size_t checkout_head{}, checkout_size{};
+    std::vector<Checkout> checkouts;
+    ams_mel_ir_image_checkout_counters_v1 checkout_counters{};
     struct DeferredRelease {
         std::shared_ptr<irmel::Buffer> buffer;
         bool already_counted{};
@@ -738,7 +748,18 @@ struct CallbackState {
     bool defer_release(const std::shared_ptr<irmel::Buffer>& buffer,
                        std::size_t hold_slot, bool already_counted) noexcept
     {
-        if (free_deferred_releases.empty()) return false;
+        if (free_deferred_releases.empty()) {
+            if (control_only) {
+                park_buffer(buffer);
+                uncertain_release.store(true, std::memory_order_release);
+                if (!already_counted) ++retained_frames;
+                increment(checkout_counters.releases_uncertain);
+                lifecycle = Lifecycle::Failed;
+                ready.notify_all();
+                if (auto state = owner.lock()) image_stream_retain_failed(state);
+            }
+            return false;
+        }
         const std::size_t index = free_deferred_releases.back();
         free_deferred_releases.pop_back();
         deferred_releases[index].buffer = buffer;
@@ -749,9 +770,21 @@ struct CallbackState {
         return true;
     }
 
+    bool park_buffer(const std::shared_ptr<irmel::Buffer>& buffer) noexcept
+    {
+        const bool parked = park_pre_release_buffer(buffer);
+        /* No finite bridge can retain infinitely many hostile deliveries.
+         * Fail-stop rather than destroy an unreturned opaque checkout when
+         * the process-wide 64-owner emergency reserve is exhausted. Existing
+         * Mono8 policy is intentionally unchanged. */
+        if (control_only && !parked) std::abort();
+        return parked;
+    }
+
     bool release_buffer(std::shared_ptr<irmel::Buffer> buffer,
                         std::size_t hold_slot, bool already_counted,
-                        bool callback_side) noexcept;
+                        bool callback_side, std::uint32_t *provider_return = nullptr,
+                        ams_mel_status_t *provider_status = nullptr) noexcept;
 
     /* Set as soon as any Buffer belonging to this stream reaches uncertain
      * ownership, from ANY path including a callback-side rejection. It is an
@@ -815,6 +848,7 @@ struct CallbackState {
         try {
             std::lock_guard lock{mutex};
             if (!already_counted) ++retained_frames;
+            if (control_only) increment(checkout_counters.releases_uncertain);
             lifecycle = Lifecycle::Failed;
             accepting = false;
             ready.notify_all();
@@ -890,6 +924,10 @@ struct CallbackState {
         const auto& buffer = release.value;
 
         try {
+            if (control_only) {
+                std::lock_guard lock{mutex};
+                increment(checkout_counters.callbacks_received);
+            }
             /* A null Buffer is rejected BEFORE any retention slot is acquired
              * (PR #42 third-review corrective).
              *
@@ -908,6 +946,7 @@ struct CallbackState {
                 std::lock_guard lock{mutex};
                 increment(counters.frames_received);
                 increment(counters.malformed_or_unsupported_frames);
+                if (control_only) increment(checkout_counters.callbacks_rejected);
                 return;
             }
             {
@@ -936,10 +975,11 @@ struct CallbackState {
                  * keeps the registered host storage this buffer points at
                  * alive. */
                 auto unattempted = std::move(release.value);
-                (void)park_pre_release_buffer(unattempted);
+                (void)park_buffer(unattempted);
                 {
                     std::lock_guard lock{mutex};
                     increment(counters.malformed_or_unsupported_frames);
+                    if (control_only) increment(checkout_counters.callbacks_rejected);
                 }
                 retain_uncertain_buffer(std::move(unattempted), no_retention_slot, false);
                 return;
@@ -950,6 +990,30 @@ struct CallbackState {
              * Exhaustion/uncertain release retains the graph as for acquisition. */
             if (control_only) {
                 std::lock_guard lock{mutex};
+                const auto state = owner.lock();
+                if (checkout_open && lifecycle == Lifecycle::Running && state &&
+                    state->application_buffers.count && !state->application_buffers.operation &&
+                    !state->application_buffers.uncertain && free_retention_slots.size() >= 2U) {
+                    if (checkout_size < checkouts.size()) {
+                        /* No allocation and no provider getter/header access. The
+                         * releaser remains armed through the injected throw. */
+                        enqueue_allocation_failpoint();
+                        auto& item = checkouts[(checkout_head + checkout_size) % checkouts.size()];
+                        item.retention = release.retention;
+                        item.buffer = std::move(release.value);
+                        release.retention = no_retention_slot;
+                        ++checkout_size;
+                        ++retained_frames;
+                        increment(checkout_counters.checkouts_accepted);
+                        ready.notify_all();
+                        return;
+                    }
+                    increment(checkout_counters.queue_overflow);
+                } else if (checkout_open && lifecycle == Lifecycle::Running &&
+                           free_retention_slots.size() < 2U) {
+                    increment(checkout_counters.queue_overflow);
+                }
+                increment(checkout_counters.callbacks_rejected);
                 increment(counters.malformed_or_unsupported_frames);
                 return;
             }
@@ -1045,13 +1109,15 @@ struct CallbackState {
         } catch (...) {
             std::lock_guard lock{mutex};
             increment(counters.malformed_or_unsupported_frames);
+            if (control_only) increment(checkout_counters.callbacks_rejected);
         }
     }
 };
 
 bool CallbackState::release_buffer(std::shared_ptr<irmel::Buffer> buffer,
                                    std::size_t hold_slot, bool already_counted,
-                                   bool callback_side) noexcept
+                                   bool callback_side, std::uint32_t *provider_return,
+                                   ams_mel_status_t *provider_status) noexcept
 {
     if (!buffer) return true;
     bool original_result = true;
@@ -1059,7 +1125,7 @@ bool CallbackState::release_buffer(std::shared_ptr<irmel::Buffer> buffer,
     try {
         std::unique_lock lock{mutex};
         if (exhaust_release_slots_failpoint()) {
-            (void)park_pre_release_buffer(buffer);
+            (void)park_buffer(buffer);
             lock.unlock();
             retain_uncertain_buffer(std::move(buffer), no_retention_slot,
                                     already_counted);
@@ -1080,12 +1146,12 @@ bool CallbackState::release_buffer(std::shared_ptr<irmel::Buffer> buffer,
                 /* An earlier release became uncertain. This call was never
                  * attempted; park its wrapper while the already-poisoned graph
                  * remains retained. This is not ordinary congestion. */
-                (void)park_pre_release_buffer(buffer);
+                (void)park_buffer(buffer);
                 return false;
             }
         }
         if (free_uncertain_slots.empty()) {
-            (void)park_pre_release_buffer(buffer);
+            (void)park_buffer(buffer);
             return false;
         }
         const std::size_t first_slot = free_uncertain_slots.back();
@@ -1101,9 +1167,13 @@ bool CallbackState::release_buffer(std::shared_ptr<irmel::Buffer> buffer,
         for (;;) {
             bool ok = false;
             try {
-                ok = operation->release() == irmel::Return::Success;
+                const auto returned = operation->release();
+                if (original && provider_return) *provider_return = static_cast<std::uint32_t>(returned);
+                ok = returned == irmel::Return::Success;
+                if (original && provider_status) *provider_status = ok ? AMS_MEL_OK : AMS_MEL_PROVIDER_FAILED;
             } catch (...) {
                 ok = false;
+                if (original && provider_status) *provider_status = AMS_MEL_PROVIDER_EXCEPTION;
             }
             if (!ok) {
                 if (original) original_result = false;
@@ -1136,7 +1206,7 @@ bool CallbackState::release_buffer(std::shared_ptr<irmel::Buffer> buffer,
                 const std::size_t index = pending_deferred_releases.back();
                 pending_deferred_releases.pop_back();
                 if (free_uncertain_slots.empty()) {
-                    if (park_pre_release_buffer(deferred_releases[index].buffer)) {
+                    if (park_buffer(deferred_releases[index].buffer)) {
                         deferred_releases[index].already_counted = false;
                         deferred_releases[index].buffer.reset();
                         free_deferred_releases.push_back(index);
@@ -1182,6 +1252,7 @@ bool CallbackState::release_buffer(std::shared_ptr<irmel::Buffer> buffer,
                 if (already_counted && retained_frames != 0U) --retained_frames;
                 if (release_obligations != 0U) --release_obligations;
             }
+            if (control_only) increment(checkout_counters.releases_succeeded);
             release_ready.notify_all();
             if (pending_deferred_releases.empty()) {
                 release_executor_owned = false;
@@ -1197,7 +1268,7 @@ bool CallbackState::release_buffer(std::shared_ptr<irmel::Buffer> buffer,
             const std::size_t index = pending_deferred_releases.back();
             pending_deferred_releases.pop_back();
             if (free_uncertain_slots.empty()) {
-                if (park_pre_release_buffer(deferred_releases[index].buffer)) {
+                if (park_buffer(deferred_releases[index].buffer)) {
                     deferred_releases[index].already_counted = false;
                     deferred_releases[index].buffer.reset();
                     free_deferred_releases.push_back(index);
@@ -1219,7 +1290,7 @@ bool CallbackState::release_buffer(std::shared_ptr<irmel::Buffer> buffer,
             lock.unlock();
         }
     } catch (...) {
-        (void)park_pre_release_buffer(buffer);
+        (void)park_buffer(buffer);
         /* Defensive scope-exit repair. Provider exceptions are translated in
          * the inner call, and all normal bookkeeping is preallocated/noexcept;
          * nevertheless, never leave an admitted executor permanently claimed
@@ -1476,10 +1547,12 @@ CommonChannelAccess common_from_stream(const ams_mel_ir_stream *owner)
                     return reconcile_buffer(object, owner->callback->mutex, owner->application_buffers,
                         [&] { return owner->callback->callbacks_in_flight.load(std::memory_order_acquire) == 0 &&
                             owner->callback->retained_frames == 0 && owner->callback->release_obligations == 0 &&
+                            !owner->callback->release_executor_owned &&
                             !owner->callback->uncertain_release.load(std::memory_order_acquire); });
                 }, [&] { return !state->callback->uncertain_release.load(std::memory_order_acquire) &&
                     state->callback->callbacks_in_flight.load(std::memory_order_acquire) == 0 &&
-                    state->callback->retained_frames == 0 && state->callback->release_obligations == 0; });
+                    state->callback->retained_frames == 0 && state->callback->release_obligations == 0 &&
+                    !state->callback->release_executor_owned; });
         }};
 }
 } // namespace ams_mel_common
@@ -1735,6 +1808,170 @@ struct ams_mel_ir_frame_snapshot {
     QueuedFrame frame;
     std::shared_ptr<ImageStreamState> state;
 };
+
+struct ams_mel_ir_image_checkout {
+    std::shared_ptr<ImageStreamState> state;
+};
+struct ams_mel_ir_image_checkout_lease {
+    std::shared_ptr<ImageStreamState> state;
+    CallbackState::Checkout item;
+};
+
+namespace {
+template<class Action>
+ams_mel_status_t checkout_boundary(char *out, std::size_t capacity,
+                                  std::size_t *required, Action action) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!out && capacity) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        const auto status = action();
+        if (status != AMS_MEL_OK) diagnostic("Image checkout operation failed", out, capacity, required);
+        return status;
+    } catch (...) {
+        diagnostic("Image checkout allocation/internal failure", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_image_checkout_open(
+    ams_mel_ir_stream *image, std::size_t capacity, std::size_t limit,
+    ams_mel_ir_image_checkout **output, char *out, std::size_t bytes,
+    std::size_t *required) noexcept
+{
+    return checkout_boundary(out, bytes, required, [&]() -> ams_mel_status_t {
+        if (!image || !output || *output || !capacity || capacity > limit ||
+            limit > std::numeric_limits<std::size_t>::max() - 2U) return AMS_MEL_INVALID_ARGUMENT;
+        auto state = image->state;
+        auto receiver = std::make_unique<ams_mel_ir_image_checkout>();
+        receiver->state = state;
+        /* Prepare all allocations privately, before publishing any installation.
+         * The two extra slots handle rejection and synchronous reuse generations. */
+        CallbackState prepared;
+        prepared.checkouts.resize(capacity);
+        const auto slots = limit + 2U;
+        prepared.retention_slots.resize(slots);
+        prepared.uncertain_slots.resize(slots);
+        prepared.deferred_releases.resize(slots);
+        prepared.free_retention_slots.reserve(slots);
+        prepared.free_uncertain_slots.reserve(slots);
+        prepared.free_deferred_releases.reserve(slots);
+        prepared.pending_deferred_releases.reserve(slots);
+        for (std::size_t i = 0; i < slots; ++i) {
+            prepared.free_retention_slots.push_back(i);
+            prepared.free_uncertain_slots.push_back(i);
+            prepared.free_deferred_releases.push_back(i);
+        }
+        auto& callback = *state->callback;
+        std::lock_guard lock{callback.mutex};
+        if (!state->control_only || !state->image_channel || callback.checkout_installed ||
+            callback.checkout_started || callback.lifecycle != Lifecycle::Attached ||
+            state->application_buffers.operation || callback.retained_frames ||
+            callback.callbacks_in_flight.load(std::memory_order_acquire) ||
+            callback.release_obligations || callback.release_executor_owned ||
+            callback.uncertain_release.load(std::memory_order_acquire)) return AMS_MEL_PROVIDER_FAILED;
+        callback.checkouts.swap(prepared.checkouts);
+        callback.retention_slots.swap(prepared.retention_slots);
+        callback.uncertain_slots.swap(prepared.uncertain_slots);
+        callback.deferred_releases.swap(prepared.deferred_releases);
+        callback.free_retention_slots.swap(prepared.free_retention_slots);
+        callback.free_uncertain_slots.swap(prepared.free_uncertain_slots);
+        callback.free_deferred_releases.swap(prepared.free_deferred_releases);
+        callback.pending_deferred_releases.swap(prepared.pending_deferred_releases);
+        callback.checkout_installed = callback.checkout_open = true;
+        *output = receiver.release();
+        return AMS_MEL_OK;
+    });
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_image_checkout_receive(
+    ams_mel_ir_image_checkout *receiver, std::uint32_t timeout,
+    ams_mel_ir_image_checkout_lease **output, char *out, std::size_t bytes,
+    std::size_t *required) noexcept
+{
+    return checkout_boundary(out, bytes, required, [&]() -> ams_mel_status_t {
+        if (!receiver || !output || *output) return AMS_MEL_INVALID_ARGUMENT;
+        auto state = receiver->state; // no subsequent access to the public handle
+        auto& callback = *state->callback;
+        std::unique_lock lock{callback.mutex};
+#ifdef AMS_MEL_ENABLE_TEST_FAILPOINTS
+        if (const char *base = std::getenv("AMS_MEL_TEST_CHECKOUT_WAIT"))
+            std::ofstream{base} << "entered\n";
+#endif
+        if (!callback.ready.wait_for(lock, std::chrono::milliseconds{timeout}, [&] {
+                return callback.checkout_size || !callback.checkout_open ||
+                    callback.lifecycle == Lifecycle::Failed || callback.lifecycle == Lifecycle::Stopping ||
+                    callback.lifecycle == Lifecycle::Stopped;
+            })) return AMS_MEL_TIMEOUT;
+        if (!callback.checkout_open) return AMS_MEL_STREAM_STOPPED;
+        if (!callback.checkout_size) return callback.lifecycle == Lifecycle::Failed ?
+            AMS_MEL_PROVIDER_FAILED : AMS_MEL_STREAM_STOPPED;
+        /* Allocation failure leaves the FIFO item and its obligation untouched. */
+        auto lease = std::make_unique<ams_mel_ir_image_checkout_lease>();
+        lease->state = state;
+        lease->item = std::move(callback.checkouts[callback.checkout_head]);
+        callback.checkout_head = (callback.checkout_head + 1U) % callback.checkouts.size();
+        --callback.checkout_size;
+        *output = lease.release();
+        return AMS_MEL_OK;
+    });
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_image_checkout_get_counters(
+    const ams_mel_ir_image_checkout *receiver, ams_mel_ir_image_checkout_counters_v1 *output,
+    char *out, std::size_t bytes, std::size_t *required) noexcept
+{
+    return checkout_boundary(out, bytes, required, [&]() -> ams_mel_status_t {
+        if (!receiver || !output) return AMS_MEL_INVALID_ARGUMENT;
+        const auto state = receiver->state;
+        std::lock_guard lock{state->callback->mutex};
+        *output = state->callback->checkout_counters;
+        return AMS_MEL_OK;
+    });
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_image_checkout_lease_close(
+    ams_mel_ir_image_checkout_lease **handle, std::uint32_t *result,
+    char *out, std::size_t bytes, std::size_t *required) noexcept
+{
+    if (result) *result = UINT32_MAX;
+    return checkout_boundary(out, bytes, required, [&]() -> ams_mel_status_t {
+        if (!handle || !result) return AMS_MEL_INVALID_ARGUMENT;
+        if (!*handle) return AMS_MEL_OK;
+        std::unique_ptr<ams_mel_ir_image_checkout_lease> lease{std::exchange(*handle, nullptr)};
+        auto status = AMS_MEL_PROVIDER_FAILED;
+        const bool ok = lease->state->callback->release_buffer(std::move(lease->item.buffer),
+            lease->item.retention, true, false, result, &status);
+        return ok ? AMS_MEL_OK : status;
+    });
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_image_checkout_close(
+    ams_mel_ir_image_checkout **handle, char *out, std::size_t bytes,
+    std::size_t *required) noexcept
+{
+    return checkout_boundary(out, bytes, required, [&]() -> ams_mel_status_t {
+        if (!handle) return AMS_MEL_INVALID_ARGUMENT;
+        if (!*handle) return AMS_MEL_OK;
+        std::unique_ptr<ams_mel_ir_image_checkout> receiver{std::exchange(*handle, nullptr)};
+        auto state = receiver->state;
+        auto& callback = *state->callback;
+        std::unique_lock lock{callback.mutex};
+        callback.checkout_open = false;
+        callback.ready.notify_all();
+        bool ok = true;
+        while (callback.checkout_size) {
+            auto item = std::move(callback.checkouts[callback.checkout_head]);
+            callback.checkout_head = (callback.checkout_head + 1U) % callback.checkouts.size();
+            --callback.checkout_size;
+            lock.unlock();
+            if (!callback.release_buffer(std::move(item.buffer), item.retention, true, false)) ok = false;
+            lock.lock();
+        }
+        return ok ? AMS_MEL_OK : AMS_MEL_PROVIDER_FAILED;
+    });
+}
 
 namespace {
 bool supported(const irmel::ChannelCapability& capability) noexcept
@@ -2384,6 +2621,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
                 if (state->callback->lifecycle == Lifecycle::Stopped ||
                     state->callback->lifecycle == Lifecycle::Stopping) return AMS_MEL_STREAM_STOPPED;
                 if (state->callback->lifecycle != Lifecycle::Attached) return AMS_MEL_PROVIDER_FAILED;
+                state->callback->checkout_started = true;
                 state->callback->lifecycle = Lifecycle::Starting;
                 state->enable_attempted = true;
                 ++state->requests;

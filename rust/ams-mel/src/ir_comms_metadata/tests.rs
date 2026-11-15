@@ -298,6 +298,13 @@ mod native {
             operation: u32,
             hook: Option<extern "C" fn()>,
         ) -> i32;
+        fn ams_mel_test_completion_snapshot(family: u32, values: *mut u64) -> i32;
+        fn ams_mel_test_completion_owner_notify(
+            family: u32,
+            operation: u32,
+            target: u64,
+            observed: *mut u64,
+        ) -> i32;
     }
     static BARRIER: OnceLock<(Mutex<(bool, bool)>, Condvar)> = OnceLock::new();
     extern "C" fn hold_callback() {
@@ -573,6 +580,22 @@ mod native {
         }
         view.close().unwrap();
         session.close().unwrap();
+        // Explicit observer Close is not worker reclamation. Keep the event
+        // directory and DSO pin until every admitted Comms completion has
+        // finished its final-owner notification; otherwise a late worker can
+        // log after remove_dir_all and abort during process exit.
+        let mut counts = [0_u64; 6];
+        let mut observed = 0;
+        // SAFETY: established test-only probes, process-isolated native facade;
+        // family 2 is Comms and no further submissions occur in this child.
+        unsafe {
+            assert_eq!(ams_mel_test_completion_snapshot(2, counts.as_mut_ptr()), 1);
+            assert_eq!(
+                ams_mel_test_completion_owner_notify(2, 0, counts[0], &mut observed),
+                1
+            );
+        }
+        assert_eq!(observed, counts[0]);
         // SAFETY: unique test DSO pin. Callback/control operations finished above.
         assert_eq!(unsafe { dlclose(pin) }, 0);
         // Completion reclamation is independently qualified in integration tests;

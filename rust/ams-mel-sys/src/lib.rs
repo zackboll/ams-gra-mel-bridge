@@ -6019,7 +6019,68 @@ extern "C" {
     ) -> AmsMelStatus;
 }
 
-/// Opaque standalone host Buffer owner. No registration or checkout release.
+/// Opaque control-only Image checkout receiver. Not a pixel view.
+#[repr(C)]
+pub struct AmsMelIrImageCheckout {
+    _private: [u8; 0],
+}
+/// Unique delivered callback Buffer owner; close consumes even on release failure.
+#[repr(C)]
+pub struct AmsMelIrImageCheckoutLease {
+    _private: [u8; 0],
+}
+/// Copied saturating diagnostics; no payload metadata is inferred.
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct AmsMelIrImageCheckoutCountersV1 {
+    pub callbacks_received: u64,
+    pub checkouts_accepted: u64,
+    pub queue_overflow: u64,
+    pub callbacks_rejected: u64,
+    pub releases_succeeded: u64,
+    pub releases_uncertain: u64,
+}
+extern "C" {
+    pub fn ams_mel_ir_image_checkout_open(
+        image: *mut AmsMelIrStream,
+        capacity: usize,
+        limit: usize,
+        output: *mut *mut AmsMelIrImageCheckout,
+        diagnostic: *mut c_char,
+        bytes: usize,
+        required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_checkout_receive(
+        receiver: *mut AmsMelIrImageCheckout,
+        timeout_ms: u32,
+        output: *mut *mut AmsMelIrImageCheckoutLease,
+        diagnostic: *mut c_char,
+        bytes: usize,
+        required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_checkout_get_counters(
+        receiver: *const AmsMelIrImageCheckout,
+        output: *mut AmsMelIrImageCheckoutCountersV1,
+        diagnostic: *mut c_char,
+        bytes: usize,
+        required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_checkout_close(
+        receiver: *mut *mut AmsMelIrImageCheckout,
+        diagnostic: *mut c_char,
+        bytes: usize,
+        required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_checkout_lease_close(
+        lease: *mut *mut AmsMelIrImageCheckoutLease,
+        provider_return: *mut u32,
+        diagnostic: *mut c_char,
+        bytes: usize,
+        required: *mut usize,
+    ) -> AmsMelStatus;
+}
+
+/// Opaque standalone host Buffer owner. No unrestricted checkout release.
 #[repr(C)]
 pub struct AmsMelIrBuffer {
     _private: [u8; 0],
