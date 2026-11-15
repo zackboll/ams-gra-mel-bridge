@@ -1901,7 +1901,8 @@ extern "C" ams_mel_status_t ams_mel_ir_image_checkout_receive(
 #endif
         if (!callback.ready.wait_for(lock, std::chrono::milliseconds{timeout}, [&] {
                 return callback.checkout_size || !callback.checkout_open ||
-                    callback.lifecycle == Lifecycle::Failed || callback.lifecycle == Lifecycle::Stopped;
+                    callback.lifecycle == Lifecycle::Failed || callback.lifecycle == Lifecycle::Stopping ||
+                    callback.lifecycle == Lifecycle::Stopped;
             })) return AMS_MEL_TIMEOUT;
         if (!callback.checkout_open) return AMS_MEL_STREAM_STOPPED;
         if (!callback.checkout_size) return callback.lifecycle == Lifecycle::Failed ?

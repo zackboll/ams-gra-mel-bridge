@@ -111,6 +111,8 @@ int main(int argc, char **argv)
             CHECK(ams_mel_ir_image_checkout_receive(receiver, 0, &first, ARGS) == AMS_MEL_TIMEOUT);
             CALL(ams_mel_ir_image_checkout_get_counters, receiver, &counters);
             CHECK(counters.callbacks_rejected == 1 && counters.checkouts_accepted == 0);
+            CALL(ams_mel_ir_stream_stop, image);
+            CHECK(ams_mel_ir_image_checkout_receive(receiver, 0, &first, ARGS) == AMS_MEL_STREAM_STOPPED);
         }
         CALL(ams_mel_ir_image_checkout_close, &receiver);
         CALL(ams_mel_ir_stream_close, &image); CALL(ams_mel_ir_channel_close, &view);
@@ -231,6 +233,14 @@ int main(int argc, char **argv)
             CHECK(result == AMS_MEL_IR_RETURN_SUCCESS && !first);
         }
         CALL(ams_mel_ir_image_checkout_lease_close, &first, &result); CHECK(result == UINT32_MAX);
+        if (!strcmp(which, "overflow")) {
+            CALL(ams_mel_ir_image_checkout_receive, receiver, 0, &second);
+            CALL(ams_mel_ir_image_checkout_lease_close, &second, &result);
+            CHECK(events("checkout_released_3\n") == 1 && !events("checkout_released_4\n"));
+            CALL(ams_mel_ir_image_checkout_receive, receiver, 0, &second);
+            CALL(ams_mel_ir_image_checkout_lease_close, &second, &result);
+            CHECK(events("checkout_released_4\n") == 1);
+        }
         if (!strcmp(which, "reentry") || !strcmp(which, "reentry-bound")) {
             CALL(ams_mel_ir_image_checkout_receive, receiver, 0, &second);
             CHECK(second);
@@ -261,6 +271,9 @@ int main(int argc, char **argv)
     CALL(ams_mel_ir_channel_close, &view);
     CALL(ams_mel_session_close, &session);
     CHECK(events("application_checkout_released\n") == events("application_checkout_destroyed\n"));
+    if (!strcmp(which, "overflow")) {
+        CHECK(position("checkout_released_3\n") < position("checkout_released_4\n"));
+    }
     if (!strcmp(which, "normal")) {
         CHECK(position("checkout_released_2\n") < position("checkout_released_4\n"));
         CHECK(position("checkout_released_4\n") < position("checkout_released_3\n"));
