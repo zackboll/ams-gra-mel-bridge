@@ -2071,7 +2071,8 @@ Return standalone_disable(const std::string& scenario, unsigned family)
     if (scenario == "common-meta-disable019-ada")
         (void)mock_completion_release_family(family == 6U ? 13U : 1U, 1U);
     if (scenario == "common-meta-disable019-throw") throw std::runtime_error("mock Disable exception");
-    if (scenario == "common-meta-disable019-fail" || scenario == "common-meta-disable019-failed-detach") return Return::Fail;
+    if (scenario == "common-meta-disable019-fail" || scenario == "common-meta-disable019-failed-detach" ||
+        scenario == "common-meta-disable019-failed-stop") return Return::Fail;
     if (scenario == "common-meta-disable019-refuse") return Return::NotSupported;
     return Return::Success;
 }

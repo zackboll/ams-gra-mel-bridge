@@ -170,7 +170,8 @@ int main(int argc, char **argv)
     }
     if (!strcmp(which, "reentry")) install(reenter);
     if (!strcmp(which, "close")) install(close_reentry);
-    failure = !strcmp(which, "fail") || !strcmp(which, "refuse") || !strcmp(which, "throw") || !strcmp(which, "failed-detach");
+    failure = !strcmp(which, "fail") || !strcmp(which, "refuse") || !strcmp(which, "throw") ||
+        !strcmp(which, "failed-detach") || !strcmp(which, "failed-stop");
     if (!strcmp(which, "concurrent")) {
         pthread_t thread; install(barrier);
         CHECK(!pthread_create(&thread, NULL, disable_thread, NULL));
@@ -189,7 +190,7 @@ int main(int argc, char **argv)
         CHECK(status == (!strcmp(which, "throw") ? AMS_MEL_PROVIDER_EXCEPTION :
             failure ? AMS_MEL_PROVIDER_FAILED : AMS_MEL_OK));
         CHECK(result == (!strcmp(which, "throw") ? UINT32_MAX :
-            (!strcmp(which, "fail") || !strcmp(which, "failed-detach")) ? AMS_MEL_IR_RETURN_FAIL :
+            (!strcmp(which, "fail") || !strcmp(which, "failed-detach") || !strcmp(which, "failed-stop")) ? AMS_MEL_IR_RETURN_FAIL :
             !strcmp(which, "refuse") ? AMS_MEL_IR_RETURN_NOT_SUPPORTED : AMS_MEL_IR_RETURN_SUCCESS));
     }
     CHECK(count("standalone_disable_entered\n") == 1);
@@ -200,6 +201,11 @@ int main(int argc, char **argv)
     if (failure) {
         CHECK(ams_mel_ir_channel_disable(second, &result, ARGS) == AMS_MEL_PROVIDER_FAILED);
         CHECK(result == UINT32_MAX && enable() == AMS_MEL_PROVIDER_FAILED);
+        if (!strcmp(which, "failed-stop")) {
+            CHECK(image);
+            CHECK(ams_mel_ir_stream_stop(image, ARGS) == AMS_MEL_PROVIDER_FAILED);
+            CHECK(count("channel_detached\n") == 1);
+        }
         CHECK(close_typed() == AMS_MEL_PROVIDER_FAILED);
         if (!strcmp(which, "failed-detach")) {
             CHECK(c2 || health || stacked || image);

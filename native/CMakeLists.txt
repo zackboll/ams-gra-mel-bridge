@@ -1222,6 +1222,9 @@ if(AMS_MEL_BUILD_TESTS)
         endforeach()
     endforeach()
 
+    add_test(NAME channel_disable_image_failed_stop COMMAND test_channel_disable image failed-stop)
+    set_tests_properties(channel_disable_image_failed_stop PROPERTIES TIMEOUT 30)
+
     add_executable(test_c2_comms_registration tests/test_c2_comms_registration.c)
     set_target_properties(test_c2_comms_registration PROPERTIES
         C_EXTENSIONS OFF C_STANDARD 11 C_STANDARD_REQUIRED YES)

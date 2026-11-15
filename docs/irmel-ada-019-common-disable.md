@@ -83,7 +83,7 @@ the common API, capabilities, idempotence, re-enable, independently pending
 KeepAlive completion and expired views; unsupported families are also tested.
 
 The mock's Ada pending future is deterministically fulfilled by its provider
-after the Disable call returns its lifecycle result; C tests independently hold
+when its Disable body reaches the return marker; C tests independently hold
 both future kinds *after* Disable and release them explicitly to prove no forced
 cancellation. This is mock scheduling, not a generic provider completion promise.
 

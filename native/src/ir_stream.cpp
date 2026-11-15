@@ -1554,7 +1554,7 @@ ImageCleanupOutcome finish_deferred_cleanup_from_external_owner(
                     return state->cleanup_ok ? ImageCleanupOutcome::Succeeded
                                              : ImageCleanupOutcome::Failed;
                 if (state->control_only && state->disable_failed &&
-                    !state->public_owner_closed && !close_public_owner)
+                    !state->control_stop_requested && !state->public_owner_closed && !close_public_owner)
                     return ImageCleanupOutcome::NotRequired;
                 const bool stopping = callback.lifecycle == Lifecycle::Stopping ||
                     callback.lifecycle == Lifecycle::Stopped ||
@@ -1749,6 +1749,7 @@ void logical_stop(ImageStreamState& stream, bool failed) noexcept
         {
             std::lock_guard lock{stream.callback->mutex};
             stream.callback->accepting = false;
+            stream.control_stop_requested = true;
             if (stream.comms_metadata) stream.comms_metadata->deactivate(failed);
             if (stream.callback->lifecycle != Lifecycle::Failed)
                 stream.callback->lifecycle = failed ? Lifecycle::Failed : Lifecycle::Stopping;
@@ -2355,32 +2356,38 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
         // Control-only Start has no buffer work. Retain the graph exactly like
         // a common operation, and never refer to the public wrapper on reentry.
         auto state = stream->state;
-        std::shared_ptr<irmel::Channel> channel;
-        {
-            std::lock_guard lock{state->callback->mutex};
-            if (state->callback->lifecycle == Lifecycle::Running) return AMS_MEL_OK;
-            if (state->callback->lifecycle == Lifecycle::Stopped ||
-                state->callback->lifecycle == Lifecycle::Stopping) return AMS_MEL_STREAM_STOPPED;
-            if (state->callback->lifecycle != Lifecycle::Attached) return AMS_MEL_PROVIDER_FAILED;
-            state->callback->lifecycle = Lifecycle::Starting;
-            state->enable_attempted = true;
-            ++state->requests;
-            channel = state->channel;
-        }
-        ams_mel_status_t status = AMS_MEL_OK;
         try {
-            if (channel->enable() != irmel::Return::Success) status = AMS_MEL_PROVIDER_FAILED;
-        } catch (...) { status = AMS_MEL_PROVIDER_EXCEPTION; }
-        {
-            std::lock_guard lock{state->callback->mutex};
-            if (state->callback->lifecycle == Lifecycle::Failed) status = AMS_MEL_PROVIDER_FAILED;
-            if (state->callback->lifecycle == Lifecycle::Starting)
-                state->callback->lifecycle = status == AMS_MEL_OK ? Lifecycle::Running : Lifecycle::Failed;
+            std::shared_ptr<irmel::Channel> channel;
+            {
+                std::lock_guard lock{state->callback->mutex};
+                if (state->callback->lifecycle == Lifecycle::Running) return AMS_MEL_OK;
+                if (state->callback->lifecycle == Lifecycle::Stopped ||
+                    state->callback->lifecycle == Lifecycle::Stopping) return AMS_MEL_STREAM_STOPPED;
+                if (state->callback->lifecycle != Lifecycle::Attached) return AMS_MEL_PROVIDER_FAILED;
+                state->callback->lifecycle = Lifecycle::Starting;
+                state->enable_attempted = true;
+                ++state->requests;
+                channel = state->channel;
+            }
+            ams_mel_status_t status = AMS_MEL_OK;
+            try {
+                if (channel->enable() != irmel::Return::Success) status = AMS_MEL_PROVIDER_FAILED;
+            } catch (...) { status = AMS_MEL_PROVIDER_EXCEPTION; }
+            {
+                std::lock_guard lock{state->callback->mutex};
+                if (state->callback->lifecycle == Lifecycle::Failed) status = AMS_MEL_PROVIDER_FAILED;
+                if (state->callback->lifecycle == Lifecycle::Starting)
+                    state->callback->lifecycle = status == AMS_MEL_OK ? Lifecycle::Running : Lifecycle::Failed;
+            }
+            channel.reset();
+            if (!finish_image_request(state) && status == AMS_MEL_OK) status = AMS_MEL_PROVIDER_FAILED;
+            diagnostic(status == AMS_MEL_OK ? "" : "control-only Image enable failed", out, capacity, required);
+            return status;
+        } catch (...) {
+            image_stream_retain_failed(state);
+            diagnostic("Image enable lifecycle failure; graph retained", out, capacity, required);
+            return AMS_MEL_INTERNAL_ERROR;
         }
-        channel.reset();
-        if (!finish_image_request(state) && status == AMS_MEL_OK) status = AMS_MEL_PROVIDER_FAILED;
-        diagnostic(status == AMS_MEL_OK ? "" : "control-only Image enable failed", out, capacity, required);
-        return status;
     }
     try {
         {

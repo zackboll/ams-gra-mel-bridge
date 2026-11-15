@@ -270,7 +270,7 @@ bool has_health(const irmel::ChannelCapability& capability)
 bool cleanup(const std::shared_ptr<HealthState>& state,bool retain_orphan)
 {
     std::shared_ptr<irmel::Channel> channel;std::shared_ptr<MetadataState> metadata;std::shared_ptr<NucState> nuc;bool disable=false;
-    {std::lock_guard lock{state->mutex};if(state->requests!=0U)return false;if(state->cleanup_started)return !state->channel;state->cleanup_started=true;channel=state->channel;metadata=state->metadata;nuc=state->nuc;disable=state->enable_attempted;state->enable_attempted=false;}
+    {std::lock_guard lock{state->mutex};if(state->requests!=0U)return false;if(state->cleanup_started)return !state->channel;state->cleanup_started=true;channel=state->channel;metadata=state->metadata;nuc=state->nuc;disable=state->enable_attempted;}
     if(nuc)nuc->deactivate();
     if(metadata){std::lock_guard lock{metadata->mutex};if(metadata->lifecycle==MetadataLifecycle::Active)metadata->lifecycle=MetadataLifecycle::Inactive;}
     bool ok=!state->disable_failed;if(disable&&channel){try{if(channel->disable()!=irmel::Return::Success)ok=false;}catch(...){ok=false;}}
@@ -441,29 +441,35 @@ extern "C" ams_mel_status_t ams_mel_ir_health_enable(ams_mel_ir_health* health,c
     diagnostic("", out, capacity, required);
     if (!health || !health->state || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
     auto state = health->state;
-    std::shared_ptr<irmel::Channel> channel;
-    {
-        std::lock_guard lock{state->mutex};
-        if (state->lifecycle == Lifecycle::Enabled) return AMS_MEL_OK;
-        if (state->lifecycle != Lifecycle::Attached) return AMS_MEL_PROVIDER_FAILED;
-        state->enable_attempted = true;
-        state->lifecycle = Lifecycle::Enabling;
-        ++state->requests;
-        channel = state->channel;
-    }
-    ams_mel_status_t status = AMS_MEL_OK;
     try {
-        if (channel->enable() != irmel::Return::Success) status = AMS_MEL_PROVIDER_FAILED;
-    } catch (...) { status = AMS_MEL_PROVIDER_EXCEPTION; }
-    {
-        std::lock_guard lock{state->mutex};
-        if (state->lifecycle == Lifecycle::Enabling)
-            state->lifecycle = status == AMS_MEL_OK ? Lifecycle::Enabled : Lifecycle::Failed;
+        std::shared_ptr<irmel::Channel> channel;
+        {
+            std::lock_guard lock{state->mutex};
+            if (state->lifecycle == Lifecycle::Enabled) return AMS_MEL_OK;
+            if (state->lifecycle != Lifecycle::Attached) return AMS_MEL_PROVIDER_FAILED;
+            state->enable_attempted = true;
+            state->lifecycle = Lifecycle::Enabling;
+            ++state->requests;
+            channel = state->channel;
+        }
+        ams_mel_status_t status = AMS_MEL_OK;
+        try {
+            if (channel->enable() != irmel::Return::Success) status = AMS_MEL_PROVIDER_FAILED;
+        } catch (...) { status = AMS_MEL_PROVIDER_EXCEPTION; }
+        {
+            std::lock_guard lock{state->mutex};
+            if (state->lifecycle == Lifecycle::Enabling)
+                state->lifecycle = status == AMS_MEL_OK ? Lifecycle::Enabled : Lifecycle::Failed;
+        }
+        channel.reset();
+        if (!finish_health_request(state) && status == AMS_MEL_OK) status = AMS_MEL_PROVIDER_FAILED;
+        diagnostic(status == AMS_MEL_OK ? "" : "Health enable failed", out, capacity, required);
+        return status;
+    } catch (...) {
+        retain_failed(state);
+        diagnostic("Health enable lifecycle failure; graph retained", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
     }
-    channel.reset();
-    if (!finish_health_request(state) && status == AMS_MEL_OK) status = AMS_MEL_PROVIDER_FAILED;
-    diagnostic(status == AMS_MEL_OK ? "" : "Health enable failed", out, capacity, required);
-    return status;
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_health_get_capabilities(ams_mel_ir_health* health,ams_mel_ir_channel_capability** output,char* out,std::size_t capacity,std::size_t* required) noexcept
