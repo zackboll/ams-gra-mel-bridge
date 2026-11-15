@@ -117,3 +117,54 @@ Final source identities, complete regression results and exact-HEAD hosted CI
 are not yet concluded. **Disposition: QUALIFICATION_INCOMPLETE**, not
 `READY_FOR_INDEPENDENT_REVIEW`. PR must be non-draft with auto-merge disabled;
 no merge, Pages publication or upstream release-asset changes are authorized.
+
+## Subsequent qualification and remaining blockers
+
+- Source/native repeat qualification at `4fb26fb5ebe3e4a3fc127a42728a32d02e1284a6`
+  passed, with 55 pristine files / 58 Ada publication files, 1,523 native
+  declaration sections, 322 public bookmarks and 1,797 independently enumerated
+  type-link occurrences. These are observations, not admission constants.
+- Baseline tree: `a8efcacf5a763867a149eb1a507caf75d4ff164c`.
+  Complete production-source fingerprint (baseline and candidate identical):
+  `16883b0065ba8d685650c767ec7d9789d0aa161bdfb9251ddc8f6849e92ec6c3`.
+- The corrected source regression suite passed all 11 cases, including legitimate
+  new declarations, regenerated catalogs/manifests, resealed artifacts, native
+  restoration and independently repeated reconstruction (376.170 seconds).
+- Final complete-page Chromium campaign passed **2,856 assertions / 16 contexts**
+  on Chromium **156.0.8078.4**, including every native API page (not just selected
+  bookmarks). Its candidate is the full 58-file source-qualified publication.
+- Current authored qualification: all 32 negatives and five evidence-contract
+  tests passed; nine portal assets and every non-manifest API file unchanged.
+- Local normal Ada/Rust build, artifact sealing and independent verification passed
+  at `6d3da4f69af8fb0fae50aa55ac2d664c6148117b`. Hosted documentation build at
+  `4fb26fb5ebe3e4a3fc127a42728a32d02e1284a6` passed; its deployment and live
+  jobs were skipped for the PR as required. These are not final-HEAD conclusions.
+- The corrected HTTP campaign passed 58 parent tests plus its 15-case historical
+  artifact child campaign; documentation CI tests passed 50 cases. Policy,
+  exact historical Python feature admission and installer/origin tests passed.
+- Serial `make check` completed native (799 cases), build-tree isolation,
+  formatter and Ada execution gates, then failed the final-newline check on five
+  newly added text files. The newlines are now fixed and the check passes. This
+  was a migration regression, not a pre-existing issue; the full serial command
+  is rerun, not silently reported green.
+- Broad unprepared discovery is **not green**. Exact starting-main discovery
+  reproduced 11 documentation setup errors / six pilot skips, plus 14 script
+  errors, with missing root `_site` / explicit historical environment. Candidate
+  unprepared discovery produced 25 errors / six skips: the same prerequisites,
+  newly added evidence prerequisites and an import-order-dependent manifest mock.
+  The mock now patches the actual consumer alias and the fast suite passes.
+  Full legacy artifact/count-oriented tests have not yet all been qualified
+  against a prepared current-source fixture. Historical suites are being run
+  in their immutable checkout rather than rewritten to accept current counts.
+- Initial hosted authored qualification at `6d3da4f` failed due to native-ledger
+  serialization in its disposable export. `bind()` now writes exactly the
+  independently measured ledger bytes; the subsequent local full negative suite
+  passes. The hosted failure remains in evidence, not suppressed.
+
+PR: <https://github.com/zackboll/ams-gra-mel-bridge/pull/230>, non-draft,
+auto-merge disabled. Latest required hosted qualification is still pending.
+Main advanced during parallel work (remote-tracking main observed at `34cc31f`);
+no unrelated runtime changes were adopted into this branch. Final integration
+against advanced main, full prepared current-source legacy suites and exact-HEAD
+hosted qualification remain blockers. **QUALIFICATION_INCOMPLETE** remains the
+only justified disposition. No Pages deployment or merge was performed.
