@@ -328,3 +328,24 @@ Initial aggregate restores rebuild the facade with toolchain-dependent binary
 hashes; final restored test facade still hashes to the initial test hash above;
 post-Ada production facade SHA-256 is
 `fe5f21702f4ab9a92513a01b90b32e3121f999940b8e43bb2abd451727ac7de4`.
+
+## Mainline integration during delivery
+
+PR #211 was opened non-draft after initial local qualification. Main advanced
+through RF documentation PR #209 to
+`99d7f11bc3e5b19c10c6d9daf0e7fe1c89b6fd41`. It was incorporated normally with
+merge `ef3ff6cfe844b22189a18a8cc4a0617618e0c9c3`, integrated tree
+`8475d57df5f91ad6cfaa691da6987ef8c5407545`, without rewriting published history.
+That tree exactly equals the initial hosted synthetic-merge tree for
+`f597a4ab22a53b1cde9fce97210a721d2f76e5b0` (parents main and initial feature
+HEAD `fda4cb2f269d14c5b9f3da0ec95878cc9a6a8d8c`). Only mainline RF documentation
+was added; the task diff against current main remains the six listed task paths.
+
+All standard gates, aggregate/restoration, workspace/static checks, focused
+Release stress, and actual reference-provider Debug/Release runs are rerun for
+this integrated source. Final integrated counts, final commit/tree and hosted
+run/synthetic-merge evidence are recorded on PR #211; earlier numbers above are
+not silently relabelled as later-source evidence. **HOSTED_CI_PENDING** until
+those final-source runs finish. Repository collaborators/teams expose only the
+author and no review team; an independent technical review is requested in the
+PR rather than self-assigned or self-approved. No access settings are changed.
