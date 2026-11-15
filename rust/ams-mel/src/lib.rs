@@ -102,6 +102,7 @@ use std::slice;
 use ams_mel_sys as sys;
 
 mod ir_c2_metadata;
+mod ir_comms_metadata;
 mod ir_discovery;
 mod ir_health;
 mod ir_health_metadata;
@@ -134,6 +135,7 @@ pub use ir_c2_metadata::{
     BitConfiguration, BitControlInterface, BitTypeDefinition, C2MetadataCounters, C2MetadataEvent,
     C2MetadataStream, CannotComply, CommandState, CommandStatus,
 };
+pub use ir_comms_metadata::{CommsMetadataCounters, CommsMetadataOpenError, CommsMetadataStream};
 pub use ir_config_set::ConfigSetCommand;
 pub use ir_health::{HealthConfig, HealthStatusChannel};
 pub use ir_health_metadata::{
