@@ -1197,6 +1197,22 @@ if(AMS_MEL_BUILD_TESTS)
         add_test(NAME ${discovery_test} COMMAND ${discovery_test})
     endforeach()
 
+    add_executable(test_c2_comms_registration tests/test_c2_comms_registration.c)
+    set_target_properties(test_c2_comms_registration PROPERTIES
+        C_EXTENSIONS OFF C_STANDARD 11 C_STANDARD_REQUIRED YES)
+    target_compile_definitions(test_c2_comms_registration PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_c2_comms_registration PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(test_c2_comms_registration mock_ir_provider)
+    ams_mel_warnings(test_c2_comms_registration)
+    foreach(case IN ITEMS open open-fail open-refuse open-throw open-unknown-throw
+                          close close-enabled close-fail close-refuse close-throw
+                          close-unknown-throw close-detach close-detach-fail
+                          close-detach-refuse close-detach-throw close-detach-unknown-throw)
+        add_test(NAME c2_comms_registration_${case} COMMAND test_c2_comms_registration ${case})
+        set_tests_properties(c2_comms_registration_${case} PROPERTIES TIMEOUT 10)
+    endforeach()
+
     add_executable(test_channel_comms_metadata tests/test_channel_comms_metadata.c)
     target_compile_features(test_channel_comms_metadata PRIVATE c_std_11)
     set_target_properties(test_channel_comms_metadata PROPERTIES
@@ -1207,7 +1223,7 @@ if(AMS_MEL_BUILD_TESTS)
     add_dependencies(test_channel_comms_metadata mock_ir_provider)
     ams_mel_warnings(test_channel_comms_metadata)
     foreach(family IN ITEMS health image stacked acquisition)
-        foreach(case IN ITEMS parity sync refuse fail partial throw null overflow future-only held async async-typed reentry saturation register-reentry disable-fail detach-fail)
+        foreach(case IN ITEMS parity sync refuse fail partial throw null overflow future-only held async async-typed reentry saturation register-reentry disable-fail detach-fail enabled expired concurrent owner-first)
             add_test(NAME comms_metadata_${family}_${case}
                 COMMAND test_channel_comms_metadata ${family} ${case})
             set_tests_properties(comms_metadata_${family}_${case} PROPERTIES TIMEOUT 30)
