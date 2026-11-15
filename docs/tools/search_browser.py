@@ -214,14 +214,15 @@ def run(site, output):
                 expect(page.locator('#package-results')).to_contain_text('Documentation search unavailable')
                 page.locator('#package-search').fill('Navigation Report')
                 expect(page.locator('#documentation-search-results li')).to_have_count(0)
-                expect(page.locator('a[target="document-content"]').first).to_be_visible()
+                expect(page.locator('a[target="document-content"]:visible').first).to_be_visible()
                 result['cache_rejection'].append({'mutation': mutation, 'rejected': True})
                 context.close()
 
             context = browser.new_context(java_script_enabled=False)
             page = context.new_page()
             page.goto(base + 'api/index.html')
-            link = page.locator('a[target="document-content"]').filter(has_text='AMS.MEL.IR.Image').first
+            link = page.locator('a[target="document-content"]:visible').filter(
+                has_text=re.compile('^AMS\\.MEL\\.IR\\.Image$')).first
             link.click()
             expect(page.frame_locator('iframe[name="document-content"]').locator('h1')).to_have_text('AMS.MEL.IR.Image')
             result['javascript_disabled'] = 'native package navigation works'
