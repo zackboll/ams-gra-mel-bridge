@@ -107,7 +107,7 @@ class GeneratedSourceTests(unittest.TestCase):
     def test_release_label_and_version_tampering_cannot_authorize_itself(self):
         for name, before, after in (
             ('api/index.html', b'Filter navigation links</label>', b'Search documentation</label>'),
-            ('api/presentation.json', b'"enhancer_version": "0.1.5"',
+            ('api/presentation.json', ('"enhancer_version": "' + presentation.VERSION + '"').encode(),
              b'"enhancer_version": "0.1.0.dev0"'),
         ):
             with self.subTest(path=name):

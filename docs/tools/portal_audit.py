@@ -46,6 +46,9 @@ def verify_portal(site, root, data, packages, references):
                 labels = ['Home', *(g['label'] for g in data['guides']), 'Complete API Reference']
                 if re.findall(r'<a href="[^"]+">([^<]+)</a>', block) != labels:
                     raise PortalError('wrong navigation labels')
+                remainder = re.sub(r'<li><a href="[^"]+">[^<]+</a></li>', '', block)
+                if remainder != '<nav aria-label="Documentation"><ul></ul></nav>':
+                    raise PortalError('noncanonical navigation markup')
             elif kind == 'package-directory':
                 expected = collections.Counter((p, prefix + dest) for p, dest in packages.items())
                 if collections.Counter(page.package_entries) != expected or len(page.links) != len(packages):
@@ -58,6 +61,13 @@ def verify_portal(site, root, data, packages, references):
                     owners = re.findall(r'<a data-package-entry="([^"]+)"', content)
                     if owners != [p for p in packages if group(p) == label]:
                         raise PortalError('wrong package order or group ownership')
+                    rows = re.findall(r'<li><a data-package-entry="([^"]+)" href="([^"]+)">([^<]+)</a></li>', content)
+                    if rows != [(p, prefix + packages[p], p) for p in owners] or re.sub(
+                            r'<li><a data-package-entry="[^"]+" href="[^"]+">[^<]+</a></li>', '', content):
+                        raise PortalError('noncanonical package directory row')
+                remainder = re.sub(r'<h3>[^<]+</h3><ul>.*?</ul>', '', block, flags=re.S)
+                if remainder != '<section aria-label="Public package directory"></section>':
+                    raise PortalError('noncanonical package directory markup')
             elif kind.startswith('example:'):
                 owner = kind.split(':', 1)[1]
                 entries = {e['id']: e for e in example_sources.inventory(root)}

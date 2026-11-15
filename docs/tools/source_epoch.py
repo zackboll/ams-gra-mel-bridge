@@ -139,6 +139,9 @@ def generate(root, commit, directory, prefix, log):
 def enhance(site, root, report, references, output, *, deep=True):
     """Pinned renderer plus consumer-owned restoration and independent catalog."""
     import build_enhanced_site as p
+    require(not output.exists() and not any(q.is_symlink() for q in (output, *output.parents)),
+            'publication output must be fresh with no symlink ancestors')
+    require(not output.absolute().is_relative_to(site.absolute()), 'publication output inside pristine')
     retained = getattr(references, 'authored_publication', None)
     if retained is not None and retained.exists():
         shutil.copytree(retained, output)
