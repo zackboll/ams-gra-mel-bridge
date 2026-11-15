@@ -220,7 +220,7 @@ def restore_document(text, native, name, authority):
     return prologue + '<link rel=stylesheet href=gnatdoc.css>' + rest
 
 
-def validate(published, pristine, root=ROOT, audit_path=None):
+def historical_validate(published, pristine, root=ROOT, audit_path=None):
     """Neither an output-side manifest nor enhancer self-verification is authority."""
     destination = audit_destination(audit_path, root, pristine, published) if audit_path is not None else None
     tool()
@@ -363,28 +363,34 @@ def validate(published, pristine, root=ROOT, audit_path=None):
 
 
 def build(pristine, output, root=ROOT):
-    tool()
-    qualified_original(pristine, root)
-    pristine, output = Path(pristine).absolute(), Path(output).absolute()
-    require(not output.exists() and not output.is_symlink(), "output must be a fresh directory")
-    require(not any(p.is_symlink() for p in output.parents), "symlink output ancestor")
-    require(not output.is_relative_to(pristine), "output inside pristine site")
-    from ada_gnatdoc_enhancer.config import load
-    from ada_gnatdoc_enhancer.pipeline import enhance, verify
-    with tempfile.TemporaryDirectory(prefix="mel-presentation-") as temp:
-        stage = Path(temp) / "api-only"
-        stage.mkdir()
-        shutil.copytree(pristine / "api", stage / "api")
-        config = load(root, "docs/gnatdoc-enhance.toml")
-        enhance(config, stage)
-        verify(config, stage)
-        complete = Path(temp) / "complete"
-        shutil.copytree(pristine, complete)
-        # Copy over original API files plus exactly the three approved additions.
-        shutil.copytree(stage / "api", complete / "api", dirs_exist_ok=True)
-        result = validate(complete, pristine, root)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(complete, output)
+    # Current-source compatibility entry, not the retired historical renderer.
+    # Historical frozen fingerprints remain below as archived evidence only.
+    import source_epoch
+    from example_sources import References
+    pristine, output, root = Path(pristine).absolute(), Path(output).absolute(), Path(root).absolute()
+    require(not output.exists() and not output.is_symlink(), 'output must be fresh')
+    require(not any(p.is_symlink() for p in output.parents), 'symlink output ancestor')
+    require(not output.is_relative_to(pristine), 'output inside pristine site')
+    with tempfile.TemporaryDirectory(prefix='mel-authored-build-') as temp:
+        exported = Path(temp) / 'source'
+        source_epoch.export(root, 'HEAD', exported)
+        report = measure(pristine, exported)
+        return source_epoch.enhance(pristine, exported, report,
+            References(exported, pristine, ledger=report['native']), output)
+
+
+def validate(published, pristine, root=ROOT, audit_path=None):
+    """Current-source independent verification; no historical count authority."""
+    import source_epoch
+    from example_sources import References
+    report = measure(pristine, root)
+    result = source_epoch.verify_presentation(Path(pristine), Path(root), report,
+        References(root, pristine, ledger=report['native']), Path(published), deep=True)
+    if audit_path is not None:
+        destination = audit_destination(audit_path, root, pristine, published)
+        with destination.open('x', encoding='utf-8') as stream:
+            json.dump(result['type_occurrences'], stream, indent=2, sort_keys=True)
+            stream.write('\n')
     return result
 
 

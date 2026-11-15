@@ -158,7 +158,6 @@ def enhance(site, root, report, references, output, *, deep=True):
             verify(config, output)
             require(p.files(output) == before, 'non-idempotent complete publication')
         return verify_presentation(site, root, report, references, output, deep=deep)
-    from ada_gnatdoc_enhancer.config import load
     from ada_gnatdoc_enhancer.pipeline import enhance as renderer, verify
     p.tool()
     # Renderer needs a native ledger; supply only the independently measured one
@@ -239,9 +238,6 @@ def verify_presentation(site, root, report, references, output, *, deep=False):
                    "public_packages": len(authority.packages), "unrendered_renderer_exceptions": 1},
     }
     import authored_html
-    # This ledger is measured from native sections and public declarations, not
-    # the tracked historical ledger. Reconstruct it identically for verification.
-    (root / 'docs/gnatdoc-native-anchors.json').write_text(json.dumps(report['native']))
     authored = authored_html.contract(root, site, report)
     manifest['authored_source_blocks'] = {
         'manifest': 'docs/gnatdoc-authored.json', 'sha256': sha(canonical(authored)),

@@ -6,7 +6,6 @@ publication rendering. No output-side hashes can authorize source substitution.
 """
 
 import json
-from pathlib import Path
 
 import build_enhanced_site as presentation
 from build_docs_portal import GROUPS, group, manifest, package_map
@@ -29,7 +28,9 @@ def contract(root, site, report):
         home=dict(source='docs/' + data['home'], path=data['home']),
         stylesheet=dict(source='docs/' + data['stylesheet'], path=data['stylesheet']),
         guides=[dict(g, source='docs/' + g['path'], entry_points=[]) for g in data['guides']],
-        inputs={p: presentation.sha((root / p).read_bytes()) for p in sorted(inputs)},
+        inputs={p: presentation.sha(json.dumps(report['native']).encode() if
+                                   p == 'docs/gnatdoc-native-anchors.json' else (root / p).read_bytes())
+                for p in sorted(inputs)},
         native_sha256=presentation.hashes({n: b for n, b in presentation.files(site).items()
                                           if n.startswith('api/')}),
         site_map='docs/site-map.json', anchors='docs/gnatdoc-native-anchors.json',

@@ -92,10 +92,8 @@ def qualify(root, candidate, output, baseline=None):
             changed = json.loads(raw)
             changed['examples'][0]['main'] = changed['examples'][1]['main']
             path.write_bytes(epoch.canonical(changed))
-            forged = authority.contract(exported, site, report)
-            reject('resealed-wrong-main-owner', lambda: authored.manifest(reseal(forged), native))
-        except ValueError as error:
-            negatives['resealed-wrong-main-owner'] = dict(rejected=True, reason=str(error))
+            reject('resealed-wrong-main-owner', lambda: authored.manifest(
+                reseal(authority.contract(exported, site, report)), native))
         finally:
             path.write_bytes(raw)
             reseal(data)
