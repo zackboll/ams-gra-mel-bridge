@@ -8,6 +8,9 @@ branch `docs/mel-rustdoc-theme-001` in `/home/zboll/git/mel-rustdoc-theme-001`.
 The existing dirty checkout and other worktrees are untouched. PR #215 changes
 the Rustdoc generator's crate inventory and tests: this task does not change
 that inventory, any workspace source, public API, ABI or runtime dependency.
+PR #215 merged during qualification. Main `ad35ec4d5fc2faa9296b530defad108bf1dbac31`
+was integrated with an ordinary clean merge into this task branch; final checks
+include its Common crate without changing or reverting its implementation.
 Final commit/tree and exact-head hosted results belong in the PR, avoiding a
 self-referential source identity. Coverage delta: documentation appearance and
 qualification only; no API completeness claim.
