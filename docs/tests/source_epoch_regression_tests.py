@@ -103,14 +103,17 @@ class GeneratedSourceTests(unittest.TestCase):
         manifest = json.loads((self.output / 'published/api/presentation.json').read_text())
         self.assertEqual(manifest['enhancer_version'], presentation.VERSION)
         index = (self.output / 'published/api/index.html').read_text()
-        self.assertEqual(index.count(presentation.NAVIGATION_CONTROL), 1)
+        self.assertEqual(index.count(presentation.NAVIGATION_CONTROL.replace(
+            'Filter navigation links', 'Search documentation')), 1)
+        self.assertEqual(self.value['publication']['search']['records'],
+                         sum(self.value['publication']['search']['counts'].values()))
         self.assertIn('data-default-package="AMS.MEL"', index)
         self.assertEqual(manifest['counts']['declaration_snippets'],
                          len(self.value['native']))
 
     def test_release_label_and_version_tampering_cannot_authorize_itself(self):
         for name, before, after in (
-            ('api/index.html', b'Filter navigation links</label>', b'Search documentation</label>'),
+            ('api/index.html', b'Search documentation</label>', b'Filter navigation links</label>'),
             ('api/presentation.json', ('"enhancer_version": "' + presentation.VERSION + '"').encode(),
              b'"enhancer_version": "0.1.0.dev0"'),
         ):
