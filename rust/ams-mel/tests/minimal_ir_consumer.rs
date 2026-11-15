@@ -33,8 +33,47 @@ fn reference_executable() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.matches("[OK] advertised[").count(), 4);
+    assert_eq!(stdout.matches("[OK] attached identity/layout:").count(), 4);
+    assert_eq!(
+        stdout
+            .matches("KeepAlive: Completed { value: Success }")
+            .count(),
+        4
+    );
+    for operation in ["direct CommsTest", "C2-routed CommsTest"] {
+        assert_eq!(stdout.matches(&format!("[OK] {operation}:")).count(), 4);
+        for (index, address) in [2, 4, 1, 6].into_iter().enumerate() {
+            let command = 100 + index;
+            let request = 200 + index;
+            assert!(stdout.contains(&format!(
+                "[OK] {operation}: Completed {{ report: CommsTestReport {{ command_id: {command}, request_id: {request} }} }}, request=CommsTestRequest {{ command_id: {command}, channel_id: {address}, request_id: {request} }}"
+            )), "{stdout}");
+        }
+    }
     assert_eq!(stdout.matches("actual C2 CommsTest metadata:").count(), 2);
+    assert!(stdout.contains("eight futures and two C2 events checked, not eight callbacks"));
+    assert!(stdout.contains("C2/Health/StackedImage enabled, Image started"));
+    assert!(stdout.contains(
+        "required metadata registered: C2=3, Health=6, Image=4; C2 CommsTest separately registered"
+    ));
+    assert!(stdout.contains("BIT_Command 300/NoOp: Completed { value: NotImplemented }"));
+    assert!(stdout.contains(
+        "ConfigSetCommand 301/zero timestamp/empty config: Completed { value: NotImplemented }"
+    ));
+    assert!(
+        stdout.contains("ModeCmd 302/Standby/Unused/default scan: Rejected { code: InvalidState,")
+    );
+    assert!(
+        stdout.contains("NavigationReport NotSet/neutral values: Rejected { code: InvalidState,")
+    );
+    assert!(stdout.contains("Image receive(0): established control-only error; no frame acquired"));
+    assert!(stdout.contains("all sensor metadata queues empty"));
+    assert!(stdout.contains("StackedImage explicitly closed (typed disable/detach)"));
     assert!(stdout.contains("Session explicitly closed"));
+    assert!(stdout.contains("four-channel reference-stub contract complete; no full C++ parity or hardware qualification"));
+    assert!(!stdout.contains("advertised, not attached"));
+    assert!(!stdout.contains("[OK] acquisition"));
     assert!(!stdout.contains("[ERROR]"));
     assert!(output.stderr.is_empty());
 
