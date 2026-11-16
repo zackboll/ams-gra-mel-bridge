@@ -67,6 +67,7 @@ class GeneratedSourceTests(unittest.TestCase):
     def assembled_fixture(self, directory):
         """Keep original Ada negatives behind the new isolated assembly boundary."""
         from check_doc_coverage import measure
+        import python_publication as pythondoc
         import rustdoc_publication as rustdoc
         directory.mkdir()
         shutil.copytree(self.output / 'pristine', directory / 'pristine')
@@ -80,7 +81,10 @@ class GeneratedSourceTests(unittest.TestCase):
             temp = Path(temp)
             epoch.export(self.repo, self.candidate, temp / 'source')
             files, record = rustdoc.generate(temp / 'source', temp / 'rust', context, temp / 'rust.log')
-        for name, data in rustdoc.assembled(presentation.files(directory / 'ada-qualified'), files).items():
+            python_files, python_record = pythondoc.generate(temp / 'source', context, temp / 'python.log')
+        combined = rustdoc.assembled(presentation.files(directory / 'ada-qualified'), files)
+        combined = pythondoc.assembled(combined, python_files)
+        for name, data in combined.items():
             path = directory / 'published' / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
@@ -88,6 +92,7 @@ class GeneratedSourceTests(unittest.TestCase):
         docs_ci.write(directory / 'coverage.json', report)
         docs_ci.write(directory / 'native-anchors.json', report['native'])
         docs_ci.write(directory / 'rustdoc.json', record)
+        docs_ci.write(directory / 'python-reference.json', python_record)
 
     def test_documented_addition_uses_actual_source_anchor_and_catalog(self):
         self.assertEqual(self.value['status'], 'mechanically-qualified')
@@ -296,6 +301,12 @@ class GeneratedSourceTests(unittest.TestCase):
 
     def test_normal_verifier_rejects_corruption_even_with_recomputed_payload_hashes(self):
         from check_doc_coverage import measure
+
+        def corrupt_python_record(data):
+            record = json.loads(data)
+            record['report']['counts']['exports'] += 1
+            return epoch.canonical(record)
+
         with tempfile.TemporaryDirectory(dir=self.directory) as temp:
             directory = Path(temp) / 'normal'
             self.assembled_fixture(directory)
@@ -310,6 +321,8 @@ class GeneratedSourceTests(unittest.TestCase):
                     ('published/guides/getting-started.html', lambda data: data + b'<a href="missing.html">broken</a>'),
                     ('published/api/gnatdoc-navigation.js', lambda data: data + b'// modified'),
                     ('pristine/api/index.html', lambda data: data.replace(b'gnatdoc.css', b'missing.css')),
+                    ('published/python/api-index.html', lambda data: data + b'<!-- forged -->'),
+                    ('python-reference.json', corrupt_python_record),
                 ):
                     with self.subTest(path=name):
                         path = directory / name

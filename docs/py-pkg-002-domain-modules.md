@@ -146,3 +146,44 @@ cover generated links, no-script navigation, escaping and artifact integrity.
 Complete combined-publication and hosted CI results are recorded with the pull
 request. Merge and successful main-push publication are required before the new
 module pages become available on the live documentation site.
+
+## R1 — Complete the documentation regression fixture
+
+The initial PR head `994d20efc544dc2a7a56098846c51fbf6dd29753` passed every
+Bootstrap check and the production documentation workflow, but the separate
+authored-HTML qualification job failed in
+`test_normal_verifier_rejects_corruption_even_with_recomputed_payload_hashes`.
+Its positive control raised `FileNotFoundError` for `python-reference.json`
+before reaching the corruption cases. The
+[failed job](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/43762218487/job/132959321770)
+records the full traceback.
+
+The shared `assembled_fixture()` helper still built an Ada/Rust-only publication.
+The Python publication integration in PR #232 had made the Python record and
+subtree part of the production verification contract. Both the outdated fixture
+and the current verifier were inherited unchanged from main by PR #234; the
+Common/IR/RF namespaces were not necessary to trigger the failure.
+
+The correction generates Python files and their record from the same temporary
+Git export and identity used for Rust, assembles them over the Ada/Rust output,
+and writes the canonical `python-reference.json`. The existing successful
+verification remains before every mutation. All four original Ada corruption
+cases and the independent subtype-link test remain intact. Two added cases
+alter a Python API page and forge the canonical Python report's export count;
+the outer bundle hashes are recalculated in both cases, so its own manifest
+cannot authorize either corruption.
+
+Only the test fixture, its mutation coverage and this task record change in R1.
+Production verifiers, generation, workflows, dependencies and language bindings
+remain unchanged. Missing Python records remain errors. The test does not treat
+`FileNotFoundError` as a successful corruption rejection.
+
+Independent review found no blockers and separately confirmed that the real
+Python publication rejects both new mutations at the expected inventory and
+source-reconstruction boundaries. A focused local run of the original fixture
+reproduced the identical missing-record error (**1 test, expected failure**).
+`make test-docs-ci` passed all **107 tests** after the correction. The complete
+regression command is `GNATDOC_PREFIX=<pinned-prefix> make
+test-documentation-source`, with the pinned GNAT/GPRbuild/Rust environment.
+Full source-regression and hosted qualification results are recorded with the
+pull request.
