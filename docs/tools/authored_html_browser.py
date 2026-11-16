@@ -76,7 +76,12 @@ def run(baseline, candidate, executable, output):
                                     page.keyboard.press('Tab')
                                     page.keyboard.press('Enter')
                                     check(page.locator('#package-search').input_value() == '')
-                                    check(page.locator('[role="separator"]').count() == 0)
+                                    resizable = (site / 'api/gnatdoc-resize.js').is_file()
+                                    check(page.locator('[role="separator"]').count() == int(resizable))
+                                    if resizable:
+                                        divider = page.get_by_role('separator', name='Navigation width')
+                                        check(divider.get_attribute('aria-controls') == 'resizable-navigation')
+                                        check(divider.is_visible() == (width > 810))
                                 else:
                                     check(not page.locator('#package-navigation').is_visible())
                                 for package in ('AMS.MEL.IR', 'AMS.MEL.RF', 'AMS.MEL'):
