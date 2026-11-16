@@ -1,0 +1,70 @@
+name: Documentation resize qualification (non-deploying)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOC_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  BASE_SOURCE_SHA: ${{ github.event.pull_request.base.sha || '680ee5c7308869059a9c395e286bd5437e897634' }}
+  ALIRE_SETTINGS_DIR: ${{ github.workspace }}/.doc-tools/settings
+
+jobs:
+  resize-browser:
+    name: Complete publication parity and Chromium sidebar interaction
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.DOC_SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install official pinned documentation tools
+        run: sh docs/tools/install_docs_toolchain.sh
+      - name: Reconstruct complete baseline and exact-head candidate
+        run: |
+          git worktree add --detach .doc-tools/resize-baseline-source "$BASE_SOURCE_SHA"
+          alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
+            cd ../..
+            GITHUB_ACTIONS=false .doc-tools/enhancer/bin/python .doc-tools/resize-baseline-source/docs/tools/docs_ci.py build \
+              --root "$PWD/.doc-tools/resize-baseline-source" \
+              --directory "$PWD/.doc-tools/resize-baseline" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
+            .doc-tools/enhancer/bin/python docs/tools/docs_ci.py build \
+              --directory .doc-tools/resize-current --gnatdoc-prefix .doc-tools/gnatdoc-26.0.0 &&
+            .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify \
+              --directory .doc-tools/resize-qualified --gnatdoc-prefix .doc-tools/gnatdoc-26.0.0 &&
+            .doc-tools/enhancer/bin/python docs/tools/resize_parity.py \
+              --baseline .doc-tools/resize-baseline --candidate .doc-tools/resize-current \
+              --output .doc-tools/resize-parity.json &&
+            MEL_RESIZE_QUALIFICATION="$PWD/.doc-tools/resize-qualified" \
+              .doc-tools/enhancer/bin/python -W error -m unittest discover \
+                -s docs/tests -p test_resize_publication.py -v &&
+            .doc-tools/enhancer/bin/python -W error -m unittest discover \
+              -s docs/tests -p test_enhancer_release.py -v'
+      - name: Install isolated Chromium qualification tools
+        run: |
+          python3 -m venv .doc-tools/browser
+          .doc-tools/browser/bin/pip install playwright==1.64.0
+          .doc-tools/browser/bin/playwright install --with-deps chromium
+      - name: Resize complete MEL site including mandatory search regression
+        run: |
+          .doc-tools/browser/bin/python docs/tools/resize_browser.py \
+            --site .doc-tools/resize-current/published --output .doc-tools/resize-browser.json
+      - name: Retain non-authorizing diagnostics
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: resize-qualification-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
+          path: |
+            .doc-tools/resize-baseline/
+            .doc-tools/resize-current/
+            .doc-tools/resize-qualified/
+            .doc-tools/resize-qualified-generation.log
+            .doc-tools/resize-parity.json
+            .doc-tools/resize-browser.json
+          if-no-files-found: warn

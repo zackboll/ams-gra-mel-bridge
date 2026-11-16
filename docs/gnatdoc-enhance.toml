@@ -15,6 +15,7 @@ comment_style = "trailing"
 [navigation]
 mode = "packages"
 symbol_bookmarks = true
+resizable_sidebar = true
 default_package = "AMS.MEL"
 
 [search]
