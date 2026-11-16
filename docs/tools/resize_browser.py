@@ -143,6 +143,8 @@ def run(site, output):
                         viewport(page, 1000 if event == 'resize' else 390)
                     elif event == 'blur':
                         page.evaluate('window.dispatchEvent(new Event("blur"))')
+                    elif event == 'lostpointercapture':
+                        divider.evaluate('(e)=>e.releasePointerCapture(1)')
                     else:
                         divider.evaluate('(e,t)=>e.dispatchEvent(new PointerEvent(t,{pointerId:1}))', event)
                     page.mouse.up()

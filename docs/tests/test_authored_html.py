@@ -33,10 +33,14 @@ class AuthoredHTMLTests(unittest.TestCase):
                          'token-in-attribute', 'token-in-code', 'tampered-complete-listing'} <= set(negatives))
 
     def test_no_partial_overlay_or_extra_presentation_features(self):
+        import resize_audit
         portal = authored_html.manifest(ROOT)
         expected = {portal['home'], portal['stylesheet'], *(g['path'] for g in portal['guides'])}
         self.assertTrue(expected <= set(self.evidence['inventory']))
-        self.assertFalse(any('resize' in n or 'search.js' in n for n in self.evidence['inventory']))
+        self.assertEqual({n for n in self.evidence['inventory'] if 'resize' in n}, resize_audit.EXTRAS)
+        for name, digest in resize_audit.ASSETS.items():
+            self.assertEqual(self.evidence['inventory'][name], digest)
+        self.assertFalse(any('search.js' in n for n in self.evidence['inventory']))
 
     def test_authored_manifest_binds_all_public_sources(self):
         from gnatdoc_inventory import specifications

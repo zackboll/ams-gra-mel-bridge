@@ -7,6 +7,8 @@ import tempfile
 
 import authored_html
 import build_enhanced_site as p
+import python_publication as pythondoc
+import rustdoc_publication as rustdoc
 import source_epoch as epoch
 from check_doc_coverage import measure
 from example_sources import References
@@ -38,7 +40,9 @@ def qualify(root, baseline, candidate, output):
         report = measure(site, exported)
         epoch.enhance(site, exported, report, References(exported, site, ledger=report['native']), control)
         control_files = p.files(control)
-        expected_ada = {n: d for n, d in before.items() if not n.startswith(('rust/', 'python/'))}
+        # Assembly deliberately adds language portal links to index.html. Compare
+        # the isolated Ada control first, then run the real assembly functions.
+        expected_ada = p.files(baseline / 'ada-qualified')
         epoch.require(control_files == expected_ada, 'resize-disabled control differs from production')
         portal = authored_html.manifest(exported)
         authored_names = [portal['home'], portal['stylesheet'], *(g['path'] for g in portal['guides'])]
@@ -46,14 +50,17 @@ def qualify(root, baseline, candidate, output):
               'native': p.hashes(native_after), 'delta': sorted(changed),
               'unchanged_files': len(set(before) - changed),
               'counts': {'baseline': len(before), 'candidate': len(after),
-                         'baseline_ada': len(expected_ada), 'candidate_ada': len(control_files) + 2,
+                         'baseline_ada': len(expected_ada),
+                         'candidate_ada': len(p.files(candidate / 'ada-qualified')),
                          'rust': sum(n.startswith('rust/') for n in after),
                          'python': sum(n.startswith('python/') for n in after)},
               'authored': {n: p.sha(after[n]) for n in authored_names},
               'search_sha256': p.sha(after['api/gnatdoc-search-index.json']),
               'disabled_control': p.hashes(control_files),
-              'disabled_complete_inventory': p.hashes({**control_files, **{
-                  n: d for n, d in after.items() if n.startswith(('rust/', 'python/'))}})}
+              'disabled_complete_inventory': p.hashes(pythondoc.assembled(
+                  rustdoc.assembled(control_files,
+                      {n.removeprefix('rust/'): d for n, d in after.items() if n.startswith('rust/')}),
+                  {n.removeprefix('python/'): d for n, d in after.items() if n.startswith('python/')}))}
     epoch.require(result['disabled_complete_inventory'] == result['baseline'],
                   'complete disabled assembly differs')
     output.write_bytes(epoch.canonical(result))

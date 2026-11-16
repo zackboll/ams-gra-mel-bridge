@@ -63,6 +63,34 @@ browser campaign is not reduced.
 The new dedicated resize workflow is read-only, exact-PR-head and non-deploying.
 Existing main-only Pages deployment and live-verification permissions are untouched.
 Both requested post-merge runs were in progress at baseline inspection, not passed.
+At the later review checkpoint, both completed successfully at the baseline SHA:
+Documentation `43787451638`, Bootstrap `43787451632`.
 Actual local and exact-head hosted results are reported separately in the PR;
 pending/unrun checks are blockers, not implied successes. No merge or deployment
 is authorized by this task.
+
+## Local results before final-head replay
+
+The immutable baseline/current complete builds passed. Their inventories contain
+2,575 / 2,577 files respectively (61 / 63 isolated Ada/portal, 2,320 Rustdoc,
+194 Python). Exactly the four authorized paths differ; all other 2,573 files
+are byte-identical. All nine authored outputs, native declaration pages, complete
+source/native ledgers and coverage, full-search index, search CSS and composed
+router are unchanged. The search index SHA-256 is
+`9751a7bad7295d099bc7d621fd6f74fdc8f68c769dd0c99f1f0e8253ff23358b`.
+The resize-disabled control matches all 61 isolated baseline bytes and, through
+the actual language assembly functions, all 2,575 baseline publication bytes.
+
+Two independent native generations, official renderer verification/idempotence,
+complete consumer reconstruction, four resize mutation tests, three search
+mutation tests, five official release-identity tests and the policy suites
+passed. The 32 authored-HTML adversarial controls still reject their mutations.
+Chromium 156.0.8078.4 passed the dedicated resize campaign and the existing search
+campaign (1,505 native arrival observations, including every current public
+symbol/operation). These observations are not permanent count gates.
+
+Local evidence, complete inventories, search/native identities, authored hashes
+and raw logs are retained at
+`/home/zboll/git/mel-gnatdoc-nav-001-evidence`. Final-head replay and hosted
+conclusions must be reported separately; these initial results do not authorize
+merge or deployment.
