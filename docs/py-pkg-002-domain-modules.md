@@ -178,6 +178,13 @@ Production verifiers, generation, workflows, dependencies and language bindings
 remain unchanged. Missing Python records remain errors. The test does not treat
 `FileNotFoundError` as a successful corruption rejection.
 
+During qualification, PR #235 merged into main at
+`680ee5c7308869059a9c395e286bd5437e897634` and independently completed
+the same publication fixture repair. An ordinary merge retains that incoming
+helper byte-for-byte, its current Ada search assertions and negatives, and
+the two additional Python corruption cases from R1. The Ada search
+implementation and qualification workflow are preserved unchanged from main.
+
 Independent review found no blockers and separately confirmed that the real
 Python publication rejects both new mutations at the expected inventory and
 source-reconstruction boundaries. A focused local run of the original fixture

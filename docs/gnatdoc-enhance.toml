@@ -17,6 +17,10 @@ mode = "packages"
 symbol_bookmarks = true
 default_package = "AMS.MEL"
 
+[search]
+schema_version = 1
+mode = "documentation"
+
 [presentation]
 theme = true
 syntax_highlighting = true
