@@ -35,9 +35,9 @@ jobs:
               --root "$PWD/.doc-tools/resize-baseline-source" \
               --directory "$PWD/.doc-tools/resize-baseline" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
             .doc-tools/enhancer/bin/python docs/tools/docs_ci.py build \
-              --directory .doc-tools/resize-current --gnatdoc-prefix .doc-tools/gnatdoc-26.0.0 &&
+              --directory "$PWD/.doc-tools/resize-current" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
             .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify \
-              --directory .doc-tools/resize-qualified --gnatdoc-prefix .doc-tools/gnatdoc-26.0.0 &&
+              --directory "$PWD/.doc-tools/resize-qualified" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
             .doc-tools/enhancer/bin/python docs/tools/resize_parity.py \
               --baseline .doc-tools/resize-baseline --candidate .doc-tools/resize-current \
               --output .doc-tools/resize-parity.json &&
