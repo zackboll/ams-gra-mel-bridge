@@ -79,7 +79,7 @@ def run(baseline, candidate, executable, output):
                                     resizable = (site / 'api/gnatdoc-resize.js').is_file()
                                     check(page.locator('[role="separator"]').count() == int(resizable))
                                     if resizable:
-                                        divider = page.get_by_role('separator', name='Navigation width')
+                                        divider = page.get_by_role('separator', name='Navigation width', include_hidden=True)
                                         check(divider.get_attribute('aria-controls') == 'resizable-navigation')
                                         check(divider.is_visible() == (width > 810))
                                 else:
