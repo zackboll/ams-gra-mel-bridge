@@ -274,6 +274,82 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(inspect.getsource(ci.build).count('epoch.generate('), 1)
         self.assertIn('deep=False', inspect.getsource(ci.build))
 
+    def test_resize_artifact_verification_binds_source_and_keeps_candidate_event(self):
+        import resize_parity
+        directory, digest = self.sealed()
+        self.hosted('pull_request', 'refs/pull/1/merge')
+        observed = []
+
+        def reject(root, artifact, seal):
+            observed.append((root, artifact, seal, os.environ['GITHUB_ACTIONS']))
+            ci.identity(root)  # Retain the real hosted/event-bound checkout gate.
+            raise ValueError('independent verification failed')
+
+        with mock.patch.object(ci, 'verify', side_effect=reject), \
+             mock.patch.object(resize_parity.epoch, 'export') as export:
+            with self.assertRaisesRegex(ValueError, 'independent verification failed'):
+                resize_parity.qualify(self.repo, directory, self.root / 'result.json', digest)
+        self.assertEqual(observed, [(self.repo, directory, digest, 'true')])
+        export.assert_not_called()
+
+    def test_resize_rejects_wrong_tree_old_candidate_and_wrong_event(self):
+        import resize_parity
+        directory, _ = self.sealed()
+        manifest = json.loads((directory / 'manifest.json').read_bytes())
+        changed = json.loads(json.dumps(manifest))
+        changed['identity']['tree'] = '0' * 40
+        ci.write(directory / 'manifest.json', changed)
+        with self.assertRaisesRegex(ValueError, 'source/run identity'):
+            resize_parity.qualify(self.repo, directory, self.root / 'result.json',
+                                  ci.epoch.sha((directory / 'manifest.json').read_bytes()))
+        ci.write(directory / 'manifest.json', manifest)
+        (self.repo / 'source.ads').write_text('package Source is X : Integer; end Source;\n')
+        self.git('commit', '-qam', 'ordinary API change')
+        with self.assertRaisesRegex(ValueError, 'source/run identity'):
+            resize_parity.qualify(self.repo, directory, self.root / 'result.json',
+                                  ci.epoch.sha((directory / 'manifest.json').read_bytes()))
+        self.hosted('workflow_dispatch', 'refs/heads/feature')
+        os.environ['DOC_SOURCE_SHA'] = self.sha
+        with self.assertRaisesRegex(ValueError, 'event source'):
+            resize_parity.qualify(self.repo, directory, self.root / 'result.json',
+                                  ci.epoch.sha((directory / 'manifest.json').read_bytes()))
+
+    def test_resize_verifier_error_never_falls_back_to_cross_commit_delta(self):
+        import resize_parity
+        directory, digest = self.sealed()
+        with mock.patch.object(ci, 'verify', side_effect=ValueError('reconstruction rejected')) as verify, \
+             mock.patch.object(resize_parity, 'compare') as compare:
+            with self.assertRaisesRegex(ValueError, 'reconstruction rejected'):
+                resize_parity.qualify(self.repo, directory, self.root / 'result.json', digest)
+        verify.assert_called_once_with(self.repo, directory, digest)
+        compare.assert_not_called()
+
+    def test_resize_repeated_input_pair_identity_and_bytes_are_mandatory(self):
+        import resize_parity
+        directory, digest = self.sealed()
+        repeated = self.root / 'repeat'
+        (directory / 'pristine').mkdir()
+        (repeated / 'published').mkdir(parents=True)
+        context = ci.identity(self.repo)
+        for kwargs in ({'repeated': repeated}, {'repeated_manifest_sha': digest}):
+            with self.subTest(kwargs=kwargs), \
+                 mock.patch.object(ci, 'verify', return_value={'identity': context}), \
+                 mock.patch.object(resize_parity.epoch, 'export') as export:
+                with self.assertRaisesRegex(ValueError, 'supplied together'):
+                    resize_parity.qualify(self.repo, directory, self.root / 'result.json', digest, **kwargs)
+                export.assert_not_called()
+        for identity, pattern in ((dict(context, tree='0' * 40), 'source/run identity'),
+                                  (context, 'publication differs')):
+            with self.subTest(identity=identity), \
+                 mock.patch.object(ci, 'verify', side_effect=[{'identity': context}, {'identity': identity}]) as verify, \
+                 mock.patch.object(resize_parity.epoch, 'export') as export:
+                with self.assertRaisesRegex(ValueError, pattern):
+                    resize_parity.qualify(self.repo, directory, self.root / 'result.json', digest,
+                                          repeated=repeated, repeated_manifest_sha='b' * 64)
+                self.assertEqual(verify.call_args_list, [mock.call(self.repo, directory, digest),
+                                                        mock.call(self.repo, repeated, 'b' * 64)])
+                export.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

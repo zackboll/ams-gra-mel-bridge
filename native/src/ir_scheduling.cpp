@@ -10,17 +10,19 @@
  * integration for the opt-in TaskExecutingRep owner
  * (ir_scheduling_task_executing.cpp). Nothing in this file registers any
  * Scheduling callback.
- * NOT implemented: the four SchedulingChannel::exec overloads,
+ * IRMEL-ADA-022 adds exec(AbortTask) through the shared Return engine.
+ * NOT implemented: the three other SchedulingChannel::exec overloads,
  * send(PrioritizedTrackListCmd) and the four other Scheduling
  * registerMetadataCallback overloads (SchedCreatedRep,
  * UpdateTrackListResponse, TaskEvents, ScanPerformanceReport). No translation
- * unit in the bridge calls any of them. */
+ * unit in the bridge calls those remaining operations. */
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
 #include "internal/common_channel_requests.hpp"
 #include "internal/ir_scheduling_execute_task_ack.hpp"
 #include "internal/ir_scheduling_task_executing.hpp"
+#include "internal/ir_task_info.hpp"
 
 #include <irmel/library/scheduling/SchedulingChannel.h>
 
@@ -102,8 +104,8 @@ enum class Lifecycle { Attached, Enabled, Failed, Closed };
 
 /* Owns the complete Scheduling provider graph: the Session state (and thus
  * Control, manager and provider library), the attached generic Channel and its
- * SchedulingChannel view. `requests` counts ONLY admitted inherited common
- * Channel requests issued through a Scheduling view; it is never shared with
+ * SchedulingChannel view. `requests` counts admitted common requests and
+ * AbortTask commands for this Scheduling owner; it is never shared with
  * C2, Track, Health, Instrumentation or Image accounting. */
 struct SchedulingState {
     std::mutex mutex;
@@ -269,7 +271,8 @@ ams_mel_status_t scheduling_capability(const std::shared_ptr<SchedulingState>& s
 
 struct ams_mel_ir_scheduling { std::shared_ptr<SchedulingState> state; };
 namespace ams_mel_common {
-CommonChannelAccess common_from_scheduling(const ams_mel_ir_scheduling *owner)
+template<bool EnabledOnly>
+CommonChannelAccess scheduling_access(const ams_mel_ir_scheduling *owner)
 {
     return {owner->state,
         [](const std::shared_ptr<void>& value) noexcept {
@@ -279,6 +282,9 @@ CommonChannelAccess common_from_scheduling(const ams_mel_ir_scheduling *owner)
            CommonRequestClaim& claim) {
             auto state = std::static_pointer_cast<SchedulingState>(value);
             std::lock_guard lock{state->mutex};
+            if constexpr (EnabledOnly) {
+                if (state->lifecycle != Lifecycle::Enabled) return false;
+            }
             if ((state->lifecycle != Lifecycle::Attached &&
                  state->lifecycle != Lifecycle::Enabled) ||
                 !state->channel || !state->scheduling) return false;
@@ -299,7 +305,35 @@ CommonChannelAccess common_from_scheduling(const ams_mel_ir_scheduling *owner)
                                          output, out, capacity, required);
         }};
 }
+CommonChannelAccess common_from_scheduling(const ams_mel_ir_scheduling *owner)
+{ return scheduling_access<false>(owner); }
 } // namespace ams_mel_common
+
+extern "C" ams_mel_status_t ams_mel_ir_scheduling_exec_abort(
+    ams_mel_ir_scheduling *owner, const ams_mel_ir_task_info_v1 *task,
+    ams_mel_ir_return_request **request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!owner || !owner->state || !task || !request || *request || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    irmel::TaskInfo converted;
+    if (!ams_mel::internal::convert_task_info(*task, converted)) {
+        diagnostic("invalid Scheduling TaskInfo", out, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    /* AbortTask has no getter. Verify TaskInfo through all published getters
+     * above, then use the actual upstream constructor without rewriting action. */
+    const irmel::AbortTask command{converted};
+    return ams_mel_common::submit_return(
+        ams_mel_common::scheduling_access<true>(owner),
+        [](irmel::Channel& channel, const void *context) {
+            /* Virtual inheritance requires dynamic_cast. The adapter has already
+             * validated and retained this exact Scheduling provider graph. */
+            return dynamic_cast<irmel::SchedulingChannel&>(channel).exec(
+                *static_cast<const irmel::AbortTask *>(context));
+        }, &command, request, out, capacity, required);
+}
 
 namespace ams_mel::internal {
 bool claim_scheduling_execute_task_ack(

@@ -30,7 +30,7 @@ def compare(before, after):
     return sorted(changed)
 
 
-def qualify(root, candidate, output, manifest_sha):
+def qualify(root, candidate, output, manifest_sha, *, repeated=None, repeated_manifest_sha=None):
     # A seal alone is not authority: verify exact checkout/event identity, native
     # anchors, Ada restoration/search/destinations, complete assembly, Python
     # source reconstruction and independently regenerated Rust bytes first.
@@ -38,6 +38,17 @@ def qualify(root, candidate, output, manifest_sha):
     context = manifest['identity']
     after = p.files(candidate / 'published')
     native = p.files(candidate / 'pristine')
+    epoch.require((repeated is None) == (repeated_manifest_sha is None),
+                  'repeated publication and manifest digest must be supplied together')
+    if repeated is not None:
+        repeated_manifest = docs_ci.verify(root, repeated, repeated_manifest_sha)
+        epoch.require(repeated_manifest['identity'] == context, 'repeated source/run identity differs')
+        for name in ('published', 'pristine', 'ada-qualified'):
+            epoch.require(p.files(candidate / name) == p.files(repeated / name),
+                          'repeated source-local publication differs: ' + name)
+        for name in ('native-anchors.json', 'coverage.json'):
+            epoch.require((candidate / name).read_bytes() == (repeated / name).read_bytes(),
+                          'repeated source/native records differ: ' + name)
     with tempfile.TemporaryDirectory(prefix='mel-resize-control-') as temp:
         exported, control = Path(temp) / 'source', Path(temp) / 'published'
         epoch.export(root, context['commit'], exported)
@@ -83,6 +94,8 @@ def qualify(root, candidate, output, manifest_sha):
                           ('native-anchors.json', 'coverage.json', 'rustdoc.json', 'python-reference.json')},
               'authored': {n: p.sha(after[n]) for n in authored_names},
               'search_sha256': p.sha(after['api/gnatdoc-search-index.json'])}
+    if repeated is not None:
+        result['repeated_manifest_sha256'] = repeated_manifest_sha
     output.write_bytes(epoch.canonical(result))
     print(json.dumps({k: result[k] for k in ('passed', 'identity', 'counts', 'delta', 'unchanged_files')}))
     return result
@@ -93,6 +106,9 @@ if __name__ == '__main__':
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument('--candidate', type=Path, required=True)
     parser.add_argument('--manifest-sha', required=True)
+    parser.add_argument('--repeated', type=Path)
+    parser.add_argument('--repeated-manifest-sha')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    qualify(args.root, args.candidate, args.output, args.manifest_sha)
+    qualify(args.root, args.candidate, args.output, args.manifest_sha,
+            repeated=args.repeated, repeated_manifest_sha=args.repeated_manifest_sha)

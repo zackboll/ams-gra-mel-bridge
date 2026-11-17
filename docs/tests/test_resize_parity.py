@@ -34,7 +34,8 @@ class SameSourceParityTests(unittest.TestCase):
         cls.actual = p.files(cls.candidate / 'published')
         # Retain actual renderer output for direct exact-set adversarial checks.
         with mock.patch.object(parity, 'compare', wraps=parity.compare) as comparison:
-            cls.result = parity.qualify(ROOT, cls.candidate, cls.workspace / 'parity.json', cls.digest)
+            cls.result = parity.qualify(ROOT, cls.candidate, cls.workspace / 'parity.json', cls.digest,
+                                       repeated=cls.candidate, repeated_manifest_sha=cls.digest)
         cls.disabled = comparison.call_args.args[0]
         cls.prefix = epoch.toolchain(os.environ['GNATDOC_PREFIX'])
 
@@ -47,6 +48,7 @@ class SameSourceParityTests(unittest.TestCase):
         for name in self.disabled.keys() - parity.DELTA:
             self.assertEqual(self.disabled[name], self.actual[name], name)
         self.assertEqual(result['identity'], docs_ci.identity(ROOT))
+        self.assertEqual(result['repeated_manifest_sha256'], self.digest)
         self.assertEqual(result['disabled_control']['mode'], 'modified-export-not-deployable')
         for name in ('native-anchors.json', 'rustdoc.json', 'python-reference.json'):
             self.assertEqual(result['records'][name], p.sha((self.candidate / name).read_bytes()))

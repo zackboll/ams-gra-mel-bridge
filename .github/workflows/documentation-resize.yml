@@ -1,15 +1,24 @@
 name: Documentation resize qualification (non-deploying)
 
 on:
-  pull_request:
+  push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      baseline_sha:
+        description: 'Full 40-hex baseline commit SHA; must be a strict ancestor of the selected source'
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 env:
-  DOC_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  DOC_SOURCE_SHA: ${{ github.sha }}
   ALIRE_SETTINGS_DIR: ${{ github.workspace }}/.doc-tools/settings
 
 jobs:
@@ -23,19 +32,35 @@ jobs:
           ref: ${{ env.DOC_SOURCE_SHA }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Validate exact event source and baseline (no fallback)
+        run: python3 docs/tools/documentation_qualification_source.py
       - name: Install official pinned documentation tools
         run: sh docs/tools/install_docs_toolchain.sh
-      - name: Reconstruct exact-head candidate and same-source resize-disabled control
+      - name: Reconstruct complete baseline and exact-head candidate
         run: |
+          git worktree add --detach .doc-tools/resize-baseline-source "$BASE_SOURCE_SHA"
           alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
             cd ../..
+            GITHUB_ACTIONS=false .doc-tools/enhancer/bin/python .doc-tools/resize-baseline-source/docs/tools/docs_ci.py build \
+              --root "$PWD/.doc-tools/resize-baseline-source" \
+              --directory "$PWD/.doc-tools/resize-baseline" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
             .doc-tools/enhancer/bin/python docs/tools/docs_ci.py build \
               --directory "$PWD/.doc-tools/resize-current" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
+            .doc-tools/enhancer/bin/python docs/tools/docs_ci.py build \
+              --directory "$PWD/.doc-tools/resize-repeated" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
             .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify \
               --directory "$PWD/.doc-tools/resize-qualified" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
+            # Parity is source-local: real content changes across commits are not sidebar regressions.
+            GITHUB_ACTIONS=false .doc-tools/enhancer/bin/python docs/tools/resize_parity.py \
+              --root .doc-tools/resize-baseline-source \
+              --candidate .doc-tools/resize-baseline \
+              --manifest-sha "$(sha256sum .doc-tools/resize-baseline/manifest.json | cut -d " " -f 1)" \
+              --output .doc-tools/resize-baseline-parity.json &&
             .doc-tools/enhancer/bin/python docs/tools/resize_parity.py \
               --candidate .doc-tools/resize-current \
               --manifest-sha "$(sha256sum .doc-tools/resize-current/manifest.json | cut -d " " -f 1)" \
+              --repeated .doc-tools/resize-repeated \
+              --repeated-manifest-sha "$(sha256sum .doc-tools/resize-repeated/manifest.json | cut -d " " -f 1)" \
               --output .doc-tools/resize-parity.json &&
             MEL_RESIZE_CANDIDATE="$PWD/.doc-tools/resize-current" \
               MEL_RESIZE_REGRESSION_EVIDENCE="$PWD/.doc-tools/resize-regression.json" \
@@ -62,10 +87,14 @@ jobs:
         with:
           name: resize-qualification-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
           path: |
+            .doc-tools/resize-baseline/
             .doc-tools/resize-current/
+            .doc-tools/resize-repeated/
             .doc-tools/resize-qualified/
             .doc-tools/resize-qualified-generation.log
             .doc-tools/resize-parity.json
             .doc-tools/resize-regression.json
+            .doc-tools/resize-baseline-parity.json
+            .doc-tools/resize-source.json
             .doc-tools/resize-browser.json
           if-no-files-found: warn

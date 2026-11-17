@@ -196,6 +196,17 @@ ams_mel_status_t submit_common(const CommonChannelAccess& access, Owner **output
 
 namespace ams_mel_common {
 using namespace ams::iface;
+ams_mel_status_t submit_return(const CommonChannelAccess& access, ReturnSend send,
+    const void *context, ams_mel_ir_return_request **request, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!send || !request || *request || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    return submit_common<ReturnCompletion, ReturnWorkerInput>(access, request,
+        [send, context](irmel::Channel& channel) { return send(channel, context); },
+        arm_return_worker, retain_return_worker, run_return_worker, out, capacity, required);
+}
+
 ams_mel_status_t submit_common_keepalive(const CommonChannelAccess& access,
     ams_mel_ir_return_request **request, char *out, std::size_t capacity,
     std::size_t *required) noexcept
