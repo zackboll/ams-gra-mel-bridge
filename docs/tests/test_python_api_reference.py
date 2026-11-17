@@ -138,6 +138,78 @@ class PythonReferenceTests(unittest.TestCase):
         self.assertIn(before, content)
         path.write_text(content.replace(before, after))
 
+    def add_public_modules(self):
+        (self.package / "common.py").write_text(
+            '"""Shared values for :mod:`ams_mel.ir`."""\n'
+            'from ._model import Value, Kind\n__all__ = ["Value", "Kind"]\n'
+            'raise AssertionError("Public module import forbidden")\n')
+        (self.package / "ir.py").write_text(
+            '"""IR owners; see :class:`ams_mel.common.Value`."""\n'
+            'from ._model import Owner as Alias, run\n__all__ = ["run", "Alias"]\n')
+        self.rewrite("__init__.py", "from ._model import Owner as Alias, Value, Kind, run",
+                     "from . import common, ir\nfrom .common import Value, Kind\nfrom .ir import Alias, run")
+
+    def test_public_modules_preserve_ordered_aliases_and_canonical_identity(self):
+        self.add_public_modules()
+        model = reference.inventory(self.root)
+        self.assertEqual(model["public_modules"], [
+            {"name": "ams_mel.common", "source": "python/ams_mel/common.py",
+             "doc": "Shared values for :mod:`ams_mel.ir`.", "exports": ["Value", "Kind"]},
+            {"name": "ams_mel.ir", "source": "python/ams_mel/ir.py",
+             "doc": "IR owners; see :class:`ams_mel.common.Value`.", "exports": ["run", "Alias"]}])
+        self.assertEqual([item["name"] for item in model["exports"]], ["Alias", "Value", "Kind", "run"])
+        links = reference.targets(model)
+        self.assertEqual(links["ir.Alias"], links["Alias"])
+        self.assertEqual(links["ir.Alias.open"], links["Alias.open"])
+        self.assertEqual(links["common.Kind.FIRST"], links["Kind.FIRST"])
+        self.assertEqual(links["ir"], "modules/ir.html")
+        self.assertNotIn("ams_mel", sys.modules)
+
+    def test_public_module_exports_reject_inaccurate_or_dynamic_reexports(self):
+        variants = (
+            ('from ._model import Value\n', "public __all__ must be one literal assignment"),
+            ('from ._model import Value\n__all__ = ["Value", "Value"]\n', "duplicate public exports"),
+            ('from ._model import Value\n__all__ = ["Value"]\n__all__.clear()\n', "dynamic __all__ mutation"),
+            ('from ._model import Owner\n__all__ = ["Owner"]\n', "absent from package"),
+            ('from ._model import Value as Alias\n__all__ = ["Alias"]\n', "differs from package"),
+            ('from ._model import Value\n__all__ = ["Value"]\nif enabled:\n    Value = None\n',
+             "ambiguous public binding"),
+        )
+        for source, reason in variants:
+            with self.subTest(reason=reason):
+                (self.package / "common.py").write_text(source)
+                with self.assertRaisesRegex(reference.ReferenceError, reason):
+                    reference.inventory(self.root)
+
+    def test_public_module_name_cannot_shadow_canonical_export(self):
+        (self.package / "Value.py").write_text('from ._model import Value\n__all__ = ["Value"]\n')
+        with self.assertRaisesRegex(reference.ReferenceError, "shadows package export"):
+            reference.inventory(self.root)
+
+    def test_module_pages_navigation_search_and_qualified_references_are_discoverable(self):
+        self.add_public_modules()
+        guide = self.root / "docs/python/index.html"
+        guide.write_text(guide.read_text().replace("{{api-directory}}", "{{module-directory}}"))
+        files, report = reference.generate(self.root)
+        self.assertEqual(report["counts"]["public_modules"], 2)
+        self.assertEqual(report["counts"]["public_module_exports"], 4)
+        self.assertIn(b'<a href="modules/ir.html"><code>ams_mel.ir</code></a>', files["index.html"])
+        self.assertIn(b'<a href="../modules/common.html"><code>ams_mel.common</code></a>', files["api/Value.html"])
+        self.assertIn(b"from ams_mel.ir import Alias", files["api/Alias.html"])
+        self.assertIn(b'../api/Value.html', files["modules/common.html"])
+        self.assertIn(b'../source/common.html#L1', files["modules/common.html"])
+        self.assertIn(b'<a href="../api/Value.html"><code>ams_mel.common.Value</code></a>',
+                      files["modules/ir.html"])
+        script = files["assets/search-index.js"].decode()
+        entries = {e["name"]: e for e in json.loads(script.split(" = ", 1)[1].removesuffix(";\n"))}
+        for name in ("Alias", "Alias.open", "ams_mel.ir"):
+            self.assertIn(name, entries)
+        self.assertEqual(entries["Alias"]["aliases"], ["ams_mel.ir.Alias"])
+        self.assertEqual(entries["Alias.open"]["aliases"], ["ams_mel.ir.Alias.open"])
+        self.assertEqual(entries["ams_mel.ir"]["url"], "modules/ir.html")
+        self.assertEqual(len({entry["url"] for entry in entries.values()}), len(entries))
+        self.assertNotIn("ams_mel", sys.modules)
+
     def test_reexports_alias_identity_and_source_only_generation(self):
         self.rewrite("__init__.py", "from ._model import Owner as Alias, Value, Kind, run",
                      "from ._shim import Alias\nfrom ._model import Value, Kind, run")
@@ -272,6 +344,7 @@ class PythonReferenceTests(unittest.TestCase):
         self.assertEqual(item["display_annotation"], "tuple[int, ...]")
 
     def test_every_reference_anchor_and_local_destination_exists(self):
+        self.add_public_modules()
         files, report = reference.generate(self.root)
         pages = {name: Links(data.decode()) for name, data in files.items() if name.endswith(".html")}
         for name, parser in pages.items():

@@ -16,13 +16,36 @@
   <h1>Python API</h1>
   <p>The <code>ams_mel</code> package provides owned Python values, explicit native owners,
   asynchronous requests and polling receivers over the bridge's C facade. Import
-  public names from <code>ams_mel</code>. The package uses the Python standard library;
+  public names from <code>ams_mel.common</code>, <code>ams_mel.ir</code> or
+  <code>ams_mel.rf</code>. The original flat <code>ams_mel</code> imports remain
+  supported. The package uses the Python standard library;
   importing it also requires the separately built native facade.</p>
   <p>Start with <a href="getting-started.html">setup and a first session</a>, then read
   <a href="ownership-and-errors.html">ownership and errors</a> before integrating a
   provider. The <a href="api-index.html">searchable API index</a> contains the public
   exports, signatures, value fields, enum members and owner methods. Implementation
   source views are provided for inspection and do not define an additional public API.</p>
+
+  <section id="modules">
+    <h2>Common, IR and RF modules</h2>
+    <p>Each public name has one domain home. Common supplies shared values, errors
+    and the facade version query; IR supplies sessions, channels, commands and
+    metadata; RF supplies the independent Admin owner.</p>
+    {{module-directory}}
+    <pre><code class="language-python">from ams_mel.common import MFAState, MelError
+from ams_mel.ir import Session
+from ams_mel.rf import RFAdmin
+</code></pre>
+    <p>You can also use <code>from ams_mel import common, ir, rf</code> and qualified
+    names such as <code>ir.Session</code>. All domain exports are the same objects
+    available from the flat package. Existing import paths, pickle identities and
+    canonical API-page URLs remain supported.</p>
+    <p>These are namespaces within one Python package. Importing any of them,
+    including Common, still requires the native facade configured in
+    <a href="getting-started.html#load-facade">getting started</a>. Import does not
+    open a provider. The inherited IR <code>ChannelView</code> services belong to
+    IR; their use of “common channel” does not place them in the Common module.</p>
+  </section>
 
   <section id="guides">
     <h2>Choose a guide</h2>

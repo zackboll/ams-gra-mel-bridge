@@ -304,6 +304,12 @@ class GeneratedSourceTests(unittest.TestCase):
 
     def test_normal_verifier_rejects_corruption_even_with_recomputed_payload_hashes(self):
         from check_doc_coverage import measure
+
+        def corrupt_python_record(data):
+            record = json.loads(data)
+            record['report']['counts']['exports'] += 1
+            return epoch.canonical(record)
+
         with tempfile.TemporaryDirectory(dir=self.directory) as temp:
             directory = Path(temp) / 'normal'
             self.assembled_fixture(directory)
@@ -318,6 +324,8 @@ class GeneratedSourceTests(unittest.TestCase):
                     ('published/guides/getting-started.html', lambda data: data + b'<a href="missing.html">broken</a>'),
                     ('published/api/gnatdoc-navigation.js', lambda data: data + b'// modified'),
                     ('pristine/api/index.html', lambda data: data.replace(b'gnatdoc.css', b'missing.css')),
+                    ('published/python/api-index.html', lambda data: data + b'<!-- forged -->'),
+                    ('python-reference.json', corrupt_python_record),
                 ):
                     with self.subTest(path=name):
                         path = directory / name

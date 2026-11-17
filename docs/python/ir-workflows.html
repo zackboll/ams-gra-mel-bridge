@@ -80,7 +80,7 @@
     </div>
     <p>For an already enabled <code>control</code> and a caller-supplied
     <code>ConfigSetCommand</code>, explicitly close the returned observer:</p>
-    <pre><code class="language-python">from ams_mel import ConfigSetCommand, ReturnRejected
+    <pre><code class="language-python">from ams_mel.ir import ConfigSetCommand, ReturnRejected
 
 
 def send_configuration(control, command: ConfigSetCommand):
@@ -127,7 +127,7 @@ def send_configuration(control, command: ConfigSetCommand):
     Euler components or substitute a zero-filled uncertainty matrix as an implicit
     default. Representable IEEE NaN, infinity and signed zero are accepted by the
     existing numeric contract; acceptance is not navigation-solution validation.</p>
-    <pre><code class="language-python">from ams_mel import NavigationReport, NavigationRejected
+    <pre><code class="language-python">from ams_mel.ir import NavigationReport, NavigationRejected
 
 
 def submit_navigation(image, report: NavigationReport):
@@ -200,7 +200,8 @@ def submit_navigation(image, report: NavigationReport):
     <p>For example, this function explicitly registers ordinary Image metadata before
     starting an already attached Image owner. Its caller retains responsibility for
     closing that Image owner.</p>
-    <pre><code class="language-python">from ams_mel import ErrorKind, ImageMetadataKind, MelError
+    <pre><code class="language-python">from ams_mel.common import ErrorKind, MelError
+from ams_mel.ir import ImageMetadataKind
 
 
 def observe_one_image_event(image):
