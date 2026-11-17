@@ -1325,6 +1325,11 @@ ams_mel_ir_stacked_close.argtypes = [ctypes.POINTER(IrStackedHandle), CharPointe
 ams_mel_ir_stacked_close.restype = ctypes.c_int32
 # IRMEL-ADA-011 private raw mirror of the SchedulingChannel foundation only;
 # deliberately no safe Python Scheduling API and no task/exec surface.
+class IrTaskInfoV1(ctypes.Structure):
+    _fields_ = [("system_time_ns", ctypes.c_int64), ("request_id", ctypes.c_uint32),
+                ("action", ctypes.c_uint32), ("precedence_within_priority", ctypes.c_uint32),
+                ("priority", ctypes.c_uint32)]
+
 class IrSchedulingConfigV1(ctypes.Structure):
     _fields_ = [("channel_id", UciIdV1), ("channel_type", ctypes.c_uint32), ("platform_id", UciIdV1), ("sensor_location", ComponentLocationV1)]
 IrSchedulingHandle = ctypes.c_void_p
@@ -1337,6 +1342,10 @@ ams_mel_ir_scheduling_enable.restype = ctypes.c_int32
 ams_mel_ir_scheduling_get_capabilities = _LIBRARY.ams_mel_ir_scheduling_get_capabilities
 ams_mel_ir_scheduling_get_capabilities.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrChannelCapabilityHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_scheduling_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_scheduling_exec_abort = _LIBRARY.ams_mel_ir_scheduling_exec_abort
+ams_mel_ir_scheduling_exec_abort.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrTaskInfoV1), ctypes.POINTER(IrReturnRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_exec_abort.restype = ctypes.c_int32
+
 ams_mel_ir_scheduling_close = _LIBRARY.ams_mel_ir_scheduling_close
 ams_mel_ir_scheduling_close.argtypes = [ctypes.POINTER(IrSchedulingHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_scheduling_close.restype = ctypes.c_int32
@@ -2633,6 +2642,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_stacked_get_capabilities",
     "ams_mel_ir_scheduling_get_capabilities",
     "ams_mel_ir_stacked_close",
+    "ams_mel_ir_scheduling_exec_abort",
     "ams_mel_ir_scheduling_close",
     "ams_mel_ir_track_metadata_open",
     "ams_mel_ir_track_metadata_receive",
