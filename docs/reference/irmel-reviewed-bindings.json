@@ -2417,12 +2417,39 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::SchedulingChannel::exec(AbortTask)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_abort"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Abort"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_abort.c",
+          "symbol": "main"
+        },
+        {
+          "path": "native/tests/test_task_info_conversion.cpp",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_abort_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-022: complete outgoing TaskInfo through five published setters and getter verification, real AbortTask(TaskInfo) construction and SchedulingChannel::exec(AbortTask); shared Return completion engine and limited controlled safe Ada observer with cached Return or MEL rejection. All four actions, exact int64 nanoseconds and uint32 fields preserved without correlation or normalization.",
+      "limitations": [
+        "Mock-provider qualification only; no physical task abortion, acknowledgement or sensor execution is proved.",
+        "AbortTask has private embedded TaskInfo and no published getter; fidelity is verified on TaskInfo before construction, never through private provider bytes.",
+        "Only Enabled Scheduling admits submission; other Scheduling exec/send operations remain missing."
+      ],
       "representation": []
     },
     {
@@ -6835,12 +6862,39 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::AbortTask",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_abort"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Abort"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_abort.c",
+          "symbol": "main"
+        },
+        {
+          "path": "native/tests/test_task_info_conversion.cpp",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_abort_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-022: complete outgoing TaskInfo through five published setters and getter verification, real AbortTask(TaskInfo) construction and SchedulingChannel::exec(AbortTask); shared Return completion engine and limited controlled safe Ada observer with cached Return or MEL rejection. All four actions, exact int64 nanoseconds and uint32 fields preserved without correlation or normalization.",
+      "limitations": [
+        "Mock-provider qualification only; no physical task abortion, acknowledgement or sensor execution is proved.",
+        "AbortTask has private embedded TaskInfo and no published getter; fidelity is verified on TaskInfo before construction, never through private provider bytes.",
+        "Only Enabled Scheduling admits submission; other Scheduling exec/send operations remain missing."
+      ],
       "representation": []
     },
     {
@@ -12208,9 +12262,9 @@
       "native": [],
       "ada": [],
       "tests": [],
-      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial.",
+      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks.",
       "limitations": [
-        "Nine Scheduling-specific operations remain missing: four exec overloads, send(PrioritizedTrackListCmd), and the four SchedCreatedRep, UpdateTrackListResponse, TaskEvents and ScanPerformanceReport registrations. ExecuteTaskAck and TaskExecutingRep reception are independent of execution; no task is submitted, queued or reported as scheduled.",
+        "Eight Scheduling-specific operations remain missing: three other exec overloads, send(PrioritizedTrackListCmd), and four other registrations. AbortTask future completion is independent of ExecuteTaskAck and TaskExecutingRep; no physical task abortion or metadata delivery is inferred.",
         "Disable is performed only inside Close; there is no standalone Disable.",
         "Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.",
         "Positive evidence is mock-provider only; no real provider or hardware tasking ran."
@@ -13351,48 +13405,127 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::TaskInfo",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_abort"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Abort"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_abort.c",
+          "symbol": "main"
+        },
+        {
+          "path": "native/tests/test_task_info_conversion.cpp",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_abort_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-022: complete outgoing TaskInfo through five published setters and getter verification, real AbortTask(TaskInfo) construction and SchedulingChannel::exec(AbortTask); shared Return completion engine and limited controlled safe Ada observer with cached Return or MEL rejection. All four actions, exact int64 nanoseconds and uint32 fields preserved without correlation or normalization.",
+      "limitations": [
+        "Mock-provider qualification only; no physical task abortion, acknowledgement or sensor execution is proved.",
+        "AbortTask has private embedded TaskInfo and no published getter; fidelity is verified on TaskInfo before construction, never through private provider bytes.",
+        "Only Enabled Scheduling admits submission; other Scheduling exec/send operations remain missing."
+      ],
       "representation": [
         {
           "upstream": "getSystemTime",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Task_Info"
+            }
+          ]
         },
         {
           "upstream": "getReqId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Task_Info"
+            }
+          ]
         },
         {
           "upstream": "getAction",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Task_Info"
+            }
+          ]
         },
         {
           "upstream": "getPrecedenceWithinPriority",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Task_Info"
+            }
+          ]
         },
         {
           "upstream": "getPriority",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Task_Info"
+            }
+          ]
         }
       ]
     },
     {
       "id": "ir:type:ams::iface::irmel::TaskListAction",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_abort"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Abort"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_abort.c",
+          "symbol": "main"
+        },
+        {
+          "path": "native/tests/test_task_info_conversion.cpp",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_abort_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-022: complete outgoing TaskInfo through five published setters and getter verification, real AbortTask(TaskInfo) construction and SchedulingChannel::exec(AbortTask); shared Return completion engine and limited controlled safe Ada observer with cached Return or MEL rejection. All four actions, exact int64 nanoseconds and uint32 fields preserved without correlation or normalization.",
+      "limitations": [
+        "Mock-provider qualification only; no physical task abortion, acknowledgement or sensor execution is proved.",
+        "AbortTask has private embedded TaskInfo and no published getter; fidelity is verified on TaskInfo before construction, never through private provider bytes.",
+        "Only Enabled Scheduling admits submission; other Scheduling exec/send operations remain missing."
+      ],
       "representation": []
     },
     {
@@ -14824,14 +14957,14 @@
     "ada/src/ams-mel-status.ads": "309b6e11b9979a86661ea65807c534b156da3f42e84e451dfbb3226540127f06",
     "ada/src/ams-mel.adb": "5f3abf3e9ee264da4da5898ad7500ea1e550d5a7ce76563243463f1f287fe7db",
     "ada/src/ams-mel.ads": "8356a8d10aa905993f849affe0e01d23b4343a4f81b1f8d0704ba0366a9fc426",
-    "ada/src/ams-mel_c_api.ads": "fd42458172f7d0e6b0b8eb1d0f4000c452afbf38499f4136b71210ee9ada89a9",
-    "native/include/ams_mel/abi.h": "fd9464b685564237d043106251386e1b87731f09dbd68f387c1d0c5834ff87f6",
+    "ada/src/ams-mel_c_api.ads": "ddd13b523e5d5c08e147e967492524288bf5c43e4b60395a90a88b70f5ff2473",
+    "native/include/ams_mel/abi.h": "a9ce7602c0cc9dc83ea0f834e4d4b92c5bc60ba2331f9a8ad72383ff09adaa4e",
     "native/src/abi.cpp": "a8a2c41770297b7bb5a3b0d8f8e50fce89ea275a596cc56d207fe41f345501b1",
-    "native/src/common_channel_requests.cpp": "7a247e8df2186b1690209c3cf88e8eb86394ecc0753ec908b1ba6ec53988204b",
+    "native/src/common_channel_requests.cpp": "cdaa0bc5aaed0457d3f94978a17f44a79e260f109cdaf81cbf1e794fb89093f6",
     "native/src/completion_probe.cpp": "b8470e409b4013f001039d800060eaeda4c045935c13e9c7e67c03dd5abfcb10",
-    "native/src/exports.map": "e6f25197d9b5c48f60b65889171d3c418398e541c3dd846a7689c58e7e0087d5",
+    "native/src/exports.map": "0c9dc7b7e493ea84248d1f5492516f0c3512d622f223281ba156fcd1b6779a62",
     "native/src/internal.hpp": "d3ccd4d633f6563fb26f56834f7ddae5802a64335402e04ee13c6318257f5b6b",
-    "native/src/internal/common_channel_requests.hpp": "278a46d96ccd777c1c8ce999f72d6981dba3d49f8bca4a415c84f5233cd90e61",
+    "native/src/internal/common_channel_requests.hpp": "f0c3e5e90d91470ea8a885a531ce0c8059c21e6b42eed876545c2429a274f67d",
     "native/src/internal/completion_probe.hpp": "00001e661c4aaf132920d9bdd06860454024db2a82371b59c699f61ce5b93a80",
     "native/src/internal/ir_camera_command.hpp": "c9d70cb5ed73f4c913782cad2fab95da6659429d23e73fd9568c64329ad40003",
     "native/src/internal/ir_camera_protect.hpp": "c8486fc23e4d666ef402ee6c28bc8a87827350bde351b804609f64cf41dc09dc",
@@ -14876,6 +15009,11 @@
     "ada/src/ams-mel-ir-image-checkouts.adb": "297102e6e99de76ac5430da8da6eb86ab62945105abc08d2a781c14bf53d69c2",
     "native/tests/test_image_checkout.c": "b298aa094232f0b08580ec616df9a149fa0f661b6a4d3e0360556430b97711c0",
     "native/tests/test_image_checkout_allocation.cpp": "7118864358763daf1e36964b960ebdd3d445aaf70ee25d169b7a4df725136323",
-    "ada/tests/src/ams_mel_ir_checkout_tests.adb": "00f1234ccd21d8dfec24b80d0c85bbb5a21c4766f1f923a2ae3156088b51b76b"
+    "ada/tests/src/ams_mel_ir_checkout_tests.adb": "00f1234ccd21d8dfec24b80d0c85bbb5a21c4766f1f923a2ae3156088b51b76b",
+    "native/src/ir_scheduling.cpp": "8433e9192adc5c3d26bc912057645877f621118a9c72c1a9416e06717da7f403",
+    "native/src/internal/ir_task_info.hpp": "d0b9f07e210d7dd08d530675226a1aa21a2437080b3738b46eebea9cbad0a7d8",
+    "ada/src/ams-mel-ir-scheduling-commands.ads": "da4c6f177f11af8cc74157a2e47207942e3ca5ac1db0a10984a01100b9dbe6d6",
+    "ada/src/ams-mel-ir-scheduling-commands.adb": "e9a185a915dfd317d8cfef14c7bfe8d3e9c448513b92f6cc667a61dff7539d17",
+    "ada/src/ams-mel-ir-scheduling.ads": "05982680b143478604b685bf58e6915346975f03d4e8758f3cedd4d338b909ec"
   }
 }

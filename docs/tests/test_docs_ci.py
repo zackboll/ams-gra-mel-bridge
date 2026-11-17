@@ -274,6 +274,66 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(inspect.getsource(ci.build).count('epoch.generate('), 1)
         self.assertIn('deep=False', inspect.getsource(ci.build))
 
+    def test_resize_artifact_verification_binds_source_and_keeps_candidate_event(self):
+        import resize_parity
+        directory, digest = self.sealed()
+        self.hosted('pull_request', 'refs/pull/1/merge')
+        real_run = subprocess.run
+
+        def execute(args, **kwargs):
+            return real_run(args, **kwargs) if args[0] == 'git' else None
+
+        with mock.patch.object(resize_parity.subprocess, 'run', side_effect=execute) as run:
+            self.assertEqual(resize_parity.verify_artifact(self.repo, directory), self.sha)
+        command = run.call_args.args[0]
+        self.assertIn('verify', command)
+        self.assertEqual(command[command.index('--manifest-sha') + 1], digest)
+        self.assertEqual(run.call_args.kwargs['env']['GITHUB_ACTIONS'], 'true')
+        with mock.patch.object(resize_parity.subprocess, 'run', side_effect=execute) as run:
+            self.assertEqual(resize_parity.verify_artifact(self.repo, directory, baseline=True), self.sha)
+        self.assertEqual(run.call_args.kwargs['env']['GITHUB_ACTIONS'], 'false')
+        # The original verifier's error must propagate, never become permission
+        # to compare different bytes or fall back to a weaker check.
+        def reject(args, **kwargs):
+            if args[0] == 'git':
+                return real_run(args, **kwargs)
+            raise subprocess.CalledProcessError(1, ['verify'])
+
+        with mock.patch.object(resize_parity.subprocess, 'run', side_effect=reject):
+            with self.assertRaises(subprocess.CalledProcessError):
+                resize_parity.verify_artifact(self.repo, directory)
+
+    def test_resize_rejects_wrong_tree_old_candidate_and_deployable_baseline(self):
+        import resize_parity
+        directory, _ = self.sealed()
+        manifest = json.loads((directory / 'manifest.json').read_bytes())
+        changed = json.loads(json.dumps(manifest))
+        changed['identity']['tree'] = '0' * 40
+        ci.write(directory / 'manifest.json', changed)
+        with self.assertRaisesRegex(ValueError, 'source tree'):
+            resize_parity.verify_artifact(self.repo, directory)
+        ci.write(directory / 'manifest.json', manifest)
+        (self.repo / 'source.ads').write_text('package Source is X : Integer; end Source;\n')
+        self.git('commit', '-qam', 'ordinary API change')
+        with self.assertRaisesRegex(ValueError, 'candidate source epoch'):
+            resize_parity.verify_artifact(self.repo, directory)
+        manifest['identity']['mode'] = 'hosted'
+        ci.write(directory / 'manifest.json', manifest)
+        with self.assertRaisesRegex(ValueError, 'non-deployable'):
+            resize_parity.verify_artifact(self.repo, directory, baseline=True)
+
+    def test_resize_introduction_keeps_strict_cross_commit_delta(self):
+        import resize_parity
+        baseline, candidate = self.root / 'baseline', self.root / 'candidate'
+        output = self.root / 'parity.json'
+        with mock.patch.object(resize_parity, 'verify_artifact', return_value=self.sha) as verify, \
+             mock.patch.object(resize_parity.source, 'blob',
+                               return_value=b'[navigation]\nresizable_sidebar = false\n'), \
+             mock.patch.object(resize_parity, 'qualify_delta', return_value={'passed': True}) as delta:
+            self.assertEqual(resize_parity.qualify(self.repo, baseline, candidate, output), {'passed': True})
+        self.assertEqual(verify.call_count, 2)
+        delta.assert_called_once_with(self.repo, baseline, candidate, output)
+
 
 if __name__ == '__main__':
     unittest.main()

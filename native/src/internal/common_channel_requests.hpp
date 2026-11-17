@@ -189,6 +189,13 @@ CommonChannelAccess common_from_track(const ams_mel_ir_track *);
 CommonChannelAccess common_from_stacked(const ams_mel_ir_stacked *);
 /* IRMEL-ADA-011: Scheduling adapter; defined in ir_scheduling.cpp. */
 CommonChannelAccess common_from_scheduling(const ams_mel_ir_scheduling *);
+/* Typed commands share the common Return engine, but supply their own
+ * lifecycle adapter and published-interface dispatch. Context is borrowed only
+ * during this synchronous submission; no worker retains it. */
+using ReturnSend = ams::iface::mel::RequestFor<ams::iface::irmel::Return> (*)(
+    ams::iface::irmel::Channel&, const void *);
+ams_mel_status_t submit_return(const CommonChannelAccess&, ReturnSend, const void *,
+    ams_mel_ir_return_request **, char *, std::size_t, std::size_t *) noexcept;
 ams_mel_status_t submit_common_keepalive(const CommonChannelAccess&,
     ams_mel_ir_return_request **, char *, std::size_t, std::size_t *) noexcept;
 ams_mel_status_t submit_common_comms(const CommonChannelAccess&,
