@@ -10,7 +10,6 @@ permissions:
 
 env:
   DOC_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  BASE_SOURCE_SHA: ${{ github.event.pull_request.base.sha || '680ee5c7308869059a9c395e286bd5437e897634' }}
   ALIRE_SETTINGS_DIR: ${{ github.workspace }}/.doc-tools/settings
 
 jobs:
@@ -26,21 +25,23 @@ jobs:
           persist-credentials: false
       - name: Install official pinned documentation tools
         run: sh docs/tools/install_docs_toolchain.sh
-      - name: Reconstruct complete baseline and exact-head candidate
+      - name: Reconstruct exact-head candidate and same-source resize-disabled control
         run: |
-          git worktree add --detach .doc-tools/resize-baseline-source "$BASE_SOURCE_SHA"
           alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
             cd ../..
-            GITHUB_ACTIONS=false .doc-tools/enhancer/bin/python .doc-tools/resize-baseline-source/docs/tools/docs_ci.py build \
-              --root "$PWD/.doc-tools/resize-baseline-source" \
-              --directory "$PWD/.doc-tools/resize-baseline" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
             .doc-tools/enhancer/bin/python docs/tools/docs_ci.py build \
               --directory "$PWD/.doc-tools/resize-current" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
             .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify \
               --directory "$PWD/.doc-tools/resize-qualified" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
             .doc-tools/enhancer/bin/python docs/tools/resize_parity.py \
-              --baseline .doc-tools/resize-baseline --candidate .doc-tools/resize-current \
+              --candidate .doc-tools/resize-current \
+              --manifest-sha "$(sha256sum .doc-tools/resize-current/manifest.json | cut -d " " -f 1)" \
               --output .doc-tools/resize-parity.json &&
+            MEL_RESIZE_CANDIDATE="$PWD/.doc-tools/resize-current" \
+              MEL_RESIZE_REGRESSION_EVIDENCE="$PWD/.doc-tools/resize-regression.json" \
+              GNATDOC_PREFIX="$PWD/.doc-tools/gnatdoc-26.0.0" \
+              .doc-tools/enhancer/bin/python -W error -m unittest discover \
+                -s docs/tests -p test_resize_parity.py -v &&
             MEL_RESIZE_QUALIFICATION="$PWD/.doc-tools/resize-qualified" \
               .doc-tools/enhancer/bin/python -W error -m unittest discover \
                 -s docs/tests -p test_resize_publication.py -v &&
@@ -61,10 +62,10 @@ jobs:
         with:
           name: resize-qualification-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
           path: |
-            .doc-tools/resize-baseline/
             .doc-tools/resize-current/
             .doc-tools/resize-qualified/
             .doc-tools/resize-qualified-generation.log
             .doc-tools/resize-parity.json
+            .doc-tools/resize-regression.json
             .doc-tools/resize-browser.json
           if-no-files-found: warn
