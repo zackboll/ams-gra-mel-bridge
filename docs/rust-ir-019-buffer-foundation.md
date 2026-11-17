@@ -155,3 +155,20 @@ rather than self-referential commit identifiers here.
 Independent technical review was requested in the PR. An external automated
 review attempt failed authentication (expired OAuth), and no passed review is
 claimed. Review remains required before `READY_FOR_USER_MERGE`.
+
+
+### Current-main integration
+
+Main advanced during qualification to
+`9614d4b9808ceae47daa67a3aa6bbe89fad62a06` (Scheduling AbortTask and documentation
+resize-parity correction). An ordinary merge incorporated that main without
+rewriting history or changing this task's eight-file delta. Native/sys/Ada/Python
+changes in the merge belong to main, not this Buffer feature. Pre-merge counts
+above are historical results, not substituted for integrated-source evidence.
+
+The corrected pinned `make check` completed successfully, including both build
+isolation directions, 821 native tests, structured coverage checks, GNATformat
+and the complete Ada smoke/negative suite. Integrated-source qualification is
+repeated sequentially after the main merge, with no concurrent native-tree
+reconfiguration. Actual final integrated counts, command conclusions, exact
+HEAD/tree and final hosted URLs are recorded in the PR delivery evidence.
