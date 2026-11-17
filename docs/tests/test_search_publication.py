@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / 'docs/tools'), str(ROOT / 'scripts')]
 import build_enhanced_site as p
 import search_audit
+import resize_audit
 from local_type_audit import Authority
 from check_doc_coverage import measure
 
@@ -32,7 +33,7 @@ class SearchPublicationTests(unittest.TestCase):
         insertion, report = self.qualify(self.actual)
         self.assertEqual(report['records'], sum(report['counts'].values()))
         self.assertGreater(report['counts']['operation'], 0)
-        restored = search_audit.restore(self.actual['api/index.html'].decode(), insertion)
+        restored = search_audit.restore(resize_audit.qualify(self.actual), insertion)
         self.assertNotIn('documentation-search-authority', restored)
 
     def test_missing_corrupt_forged_and_resealed_index_rejected(self):
