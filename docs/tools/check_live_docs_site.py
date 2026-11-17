@@ -169,7 +169,9 @@ class GraphPage(HTMLParser):
         attrs = dict(attributes)
         require(len(attrs) == len(attributes), "duplicate HTML attribute")
         if tag == "script":
-            require(self.name == "api/index.html" and attrs == {"src": "gnatdoc-navigation.js", "defer": None},
+            require(self.name == "api/index.html" and attrs in (
+                    {"src": "gnatdoc-navigation.js", "defer": None},
+                    {"src": "gnatdoc-resize.js", "defer": None}),
                     "unapproved active content")
         else:
             require(tag not in {"style", "base", "object", "embed", "applet", "form", "svg", "math"},
@@ -189,6 +191,11 @@ class GraphPage(HTMLParser):
 
 def graph(files):
     """Inspect served bytes, not manifest counts or data-type claims."""
+    import resize_audit
+    if (resize_audit.EXTRAS & files.keys() or
+            any(token in files.get('api/index.html', b'').lower() for token in
+                (b'gnatdoc-resize', b'navigation-resize', b'resizable-navigation'))):
+        resize_audit.qualify(files)
     pages = {name: GraphPage(data.decode("utf-8"), name) for name, data in files.items() if name.endswith(".html")}
     records = []
     for name, page in pages.items():

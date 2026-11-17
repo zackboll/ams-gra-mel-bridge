@@ -15,7 +15,12 @@ comment_style = "trailing"
 [navigation]
 mode = "packages"
 symbol_bookmarks = true
+resizable_sidebar = true
 default_package = "AMS.MEL"
+
+[search]
+schema_version = 1
+mode = "documentation"
 
 [presentation]
 theme = true
@@ -23,4 +28,8 @@ syntax_highlighting = true
 type_links = true
 
 [guides]
-mode = "none"
+mode = "authored-html"
+manifest = "docs/gnatdoc-authored.json"
+# Fresh Git exports derive this digest after native GNATdoc reconciliation.
+# This sentinel is never accepted by the renderer as a publication digest.
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"

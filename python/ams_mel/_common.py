@@ -62,10 +62,14 @@ class _NativeOwner:
             )
 
     def __enter__(self) -> Any:
+        """Return this existing open owner without starting or enabling provider work."""
+
         self._require_open()
         return self
 
     def __exit__(self, exception_type: object, exception: object, traceback: object) -> bool:
+        """Close on context exit, preserving an exception raised by the with body."""
+
         if exception_type is None:
             self.close()
         else:
@@ -114,14 +118,15 @@ class ChannelView:
     """Weak common Channel view of one typed owner.
 
     Created by :meth:`ControlChannel.channel_view`, :meth:`ImageStream.channel_view`,
-    :meth:`InstrumentationChannel.channel_view`, or :meth:`HealthStatusChannel.channel_view`.
+    :meth:`InstrumentationChannel.channel_view`, :meth:`HealthStatusChannel.channel_view`,
+    or :meth:`StackedChannel.channel_view`.
     This object owns only the native
     ``ams_mel_ir_channel`` weak-view wrapper; that native view owns only weak
     family state. It never retains its typed Python source, the Session, the
     provider channel, or the provider library, so it can outlive all of them
     without delaying teardown. :attr:`is_open` reports only that the wrapper is
-    still owned: after source teardown it stays ``True`` while every operation
-    fails with ``PROVIDER_FAILED``.
+    still owned: after source teardown it stays ``True`` while channel operations
+    fail with ``PROVIDER_FAILED``. Closing the weak wrapper remains independent.
 
     Operations and :meth:`close` on one View require external serialization;
     the GIL is not a thread-safety contract.
@@ -223,8 +228,8 @@ class ChannelView:
     def open_comms_metadata(self, queue_capacity: int = 16) -> CommsMetadataStream:
         """Register inherited provider-to-consumer CommsTest metadata once.
 
-        Health/Image are supported; future StackedImage views can reuse this
-        operation. C2 must use its dedicated metadata API. Registration does
+        Health, Image and StackedImage views support this operation. C2 must
+        use its dedicated metadata API. Registration does
         not enable the channel and failure can consume the native attempt.
         The receiver retains no Python parent and is not a request future.
         """
@@ -293,10 +298,14 @@ class ChannelView:
             )
 
     def __enter__(self) -> ChannelView:
+        """Return this existing open owner without starting or enabling provider work."""
+
         self._require_open()
         return self
 
     def __exit__(self, exception_type: object, exception: object, traceback: object) -> bool:
+        """Close on context exit, preserving an exception raised by the with body."""
+
         if exception_type is None:
             self.close()
         else:

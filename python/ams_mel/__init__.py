@@ -1,4 +1,16 @@
-"""Safe Python sessions, IR streams/C2/Instrumentation/Health, and RF Admin.
+"""Safe Python sessions, IR Image/Stacked/C2/Instrumentation/Health, and RF Admin.
+
+Public modules group the interface by domain: ams_mel.common for shared values
+and errors, ams_mel.ir for IR sessions/channels, and ams_mel.rf for RF Admin.
+Use ``from ams_mel import common, ir, rf`` or import names from those modules.
+The original flat imports remain supported with identical objects and pickle
+paths. Every import spelling retains the native facade loading requirement.
+
+Session discovery returns complete owned capability snapshots without attaching
+channels. ImageStream supports host-memory Mono8 acquisition or a control-only
+attachment, plus explicit navigation submission and independent metadata
+receivers. StackedImage provides attachment, enablement and common services;
+stacked acquisition is not exposed. RFAdmin uses an independent provider factory.
 
 IR C2 provides asynchronous :class:`ModeRequest` and :class:`ReturnRequest`
 owners. BIT support is limited to the empty/no-op profile; payload-bearing BIT
@@ -8,7 +20,7 @@ CommsTest reports. Request timeout and close do not cancel provider work.
 
 Common Channel: :meth:`ControlChannel.channel_view`,
 :meth:`ImageStream.channel_view`, :meth:`InstrumentationChannel.channel_view`,
-and :meth:`HealthStatusChannel.channel_view`
+:meth:`HealthStatusChannel.channel_view`, and :meth:`StackedChannel.channel_view`
 return a weak :class:`ChannelView` offering
 the inherited KeepAlive (the existing :class:`ReturnRequest`), CommsTest
 (:class:`CommsRequest`), and a complete Python-owned
@@ -17,7 +29,8 @@ the inherited KeepAlive (the existing :class:`ReturnRequest`), CommsTest
 family state: keeping a View alive keeps no typed owner, Session, provider
 channel, or provider library alive, and the View holds no reference to its
 Python source. After the source is torn down the View is still open (it still
-owns its wrapper) but every operation fails with ``PROVIDER_FAILED``.
+owns its wrapper) but channel operations fail with ``PROVIDER_FAILED``;
+closing the weak wrapper remains independent of the source channel.
 
 Operations using one owner must follow the native external-serialization
 contract. At most one receive operation may consume an :class:`ImageStream` at
@@ -44,115 +57,38 @@ parent; Close does not unregister callbacks, cancel requests or promise quiescen
 from __future__ import annotations
 
 
-from ._errors import (
+from . import common, ir, rf
+
+from .common import (
+    AbiVersion,
+    ProviderVersion,
+    UciId,
+    ComponentLocation,
     ErrorKind,
     MelError,
+    MFAState,
+    abi_version,
 )
-from ._comms_metadata import CommsMetadataCounters, CommsMetadataStream
-from ._image_types import (
-    AzimuthElevation,
-    BadPixel,
-    BadPixelList,
-    BadPixelReason,
-    ImageMetadataCounters,
-    ImageMetadataEvent,
-    ImageMetadataKind,
-    LineOfSightEuler,
-    LineOfSightReport,
-    NavigationResponse,
-)
-from ._image_metadata import ImageMetadataStream
-from ._navigation import NavigationRequest
-from ._navigation_types import (
+
+from .ir import (
+    ForwardRightDown,
+    RowCol,
+    OpticalDistortionMap,
+    OpticalDistortionMapOpenError,
+    OpticalDistortionMapStream,
     AttitudeRate,
     NavigationCompleted,
     NavigationRejected,
     NavigationReport,
+    NavigationRequest,
     NorthEastDown,
     PositionSolutionState,
     PositionVelocityCovariance,
-)
-from ._camera_response import (
     CameraCommandResponse,
     CameraResponseCounters,
     CameraResponseOpenError,
     CameraResponseStream,
-)
-from ._nuc import (
-    NucPointType,
-    NucPixelKind,
-    NucPixelValue,
-    NucTempPoint,
-    NucTempData,
-    NucCounters,
-    NucOpenError,
-    NucStream,
-)
-from ._types import (
-    AbiVersion,
-    ConfigSetCommand,
-    CoordinateFrameReference,
-    DegradationMethod,
-    ModeCommand,
-    ScanParameters,
-    ScanType,
-    ProviderVersion,
-    UciId,
-    ComponentLocation,
-    ImageConfig,
-    ImageControlConfig,
-    StackedConfig,
-    ControlConfig,
-    InstrumentationConfig,
-    HealthConfig,
-    InstrumentationPriority,
-    InstrumentationLevelCommand,
-    InstrumentationReport,
-    InstrumentationMetadataCounters,
-    InstrumentationCompleted,
-    InstrumentationRejected,
-    MFAState,
-    MfaMode,
-    CommandReturn,
-    MelErrorCode,
-    ModeSuccess,
-    ModeRejected,
-    ReturnCompleted,
-    ReturnRejected,
-    CommsTestRequest,
-    CommsTestReport,
-    CommsCompleted,
-    CommsRejected,
-    PixelFormat,
-    SensorType,
-    ChannelType,
-    MetadataCapability,
-    BandType,
-    CoordinateSystem,
-    BandInfo,
-    ImageBand,
-    ChannelCapability,
-    ImageType,
-    ImageFlip,
-    Frame,
-    StreamCounters,
-)
-from ._requests import (
-    ModeRequest,
-    ReturnRequest,
-    CommsRequest,
-)
-from ._common import (
-    ChannelView,
-)
-from ._image import (
-    ImageStream,
-)
-from ._c2 import (
-    ControlChannel,
-)
-from ._c2_metadata import C2MetadataStream
-from ._c2_types import (
+    C2MetadataStream,
     C2MetadataKind,
     C2MetadataEvent,
     C2MetadataCounters,
@@ -162,18 +98,25 @@ from ._c2_types import (
     C2BitControlInterface,
     C2BitType,
     C2BitConfiguration,
-)
-from ._instrumentation import (
-    InstrumentationChannel,
-    InstrumentationMetadata,
-    InstrumentationRequest,
-)
-from ._health import (
-    HealthStatusChannel,
-)
-from ._health_metadata import HealthMetadataStream
-from ._stacked import StackedChannel
-from ._health_types import (
+    AzimuthElevation,
+    BadPixel,
+    BadPixelList,
+    BadPixelReason,
+    ImageMetadataCounters,
+    ImageMetadataEvent,
+    ImageMetadataKind,
+    ImageMetadataStream,
+    LineOfSightEuler,
+    LineOfSightReport,
+    NavigationResponse,
+    NucPointType,
+    NucPixelKind,
+    NucPixelValue,
+    NucTempPoint,
+    NucTempData,
+    NucCounters,
+    NucOpenError,
+    NucStream,
     About,
     ActiveBit,
     BitResult,
@@ -196,6 +139,7 @@ from ._health_types import (
     HealthMetadataCounters,
     HealthMetadataEvent,
     HealthMetadataKind,
+    HealthMetadataStream,
     InstallationDetails,
     MfaComponent,
     MfaStatus,
@@ -224,13 +168,66 @@ from ._health_types import (
     SubsystemStatus,
     TemperatureState,
     TemperatureStatus,
-)
-from ._rf_admin import (
-    RFAdmin,
-)
-from ._session import (
-    abi_version,
+    BandInfo,
+    BandType,
+    ChannelCapability,
+    ChannelType,
+    ChannelView,
+    CommandReturn,
+    CommsCompleted,
+    CommsRejected,
+    CommsRequest,
+    CommsMetadataCounters,
+    CommsMetadataStream,
+    CommsTestReport,
+    CommsTestRequest,
+    ConfigSetCommand,
+    CoordinateFrameReference,
+    DegradationMethod,
+    ModeCommand,
+    ScanParameters,
+    ScanType,
+    ControlChannel,
+    ControlConfig,
+    CoordinateSystem,
+    Frame,
+    HealthConfig,
+    HealthStatusChannel,
+    StackedConfig,
+    StackedChannel,
+    ImageBand,
+    ImageConfig,
+    ImageControlConfig,
+    ImageFlip,
+    ImageStream,
+    ImageType,
+    InstrumentationChannel,
+    InstrumentationCompleted,
+    InstrumentationConfig,
+    InstrumentationLevelCommand,
+    InstrumentationMetadata,
+    InstrumentationMetadataCounters,
+    InstrumentationPriority,
+    InstrumentationRejected,
+    InstrumentationReport,
+    InstrumentationRequest,
+    MelErrorCode,
+    MetadataCapability,
+    MfaMode,
+    ModeRejected,
+    ModeRequest,
+    ModeSuccess,
+    PixelFormat,
+    ReturnCompleted,
+    ReturnRejected,
+    ReturnRequest,
+    SensorType,
     Session,
+    StreamCounters,
+)
+
+from .rf import (
+    RFAdmin,
 )
 
 from . import _native
@@ -263,6 +260,11 @@ for _public_symbol in (
     CameraResponseOpenError,
     CameraResponseStream,
     AzimuthElevation,
+    ForwardRightDown,
+    RowCol,
+    OpticalDistortionMap,
+    OpticalDistortionMapOpenError,
+    OpticalDistortionMapStream,
     BadPixel,
     BadPixelList,
     BadPixelReason,
@@ -401,6 +403,11 @@ del _public_symbol
 
 
 __all__ = [
+    "ForwardRightDown",
+    "RowCol",
+    "OpticalDistortionMap",
+    "OpticalDistortionMapOpenError",
+    "OpticalDistortionMapStream",
     "AttitudeRate",
     "NavigationCompleted",
     "NavigationRejected",

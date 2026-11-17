@@ -48,7 +48,7 @@ imports or enum vocabulary. Individual source specifications remain authoritativ
 | C ABI | Provider lifecycle; IR image, channel, C2 and metadata families; Health/Status plus conditional Instrumentation/Track services; RF DataMEL, ProductRx, Admin, C2, VirtualAperture (VA) and Job families | Low-level opaque owners, versioned records, explicit close and borrowed-span rules; incomplete upstream coverage |
 | Ada | IR capability discovery, acquisition/control-only Image attachment, Mono8 image copies and leases, common channels, C2 commands/navigation and metadata; Health/Status, conditional Instrumentation/Track, Scheduling lifecycle/metadata and StackedImage lifecycle/common services; RF DataMEL/ProductRx/Admin/C2/VA/Job and query/observer families | Safe owned values and limited resource owners; conditional operations still require provider support; Scheduling task submission and stack acquisition remain unbound |
 | Rust | Session/version, owned-copy IR Mono8, C2 Operate/TaskSched and BIT no-op; weak C2/Image channel views with KeepAlive, CommsTest and complete owned capability snapshots | No safe RF, general Mode/ConfigSet, payload-bearing BIT, metadata queues or Health/Instrumentation/Track owners |
-| Python | Session/version, owned-bytes IR Mono8, C2 Operate/TaskSched and BIT no-op; weak C2/Image channel views with KeepAlive, CommsTest and complete owned capability snapshots | Dependency-free development API; no public RF, expanded C2 commands, metadata queues or Health/Instrumentation/Track owners |
+| Python | Session/version and discovery; owned-bytes Mono8 and control-only Image, navigation requests, C2 Mode/ConfigSet and BIT no-op; Health/Instrumentation and StackedImage owners; copied metadata and weak common channel services; RF Admin | Dependency-free development API with owned values; RF Data/C2, Track/Scheduling owners, payload-bearing BIT, generic buffers and stack acquisition are not exposed |
 | Native C++ (direct upstream path) | Uses the provider's published C++ MEL interfaces directly | Not a wrapper implemented by this project; supported behavior belongs to that provider |
 
 Ada IR metadata includes C2 command/BIT status and configuration, opt-in CommsTest,
@@ -135,6 +135,8 @@ development layout and remaining release work, not a package availability claim.
 - [Ownership and Errors](https://zackboll.github.io/ams-gra-mel-bridge/guides/ownership-and-errors.html)
 - [API Map](https://zackboll.github.io/ams-gra-mel-bridge/guides/api-map.html)
 - [Full GNATdoc Ada API reference](https://zackboll.github.io/ams-gra-mel-bridge/api/index.html)
+- [Python API reference and guides](https://zackboll.github.io/ams-gra-mel-bridge/python/index.html)
+  — searchable public API, setup, ownership, IR workflows and RF Admin.
 
 The API map links public package names to their generated destinations. Native
 GNATdoc declarations, anchors, profiles and package navigation remain authoritative.
@@ -155,10 +157,18 @@ metadata. Normal builds verify exact native restoration and all local destinatio
 scheduled/manual qualification also repeats generation and deeply audits type-link
 completeness. Warning counts and documentation coverage are reported, not ratcheted.
 Use the source commit, coverage and warning summary from the matching
-[Ada API Documentation workflow run](https://github.com/zackboll/ams-gra-mel-bridge/actions/workflows/documentation.yml)
+[API Documentation workflow run](https://github.com/zackboll/ams-gra-mel-bridge/actions/workflows/documentation.yml)
 and its `documentation-diagnostics` artifact when assessing the current source.
 The artifact includes `coverage.json`, `warnings.json`, `native-anchors.json`
 and `gnatdoc.log`; earlier task-report counts describe their own checkpoints.
+The same publication includes source-derived Python pages under `python/` and
+`python-reference.json` diagnostics. Python generation reads the public export
+list, definitions, signatures, fields and enum values without importing the
+binding or loading a native library. A separate native-backed qualification
+compares that inventory with the actual Python API. Missing prose is reported
+without a completeness threshold; private ctypes declarations are not a second
+public Python API. See [the Python documentation task](docs/pydoc-001-python-reference.md)
+for generation and qualification commands.
 See [the current documentation CI contract](docs/doc-ci-simplify-001.md) for local
 commands, artifact identity and fail-closed Pages deployment.
 [GNATdoc foundation](docs/gnatdoc-foundation.md) records the qualified toolchain,

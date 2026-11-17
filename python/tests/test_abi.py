@@ -317,7 +317,7 @@ class AbiTests(unittest.TestCase):
         self.assertFalse([n for n in dir(ams_mel) if "quaternion" in n.lower()])
 
     def test_private_image_odm_abi(self) -> None:
-        """IRMEL-ADA-009: private raw Image OpticalDistortionMap mirror only."""
+        """IRMEL-ADA-009 raw layout/signatures remain unchanged by PY-MEL-017."""
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as temp:
             executable = Path(temp) / "layout"
@@ -358,9 +358,10 @@ class AbiTests(unittest.TestCase):
             self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
             self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
             self.assertIs(function.restype, ctypes.c_int32)
-        # No safe Python ODM API is introduced.
+        # PY-MEL-017 adds safe reception without changing this raw ABI.
         import ams_mel
-        self.assertFalse([n for n in dir(ams_mel) if "odm" in n.lower() or "distortion" in n.lower()])
+        self.assertTrue({"OpticalDistortionMap", "OpticalDistortionMapOpenError",
+                         "OpticalDistortionMapStream"}.issubset(ams_mel.__all__))
 
     def test_private_c2_system_response_abi(self) -> None:
         root = Path(__file__).resolve().parents[2]
@@ -1143,6 +1144,11 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
+                "ams_mel_ir_image_checkout_open",
+                "ams_mel_ir_image_checkout_receive",
+                "ams_mel_ir_image_checkout_get_counters",
+                "ams_mel_ir_image_checkout_close",
+                "ams_mel_ir_image_checkout_lease_close",
                 "ams_mel_ir_buffer_open",
                 "ams_mel_ir_buffer_get_info",
                 "ams_mel_ir_buffer_get_flags",
@@ -1472,8 +1478,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 326)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 326)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 331)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 331)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1481,7 +1487,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 326)
+        self.assertEqual(len(exported), 331)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

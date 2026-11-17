@@ -19,6 +19,9 @@ check-ada-docs-changed:
 test-docs-ci:
 	@python3 -W error -m unittest discover -s docs/tests -p test_docs_ci.py -v
 	@python3 -W error -m unittest discover -s docs/tests -p test_rustdoc_publication.py -v
+	@python3 -W error -m unittest discover -s docs/tests -p test_python_api_reference.py -v
+	@python3 -W error -m unittest discover -s docs/tests -p test_python_publication.py -v
+	@python3 -W error -m unittest discover -s scripts -p test_qualify_python_reference.py -v
 	@python3 -W error -m unittest discover -s scripts -p test_rustdoc_001_foundation.py -v
 	@python3 -W error -m unittest discover -s docs/tests -p test_static_subtype_audit.py -v
 	@python3 -W error -m unittest discover -s scripts -p test_doc_coverage.py -v
@@ -40,6 +43,7 @@ help:
 	  'make test-native  Build/run native tests in native/build-tests' \
 	  'make test-build-isolation Prove the production/test build trees stay separate' \
 	  'make test-ada     Build/run Ada smoke test using GPRbuild on PATH' \
+	  'make test-minimal-ir-ada Opt-in pinned real-provider Ada parity (MINIMAL_MEL_REFERENCE_DIR)' \
 	  'make check-ir-api-coverage Offline pinned IR API audit and regression tests' \
 	  'make format-ada       Format Ada crate sources with GNATformat' \
 	  'make check-ada-format Verify Ada crate sources are GNATformat-clean' \
@@ -70,6 +74,10 @@ test-native:
 
 test-ada:
 	@sh scripts/test_ada.sh
+
+.PHONY: test-minimal-ir-ada
+test-minimal-ir-ada:
+	@sh integration/minimal-mel-example/run-ada.sh
 
 .PHONY: check-ir-api-coverage
 check-ir-api-coverage:

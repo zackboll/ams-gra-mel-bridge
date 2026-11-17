@@ -9,6 +9,7 @@ from ._navigation import NavigationRequest, _submit_navigation_report
 from ._navigation_types import NavigationReport
 from ._camera_response import CameraResponseStream, _open_camera_response
 from ._image_metadata import ImageMetadataStream, _open_metadata
+from ._optical_distortion_map import OpticalDistortionMapStream, _open_optical_distortion_map
 from ._nuc import NucStream, _open_nuc
 from ._errors import (
     ErrorKind,
@@ -32,7 +33,12 @@ from ._common import (
 
 
 class ImageStream:
-    """Unique native stream owner; operations require external serialization."""
+    """Unique Image owner for Mono8 acquisition or a control-only attachment.
+
+    Created by Session.open_image_stream or Session.open_image_control. Start
+    is explicit in either mode; control-only owners provide commands/metadata
+    without pixel buffers. Externally serialize operations on this owner.
+    """
 
     def __init__(self) -> None:
         raise TypeError("ImageStream objects must be created by Session.open_image_stream")
@@ -47,6 +53,8 @@ class ImageStream:
 
     @property
     def is_open(self) -> bool:
+        """Local Image handle ownership, independent of Start, Stop or provider health."""
+
         return bool(self._owner.value)
 
     def _require_open(self) -> None:
@@ -65,7 +73,17 @@ class ImageStream:
         """Opt into one-shot CameraCommandResp reception, without starting Image."""
         return _open_camera_response(self, queue_capacity)
 
+    def open_optical_distortion_map(self, queue_capacity: int = 16) -> OpticalDistortionMapStream:
+        """Opt into optional one-shot ODM reception, without starting acquisition."""
+        return _open_optical_distortion_map(self, queue_capacity)
+
     def start(self) -> None:
+        """Explicitly start acquisition or enable a control-only Image attachment.
+
+        A stopped stream cannot be restarted. Registration is separate; this method
+        does not implicitly open metadata receivers.
+        """
+
         self._require_open()
         _call_with_diagnostic(
             lambda diagnostic, required: _native.ams_mel_ir_stream_start(
@@ -151,6 +169,8 @@ class ImageStream:
         return _frame_from_raw(raw, pixels, pixel_required)
 
     def counters(self) -> StreamCounters:
+        """Snapshot cumulative frame-callback counts without resetting them or consuming a frame."""
+
         self._require_open()
         raw = _native.IrStreamCountersV1()
         _call_with_diagnostic(
@@ -169,6 +189,12 @@ class ImageStream:
         )
 
     def stop(self) -> None:
+        """Stop the Image state machine while preserving queued frames for draining.
+
+        The public handle remains owned until close; Stop is terminal for this
+        attachment rather than a pause that permits restart.
+        """
+
         self._require_open()
         _call_with_diagnostic(
             lambda diagnostic, required: _native.ams_mel_ir_stream_stop(
@@ -192,6 +218,13 @@ class ImageStream:
         return _open_channel_view(_native.ams_mel_ir_channel_from_stream, self._owner)
 
     def close(self) -> None:
+        """Release this Image owner through the native close contract.
+
+        A close failure may still consume the handle; is_open reports local
+        ownership afterward. Explicit close exposes failures, while finalization
+        performs best-effort non-raising cleanup.
+        """
+
         if not self.is_open:
             return
         _call_with_diagnostic(
@@ -204,10 +237,14 @@ class ImageStream:
         )
 
     def __enter__(self) -> ImageStream:
+        """Return this existing open owner without starting or enabling provider work."""
+
         self._require_open()
         return self
 
     def __exit__(self, exception_type: object, exception: object, traceback: object) -> bool:
+        """Close on context exit, preserving an exception raised by the with body."""
+
         if exception_type is None:
             self.close()
         else:

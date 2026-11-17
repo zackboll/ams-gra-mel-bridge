@@ -15,12 +15,16 @@ from ._validation import _validate_size_t, _validate_timeout
 
 
 class NucPointType(IntEnum):
+    """Provider classification of a NUC temperature point as NUC_POINT, MFA_ESTIMATE or OTHER."""
+
     NUC_POINT = 0
     MFA_ESTIMATE = 1
     OTHER = 2
 
 
 class NucPixelKind(IntEnum):
+    """Original unsigned 8-, 16- or 32-bit alternative carried by a NucPixelValue."""
+
     UINT8 = 1
     UINT16 = 2
     UINT32 = 3
@@ -72,6 +76,8 @@ class NucTempData:
 
 @dataclass(frozen=True)
 class NucCounters:
+    """Cumulative uint64 NUC callback counts, including incoming drops and malformed/unsupported events."""
+
     events_received: int
     events_dropped_queue_full: int
     malformed_or_unsupported: int

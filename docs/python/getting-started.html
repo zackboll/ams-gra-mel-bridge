@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Getting started with Python — AMS GRA MEL Bridge</title>
+  <link rel="stylesheet" href="assets/reference.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header>
+  <p>AMS MEL Python documentation</p>
+  {{navigation}}
+</header>
+<main id="main">
+  <h1>Getting started with Python</h1>
+  <p>Use a Linux development checkout with the repository's native build prerequisites
+  and Python 3. The Python package is a development interface in <code>python/ams_mel</code>;
+  there is no wheel or PyPI release. The native bridge and the runtime provider are
+  separate shared libraries.</p>
+
+  <section id="load-facade">
+    <h2>Build and load the facade</h2>
+    <p>Run these commands from the repository root. <code>make native</code> builds
+    the production facade without installing or loading a runtime MEL provider.</p>
+    <pre><code class="language-sh">make native
+export PYTHONPATH="$PWD/python${PYTHONPATH:+:$PYTHONPATH}"
+export AMS_MEL_NATIVE_LIB="$PWD/native/build/lib/libams_mel_c.so.0"
+python3 -c 'from ams_mel.common import abi_version; print(abi_version())'
+</code></pre>
+    <p><code>AMS_MEL_NATIVE_LIB</code> must be the absolute full path to
+    <code>libams_mel_c.so.0</code> or <code>libams_mel_c.so</code>, set before the first
+    import. Import loads this library and binds the required symbols. It does not
+    create a Session, attach a channel or invoke a provider factory. This applies
+    to all three public modules, including <code>ams_mel.common</code>, because
+    Python initializes the parent package first. A missing or
+    relative environment value raises <code>ImportError</code>; loader or symbol
+    errors can also prevent import. Use a facade built from the matching checkout.</p>
+    <p>{{api:abi_version}} reports the loaded facade's {{api:AbiVersion}}.
+    It is distinct from the provider's {{api:ProviderVersion}}, which requires an
+    open session.</p>
+  </section>
+
+  <section id="first-session">
+    <h2>Inspect a provider</h2>
+    <p>Supply a compatible provider-library path and its documented
+    <code>instance</code> and <code>aperture</code> values. The bridge does not invent
+    a configuration grammar or default sensor identity. This function returns owned
+    results that remain usable after its session closes.</p>
+    <pre><code class="language-python">from ams_mel.ir import Session
+
+
+def inspect_provider(provider_library, instance, aperture):
+    with Session.open(provider_library, instance, aperture) as session:
+        version = session.provider_version()
+        advertised = session.capabilities()
+        return version, advertised
+</code></pre>
+    <p>{{api:Session.capabilities}} preserves provider order and all capability
+    fields, nested bands and strings. An empty list or an unconfigured advertisement
+    is valid. Choose a suitable channel using the provider contract and the
+    advertised types; discovery itself neither attaches nor enables it and does not
+    prove that hardware is ready.</p>
+    <p>{{api:Session.open}} accepts <code>max_async_requests</code> as a keyword-only
+    admission limit. The default <code>0</code> means unlimited. A positive limit can
+    reject a new request with <code>ErrorKind.RESOURCE_EXHAUSTED</code>; it does not
+    create a Python retry queue. Request completion and closure are described in
+    <a href="ownership-and-errors.html#requests">ownership and errors</a>.</p>
+  </section>
+
+  <section id="attachment-values">
+    <h2>Choose attachment values</h2>
+    <p>Channel factories accept immutable configuration records. {{api:UciId}}
+    contains exactly 16 UUID bytes and a descriptive label. {{api:ComponentLocation}}
+    carries location offsets in metres plus provider-defined key and system-name
+    strings. Configuration construction performs input validation; opening a channel
+    is the separate operation that contacts the provider.</p>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Purpose</th><th>Configuration and factory</th></tr></thead>
+      <tbody>
+        <tr><td>Mono8 pixel acquisition</td><td>{{api:ImageConfig}} → {{api:Session.open_image_stream}}</td></tr>
+        <tr><td>Image commands and metadata without buffers</td><td>{{api:ImageControlConfig}} → {{api:Session.open_image_control}}</td></tr>
+        <tr><td>C2 commands</td><td>{{api:ControlConfig}} → {{api:Session.open_control_channel}}</td></tr>
+        <tr><td>Health status</td><td>{{api:HealthConfig}} → {{api:Session.open_health_channel}}</td></tr>
+        <tr><td>Instrumentation</td><td>{{api:InstrumentationConfig}} → {{api:Session.open_instrumentation_channel}}</td></tr>
+        <tr><td>StackedImage foundation</td><td>{{api:StackedConfig}} → {{api:Session.open_stacked_channel}}</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><code>ImageConfig</code> additionally supplies positive
+    <code>buffer_count</code>, <code>buffer_size</code> and <code>queue_capacity</code>.
+    Its defaults are convenience values, not a guarantee that the provider's frame
+    layout will fit. Control-only Image and StackedImage configurations contain no
+    acquisition geometry or buffer sizing.</p>
+  </section>
+
+  <section id="first-frame">
+    <h2>Receive one owned frame</h2>
+    <p>After choosing a provider and a valid Mono8 acquisition configuration, pass
+    them into this function. Entering the stream context does not start acquisition;
+    <code>start()</code> is explicit. The function returns copied pixel bytes and
+    metadata, with no remaining dependency on its native owners.</p>
+    <pre><code class="language-python">from ams_mel.ir import ImageConfig, Session
+
+
+def receive_one_frame(provider_library, instance, aperture,
+                      config: ImageConfig):
+    with Session.open(provider_library, instance, aperture) as session:
+        with session.open_image_stream(config) as image:
+            image.start()
+            return image.receive(timeout_ms=1000)
+</code></pre>
+    <p>{{api:ImageStream.receive}} returns a {{api:Frame}} with tightly packed,
+    single-band, 8-bit monochrome <code>pixels: bytes</code>. The call can raise a
+    timeout if no frame arrives. A timeout is an observation outcome; it does not
+    cancel native work. This function's context exit still closes its local stream.</p>
+    <p>For metadata registration before Start, control-only Image, complete C2
+    commands and navigation input, continue to <a href="ir-workflows.html">IR
+    workflows</a>. For RF Admin, use its <a href="rf-admin.html">independent
+    factory</a> instead of a Session.</p>
+  </section>
+</main>
+<footer><p>AMS MEL Python documentation. Provider support remains runtime-specific.</p></footer>
+</body>
+</html>

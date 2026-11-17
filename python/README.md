@@ -12,12 +12,74 @@ Set `AMS_MEL_NATIVE_LIB` to the absolute full path of `libams_mel_c.so.0` (or
 separate path passed to `Session.open` or `RFAdmin.open`; Python never loads
 provider factories or models provider C++ interfaces directly.
 
+## Python documentation
+
+The [Python documentation](https://zackboll.github.io/ams-gra-mel-bridge/python/index.html)
+provides setup, ownership/error rules, IR and RF Admin workflows, and a searchable
+reference organized into Common, IR and RF modules, with every public
+`ams_mel.__all__` export. Its module inventories, signatures, fields and enum
+members are generated from the checked-in Python source without loading a
+provider. The authored guides live in `docs/python/`.
+
+The current safe interface includes Session discovery/version queries, Mono8 and
+control-only Image, general C2 Mode and ConfigSet, navigation commands, Health and
+Instrumentation, common channel services/callbacks, StackedImage foundation,
+ordinary and optional metadata receivers including ODM, and independent RF Admin.
+It does not expose Python Track/Scheduling owners, stacked acquisition, generic
+buffer checkout, CameraCommand submission, LineOfSightQuaternion reception or
+RF APIs beyond Admin. The later task-labelled sections retain their original
+implementation and qualification context; use the published guides/reference for
+the current combined API.
+
+## Public modules (PY-PKG-002)
+
+Choose the namespace that owns the interface:
+
+| Module | Public interface |
+| --- | --- |
+| [`ams_mel.common`](https://zackboll.github.io/ams-gra-mel-bridge/python/modules/common.html) | `AbiVersion`, `ProviderVersion`, `UciId`, `ComponentLocation`, `MFAState`, `ErrorKind`, `MelError` and `abi_version()` |
+| [`ams_mel.ir`](https://zackboll.github.io/ams-gra-mel-bridge/python/modules/ir.html) | IR `Session`, typed channels, commands, requests, metadata, configurations and result values |
+| [`ams_mel.rf`](https://zackboll.github.io/ams-gra-mel-bridge/python/modules/rf.html) | Independent `RFAdmin` owner |
+
+```python
+from ams_mel import common, ir, rf
+
+version = common.abi_version()
+# ir.Session.open(...) opens an IR provider.
+# rf.RFAdmin.open(...) opens the independent RF Admin factory.
+```
+
+Direct imports are also supported:
+
+```python
+from ams_mel.common import MFAState, MelError
+from ams_mel.ir import Session
+from ams_mel.rf import RFAdmin
+```
+
+Each existing public name belongs to exactly one of these modules. Shared values
+come from `common`; the inherited IR `ChannelView`, `CommandReturn` and
+`MelErrorCode` belong to `ir`. IR and RF continue to use the same `MFAState` enum.
+
+The flat `ams_mel` API remains a compatibility facade. Existing imports,
+`ams_mel.__all__` order, object identity, signatures and canonical
+`__module__ == "ams_mel"` pickle paths are preserved. For example,
+`ams_mel.ir.Session is ams_mel.Session` after `import ams_mel`. The root exposes `common`,
+`ir` and `rf` as module attributes without adding them to its existing `__all__`.
+
+This is one Python package. Importing any public module still initializes the
+parent package and requires `AMS_MEL_NATIVE_LIB`, including `common`. It loads
+the shared facade without opening a provider. The namespaces do not create
+separate native-library dependencies, release artifacts or new provider features.
+The [task record](../docs/py-pkg-002-domain-modules.md) records the design and
+qualification.
+
 ## Internal package layout (PY-PKG-001)
 
 `ams_mel/__init__.py` explicitly re-exports the existing public API. Public
 classes and enums retain `__module__ == "ams_mel"` for introspection and pickle;
-the exports are the implementation objects themselves, not wrappers or copies.
-Consumers should continue importing public names from `ams_mel`.
+the exports are the implementation objects themselves. Consumers may import
+public names from the domain modules or the compatible flat `ams_mel` facade.
 
 The implementation dependency graph is acyclic. In this diagram arrows mean
 "may import from" (higher layers depend on lower layers):
@@ -46,7 +108,8 @@ _c2 -> shared layers above, _c2_metadata
 _instrumentation -> shared layers above
 _rf_admin -> _native, _errors, _validation, _types
 _session -> _native, _errors, _validation, _types, _ffi, family implementations
-__init__ -> explicit public exports from implementation modules
+common, ir, rf -> explicit public exports from private implementation modules
+__init__ -> common, ir, rf compatibility exports
 ```
 
 Responsibilities:
@@ -58,8 +121,9 @@ Responsibilities:
 - `_ffi`: raw argument bundles retaining borrowed string storage, checked spans,
   capability snapshots/conversion, and best-effort close utilities.
 - `_requests`: Mode/Return/Comms owners and their native-cached Wait handling.
-- `_common`: weak `ChannelView`, common operations and shared `_NativeOwner`
-  mechanics (the existing implementation, not a new ownership model).
+- `_common`: weak IR `ChannelView`, inherited IR operations and shared
+  `_NativeOwner` mechanics; this private filename is distinct from the public
+  `common` namespace of shared values and errors.
 - `_image`, `_c2`, `_instrumentation`, `_health`, `_rf_admin`: family owners and
   operations. Instrumentation's specialized Wait/metadata conversion stays with
   that family; image-frame conversion stays with Image.
@@ -153,9 +217,10 @@ See [the focused contract and mock qualification](../docs/py-mel-009-image-camer
 ### Existing streams and channels
 
 The current API supports RF Admin state commands (see below), façade ABI/version
-queries, provider `Session` open/version/close, host-memory Mono8 `ImageStream`
-open/start/receive/counters/stop/close, and the existing IR CommandAndControl
-Operate/TaskSched plus BIT no-op slices. `Session.open_control_channel()` returns
+queries, provider `Session` discovery/open/version/close, host-memory Mono8 and
+control-only `ImageStream`, general C2 Mode and ConfigSet commands, navigation,
+Health/Instrumentation, StackedImage foundation and the callback receivers listed
+in the Python reference. `Session.open_control_channel()` returns
 a `ControlChannel`; `enable()` is explicit. `submit_operate()` returns an
 asynchronous `ModeRequest`, while `submit_bit_noop()` returns a `ReturnRequest`
 without exposing unsupported BIT payloads. Return waits yield `ReturnCompleted`
@@ -190,10 +255,9 @@ on normal context exit.
 This is not a native extension or a zero-copy interface. The current Session +
 IR Mono8 + C2 Operate/TaskSched + BIT no-op slice is also validated by the opt-in real Squall
 client in `integration/squall`; that client adds no binding API and uses no
-external Python dependency. Payload-bearing BIT, additional C2 commands and
-callbacks beyond the four metadata families below, RF beyond the Admin slice,
-NumPy/zero-copy image
-views, wheels, and PyPI publication are not included.
+external Python dependency. That client exercises its stated slice rather than
+every Python feature. Payload-bearing BIT, RF beyond the Admin slice,
+NumPy/zero-copy image views, wheels, and PyPI publication are not included.
 
 ## General IR C2 ModeCmd (PY-MEL-011)
 

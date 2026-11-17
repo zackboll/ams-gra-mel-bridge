@@ -68,15 +68,23 @@ class GeneratedSourceTests(unittest.TestCase):
         """Keep original Ada negatives behind the new isolated assembly boundary."""
         from check_doc_coverage import measure
         import rustdoc_publication as rustdoc
+        import python_publication as pythondoc
         directory.mkdir()
         shutil.copytree(self.output / 'pristine', directory / 'pristine')
         shutil.copytree(self.output / 'published', directory / 'ada-qualified')
-        context = docs_ci.identity(self.repo)
+        # This synthetic child commit is not the hosted event's PR HEAD. Bind
+        # its real Git identity as explicitly non-deployable fixture material;
+        # do not weaken docs_ci's event-bound production identity checks.
+        with mock.patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
+            context = docs_ci.identity(self.repo)
         with tempfile.TemporaryDirectory(dir=self.directory) as temp:
             temp = Path(temp)
             epoch.export(self.repo, self.candidate, temp / 'source')
             files, record = rustdoc.generate(temp / 'source', temp / 'rust', context, temp / 'rust.log')
-        for name, data in rustdoc.assembled(presentation.files(directory / 'ada-qualified'), files).items():
+            python_files, python_record = pythondoc.generate(temp / 'source', context, temp / 'python.log')
+        assembled = pythondoc.assembled(
+            rustdoc.assembled(presentation.files(directory / 'ada-qualified'), files), python_files)
+        for name, data in assembled.items():
             path = directory / 'published' / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
@@ -84,6 +92,7 @@ class GeneratedSourceTests(unittest.TestCase):
         docs_ci.write(directory / 'coverage.json', report)
         docs_ci.write(directory / 'native-anchors.json', report['native'])
         docs_ci.write(directory / 'rustdoc.json', record)
+        docs_ci.write(directory / 'python-reference.json', python_record)
 
     def test_documented_addition_uses_actual_source_anchor_and_catalog(self):
         self.assertEqual(self.value['status'], 'mechanically-qualified')
@@ -99,15 +108,18 @@ class GeneratedSourceTests(unittest.TestCase):
         manifest = json.loads((self.output / 'published/api/presentation.json').read_text())
         self.assertEqual(manifest['enhancer_version'], presentation.VERSION)
         index = (self.output / 'published/api/index.html').read_text()
-        self.assertEqual(index.count(presentation.NAVIGATION_CONTROL), 1)
+        self.assertEqual(index.count(presentation.NAVIGATION_CONTROL.replace(
+            'Filter navigation links', 'Search documentation')), 1)
+        self.assertEqual(self.value['publication']['search']['records'],
+                         sum(self.value['publication']['search']['counts'].values()))
         self.assertIn('data-default-package="AMS.MEL"', index)
         self.assertEqual(manifest['counts']['declaration_snippets'],
                          len(self.value['native']))
 
     def test_release_label_and_version_tampering_cannot_authorize_itself(self):
         for name, before, after in (
-            ('api/index.html', b'Filter navigation links</label>', b'Search documentation</label>'),
-            ('api/presentation.json', b'"enhancer_version": "0.1.5"',
+            ('api/index.html', b'Search documentation</label>', b'Filter navigation links</label>'),
+            ('api/presentation.json', ('"enhancer_version": "' + presentation.VERSION + '"').encode(),
              b'"enhancer_version": "0.1.0.dev0"'),
         ):
             with self.subTest(path=name):
@@ -292,6 +304,12 @@ class GeneratedSourceTests(unittest.TestCase):
 
     def test_normal_verifier_rejects_corruption_even_with_recomputed_payload_hashes(self):
         from check_doc_coverage import measure
+
+        def corrupt_python_record(data):
+            record = json.loads(data)
+            record['report']['counts']['exports'] += 1
+            return epoch.canonical(record)
+
         with tempfile.TemporaryDirectory(dir=self.directory) as temp:
             directory = Path(temp) / 'normal'
             self.assembled_fixture(directory)
@@ -306,6 +324,8 @@ class GeneratedSourceTests(unittest.TestCase):
                     ('published/guides/getting-started.html', lambda data: data + b'<a href="missing.html">broken</a>'),
                     ('published/api/gnatdoc-navigation.js', lambda data: data + b'// modified'),
                     ('pristine/api/index.html', lambda data: data.replace(b'gnatdoc.css', b'missing.css')),
+                    ('published/python/api-index.html', lambda data: data + b'<!-- forged -->'),
+                    ('python-reference.json', corrupt_python_record),
                 ):
                     with self.subTest(path=name):
                         path = directory / name

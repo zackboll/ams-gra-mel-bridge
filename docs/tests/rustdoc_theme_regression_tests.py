@@ -44,15 +44,17 @@ class GeneratedThemeTests(unittest.TestCase):
             theme.write_bytes(data)
 
     def test_output_forgery_with_self_consistent_record_is_rejected_by_rebuild(self):
-        files = dict(self.files)
-        name = next(n for n in files if n.startswith('static.files/main-') and n.endswith('.js'))
-        files[name] += b'\n/* output-side forgery */\n'
-        record = copy.deepcopy(self.record)
-        record['files'] = rust.publication.hashes(files)
-        rust.verify_record(files, record, self.context)  # Demonstrate why seals alone are not reconstruction.
-        with self.assertRaisesRegex(ValueError, 'independently regenerated'):
-            rust.verify_regenerated(files, record, self.exported, self.directory / 'forgery',
-                                    self.context, self.directory / 'forgery.log')
+        script = next(n for n in self.files if n.startswith('static.files/main-') and n.endswith('.js'))
+        css = next(n for n in self.files if n.startswith('static.files/rustdoc-') and n.endswith('.css'))
+        for index, name in enumerate((script, css, 'ams_mel/index.html')):
+            files = dict(self.files)
+            files[name] += b'\n/* output-side forgery */\n'
+            record = copy.deepcopy(self.record)
+            record['files'] = rust.publication.hashes(files)
+            rust.verify_record(files, record, self.context)  # Seals alone are not reconstruction.
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'independently regenerated'):
+                rust.verify_regenerated(files, record, self.exported, self.directory / f'forgery-{index}',
+                                        self.context, self.directory / f'forgery-{index}.log')
 
     def test_actual_extra_css_and_modified_theme_rejected(self):
         files = dict(self.files, **{'unauthorized.css': b'body {color:red}'})
