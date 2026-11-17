@@ -54,6 +54,7 @@ class PythonPublicationTests(unittest.TestCase):
         projection = python.verify_assembly(self.root, self.root, self.context, self.record)
         self.assertEqual(projection, base)
         rust_record = {'schema': 1, 'identity': self.context, 'toolchain': rust.TOOLCHAIN,
+                       'inputs': {'theme': dict(rust.THEME_IDENTITY)}, 'invocation': rust.invocation(),
                        'flags': rust.FLAGS, 'tools': {t: {'version': v, 'binary_sha256': rust.BINARIES[t]}
                                                      for t, v in rust.VERSIONS.items()},
                        'files': rust.publication.hashes(rust_files), 'counts': rust.validate(rust_files)}

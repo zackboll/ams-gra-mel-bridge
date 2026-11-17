@@ -92,6 +92,20 @@ resealed or check bypassed. Fresh local main generation also passed.
 
 ## Review and limitations
 
+### Subsequent main integration
+
+While final hosted checks completed successfully on `ae49fdc`, main advanced to
+`51ede458587698cc1f8e4601d3471852d6f2a9e5` (PR 221). Incorporated that revision
+with another normal merge. Its Rustdoc palette and independent Git-source Rust
+regeneration are retained. The sole textual conflict was `resize_parity.py`:
+combined the new source-bound same-candidate wrapper with main's qualified
+palette projection and comparison controls in `qualify_delta`, rather than
+discarding either side. The existing main projection negative tests remain.
+All 1472 compiled/language/coverage inputs are still identical to the qualified
+implementation merge. Both unit suites passed after reconciliation: pipeline
+21/21 and Rustdoc publication 17/17. Source-bound documentation and hosted checks
+must qualify the new merge HEAD; earlier green checks are not substituted.
+
 The final diff is self-audited for ownership, concurrency, ABI and lifecycle;
 this is not independent approval. A separate technical review is requested at
 <https://github.com/zackboll/ams-gra-mel-bridge/pull/236#issuecomment-6937986324>.
