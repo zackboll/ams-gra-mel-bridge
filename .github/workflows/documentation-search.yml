@@ -1,0 +1,55 @@
+name: Documentation search qualification (non-deploying)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOC_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  ALIRE_SETTINGS_DIR: ${{ github.workspace }}/.doc-tools/settings
+
+jobs:
+  search-browser:
+    name: Current-source search and native navigation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.DOC_SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install official pinned documentation tools
+        run: sh docs/tools/install_docs_toolchain.sh
+      - name: Reconstruct twice, audit and exercise source/security mutations
+        run: |
+          alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
+            cd ../..
+            .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify \
+              --directory .doc-tools/search-qualified --gnatdoc-prefix .doc-tools/gnatdoc-26.0.0 &&
+            GNATDOC_PREFIX="$PWD/.doc-tools/gnatdoc-26.0.0" make test-documentation-source &&
+            .doc-tools/enhancer/bin/python -W error -m unittest discover \
+              -s docs/tests -p test_search_publication.py -v'
+      - name: Install isolated browser test tools
+        run: |
+          python3 -m venv .doc-tools/browser
+          .doc-tools/browser/bin/pip install playwright==1.64.0
+          .doc-tools/browser/bin/playwright install --with-deps chromium
+      - name: Click every current declaration and qualify mandatory queries
+        run: |
+          .doc-tools/browser/bin/python docs/tools/search_browser.py \
+            --site .doc-tools/search-qualified/published --output .doc-tools/search-browser.json
+      - name: Retain non-authorizing diagnostics
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: search-qualification-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
+          path: |
+            .doc-tools/search-qualified/
+            .doc-tools/search-qualified-generation.log
+            .doc-tools/search-browser.json
+          if-no-files-found: warn

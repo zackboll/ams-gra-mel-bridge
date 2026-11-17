@@ -41,21 +41,44 @@ fn reference_executable() {
             .count(),
         4
     );
-    for operation in ["direct CommsTest", "C2-routed CommsTest"] {
+    for (operation, offset) in [("direct CommsTest", 0), ("C2-routed CommsTest", 10)] {
         assert_eq!(stdout.matches(&format!("[OK] {operation}:")).count(), 4);
         for (index, address) in [2, 4, 1, 6].into_iter().enumerate() {
-            let command = 100 + index;
-            let request = 200 + index;
+            let command = 100 + index + offset;
+            let request = 200 + index + offset;
+            let destination = ["C2", "Health", "Image", "StackedImage"][index];
             assert!(stdout.contains(&format!(
-                "[OK] {operation}: Completed {{ report: CommsTestReport {{ command_id: {command}, request_id: {request} }} }}, request=CommsTestRequest {{ command_id: {command}, channel_id: {address}, request_id: {request} }}"
+                "[OK] {operation}: Completed {{ report: CommsTestReport {{ command_id: {command}, request_id: {request} }} }}, request=CommsTestRequest {{ command_id: {command}, channel_id: {address}, request_id: {request} }}, destination={destination}"
             )), "{stdout}");
+            let path = if offset == 0 { "direct" } else { "C2-routed" };
+            assert_eq!(stdout.matches(&format!(
+                "[OK] actual {destination} CommsTest metadata ({path}): command_id={command} request_id={request}\n"
+            )).count(), 1, "{stdout}");
         }
     }
-    assert_eq!(stdout.matches("actual C2 CommsTest metadata:").count(), 2);
-    assert!(stdout.contains("eight futures and two C2 events checked, not eight callbacks"));
+    assert_eq!(stdout.matches("[OK] actual ").count(), 8);
+    for destination in ["C2", "Health", "Image", "StackedImage"] {
+        assert_eq!(
+            stdout
+                .matches(&format!("[OK] actual {destination} CommsTest metadata ("))
+                .count(),
+            2
+        );
+        assert_eq!(stdout.matches(&format!("[OK] {destination} CommsTest counters: events_received=2 events_dropped_queue_full=0 malformed_or_unsupported=0\n")).count(), 1);
+        assert_eq!(
+            stdout
+                .matches(&format!(
+                    "[OK] {destination} CommsTest queue empty (active Timeout)\n"
+                ))
+                .count(),
+            1
+        );
+    }
+    assert_eq!(stdout.matches("CommsTest counters:").count(), 4);
+    assert!(stdout.contains("[OK] CommsTest parity: 8 correlated futures and 8 independently received callbacks across 4 channels"));
     assert!(stdout.contains("C2/Health/StackedImage enabled, Image started"));
     assert!(stdout.contains(
-        "required metadata registered: C2=3, Health=6, Image=4; C2 CommsTest separately registered"
+        "required metadata registered: C2=3, Health=6, Image=4; CommsTest=4 (dedicated C2 plus Health/Image/StackedImage common); total=17"
     ));
     assert!(stdout.contains("BIT_Command 300/NoOp: Completed { value: NotImplemented }"));
     assert!(stdout.contains(
@@ -68,6 +91,7 @@ fn reference_executable() {
         stdout.contains("NavigationReport NotSet/neutral values: Rejected { code: InvalidState,")
     );
     assert!(stdout.contains("Image receive(0): established control-only error; no frame acquired"));
+    assert!(stdout.contains("Image acquisition counters: frames_received=0 frames_dropped_queue_full=0 malformed_or_unsupported=0"));
     assert!(stdout.contains("all sensor metadata queues empty"));
     assert!(stdout.contains("StackedImage explicitly closed (typed disable/detach)"));
     assert!(stdout.contains("Session explicitly closed"));
@@ -75,6 +99,8 @@ fn reference_executable() {
     assert!(!stdout.contains("advertised, not attached"));
     assert!(!stdout.contains("[OK] acquisition"));
     assert!(!stdout.contains("[ERROR]"));
+    assert!(!stdout.contains("unexpected"));
+    assert!(!stdout.contains("callbacks not exposed"));
     assert!(output.stderr.is_empty());
 
     // Existing fixture tests only app-level profile rejection and Drop on that
