@@ -89,7 +89,11 @@ use std::slice;
 
 use ams_mel_sys as sys;
 
+mod ir_buffer;
 mod ir_c2_metadata;
+pub use ir_buffer::{
+    BufferFlag, BufferFlagsError, BufferInfo, BufferOpenError, HostBuffer, ImageLocation,
+};
 mod ir_comms_metadata;
 mod ir_discovery;
 mod ir_health;
