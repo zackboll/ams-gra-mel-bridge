@@ -2,14 +2,20 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 import tempfile
+import tomllib
 
 import authored_html
 import build_enhanced_site as p
 import python_publication as pythondoc
 import rustdoc_publication as rustdoc
 import source_epoch as epoch
+import feature_source as source
 from check_doc_coverage import measure
 from example_sources import References
 
@@ -17,7 +23,7 @@ DELTA = {'api/gnatdoc-resize.css', 'api/gnatdoc-resize.js',
          'api/index.html', 'api/presentation.json'}
 
 
-def qualify(root, baseline, candidate, output):
+def qualify_delta(root, baseline, candidate, output):
     before, after = (p.files(d / 'published') for d in (baseline, candidate))
     native_before, native_after = (p.files(d / 'pristine') for d in (baseline, candidate))
     epoch.require(native_before == native_after, 'source/native or authored baseline differs')
@@ -66,6 +72,89 @@ def qualify(root, baseline, candidate, output):
     output.write_bytes(epoch.canonical(result))
     print(json.dumps({k: result[k] for k in ('passed', 'counts', 'delta', 'unchanged_files')}))
     return result
+
+
+def verify_artifact(root, directory, *, baseline=False):
+    """Run the unchanged normal verifier against each artifact's exact Git source.
+
+    The main baseline is deliberately local/non-deployable; the candidate keeps
+    the real hosted event environment. Neither artifact can authorize a different
+    source epoch, and malformed bytes are not excused as ordinary API changes.
+    """
+    manifest = directory / 'manifest.json'
+    value = json.loads(manifest.read_bytes())
+    commit = source.revision(root, value['identity']['commit'])
+    tree = source.git(root, 'rev-parse', commit + '^{tree}').decode().strip()
+    epoch.require(value['identity']['tree'] == tree,
+                  'resize artifact source tree differs')
+    environment = dict(os.environ)
+    if baseline:
+        epoch.require(value['identity']['mode'] == 'local-not-deployable',
+                      'resize baseline must be non-deployable')
+        environment['GITHUB_ACTIONS'] = 'false'
+    else:
+        epoch.require(commit == source.revision(root, 'HEAD'),
+                      'resize candidate source epoch differs')
+    with tempfile.TemporaryDirectory(prefix='mel-resize-source-') as temp:
+        checkout = Path(temp) / 'source'
+        subprocess.run(['git', 'clone', '-q', '--shared', '--no-checkout', str(root), str(checkout)],
+                       check=True)
+        subprocess.run(['git', '-C', str(checkout), 'checkout', '-q', '--detach', commit], check=True)
+        subprocess.run([sys.executable, str(root / 'docs/tools/docs_ci.py'), 'verify',
+                        '--root', str(checkout), '--directory', str(directory),
+                        '--manifest-sha', epoch.sha(manifest.read_bytes())],
+                       env=environment, check=True)
+    return commit
+
+
+def qualify(root, baseline, candidate, output):
+    root, baseline, candidate = (Path(p).absolute() for p in (root, baseline, candidate))
+    baseline_commit = verify_artifact(root, baseline, baseline=True)
+    candidate_commit = verify_artifact(root, candidate)
+    config = tomllib.loads(source.blob(root, baseline_commit,
+                                      'docs/gnatdoc-enhance.toml').decode())
+    if not config.get('navigation', {}).get('resizable_sidebar', False):
+        # Original resize feature introduction: retain the strict cross-commit
+        # four-file comparison. This is not a fallback after a failed check.
+        return qualify_delta(root, baseline, candidate, output)
+
+    # Once resize is on main, ordinary API additions legitimately change native
+    # pages and all three language publications. Compare resize on/off at the
+    # SAME candidate source, never require those additions to disappear or
+    # ignore their bytes. Both original publications were verified above.
+    with tempfile.TemporaryDirectory(prefix='mel-resize-same-source-') as temp:
+        temp = Path(temp)
+        exported, control = temp / 'source', temp / 'control'
+        epoch.export(root, candidate_commit, exported)
+        path = exported / 'docs/gnatdoc-enhance.toml'
+        text = path.read_text()
+        epoch.require(text.count('resizable_sidebar = true') == 1, 'resize configuration differs')
+        path.write_text(text.replace('resizable_sidebar = true', 'resizable_sidebar = false'))
+        site = candidate / 'pristine'
+        report = measure(site, exported)
+        control.mkdir()
+        epoch.enhance(site, exported, report, References(exported, site, ledger=report['native']),
+                      control / 'ada-qualified')
+        combined = pythondoc.assembled(
+            rustdoc.assembled(p.files(control / 'ada-qualified'),
+                {n.removeprefix('rust/'): d for n, d in p.files(candidate / 'published').items()
+                 if n.startswith('rust/')}),
+            {n.removeprefix('python/'): d for n, d in p.files(candidate / 'published').items()
+             if n.startswith('python/')})
+        for name, data in combined.items():
+            path = control / 'published' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        shutil.copytree(site, control / 'pristine')
+        for name in ('native-anchors.json', 'coverage.json'):
+            shutil.copyfile(candidate / name, control / name)
+        result = qualify_delta(root, control, candidate, output)
+        result['comparison'] = 'same-source-resize-disabled-control'
+        result['verified_baseline_commit'] = baseline_commit
+        result['candidate_commit'] = candidate_commit
+        result['verified_baseline_publication'] = p.hashes(p.files(baseline / 'published'))
+        output.write_bytes(epoch.canonical(result))
+        return result
 
 
 if __name__ == '__main__':
