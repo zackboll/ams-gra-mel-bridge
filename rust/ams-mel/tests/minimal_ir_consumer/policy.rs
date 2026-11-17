@@ -272,6 +272,17 @@ fn correlation_requires_both_exact_identifiers() {
         request
     )
     .is_ok());
+    assert!(comms_result(
+        &CommsTestResult::Completed {
+            report: CommsTestReport {
+                command_id: u32::MAX,
+                request_id: 0x8000_0001,
+            },
+        },
+        request,
+        "full u32 completion",
+    )
+    .is_ok());
     assert!(correlated(
         CommsTestReport {
             command_id: 0,
@@ -308,32 +319,208 @@ fn fabricated_metadata_is_not_accepted() {
 }
 
 #[test]
-fn four_destinations_require_eight_correlated_futures_not_eight_callbacks() {
+fn four_destinations_require_eight_unique_futures_and_independent_callbacks() {
     assert_eq!(REQUIRED.len(), 4);
-    let mut operations = 0;
-    let mut observable_c2_events = 0;
+    let mut pairs = std::collections::HashSet::new();
     for (index, kind) in REQUIRED.into_iter().enumerate() {
-        let request = CommsTestRequest {
-            command_id: 100 + index as u32,
-            channel_id: stub_address(kind).unwrap(),
-            request_id: 200 + index as u32,
-        };
-        for operation in ["direct CommsTest", "C2-routed CommsTest"] {
-            let result = CommsTestResult::Completed {
-                report: CommsTestReport {
-                    command_id: request.command_id,
-                    request_id: request.request_id,
-                },
+        for (submission, offset) in [(Submission::Direct, 0), (Submission::C2Routed, 10)] {
+            let request = comms_request(kind, submission).unwrap();
+            assert_eq!(request.channel_id, [2, 4, 1, 6][index]);
+            assert_eq!(request.command_id, 100 + index as u32 + offset);
+            assert_eq!(request.request_id, 200 + index as u32 + offset);
+            assert!(pairs.insert((request.command_id, request.request_id)));
+            let report = CommsTestReport {
+                command_id: request.command_id,
+                request_id: request.request_id,
             };
-            assert!(comms_result(&result, request, operation).is_ok());
-            operations += 1;
-            if kind == ChannelType::CommandAndControl {
-                observable_c2_events += 1;
+            let result = CommsTestResult::Completed { report };
+            assert!(comms_result(&result, request, submission.label()).is_ok());
+            assert!(comms_callback(Ok(report), kind, submission).is_ok());
+            // Successful future cannot replace a missing callback.
+            assert!(comms_callback(
+                Err(Error::new(ErrorKind::Timeout, "missing callback")),
+                kind,
+                submission,
+            )
+            .is_err());
+            for wrong in [
+                CommsTestReport {
+                    command_id: report.command_id + 1,
+                    ..report
+                },
+                CommsTestReport {
+                    request_id: report.request_id + 1,
+                    ..report
+                },
+            ] {
+                assert!(comms_callback(Ok(wrong), kind, submission).is_err());
             }
+            for wrong_receiver in REQUIRED.into_iter().filter(|&other| other != kind) {
+                assert!(comms_callback(Ok(report), wrong_receiver, submission).is_err());
+            }
+            let other_path = match submission {
+                Submission::Direct => Submission::C2Routed,
+                Submission::C2Routed => Submission::Direct,
+            };
+            // Duplicate of the first path cannot satisfy the other path.
+            assert!(comms_callback(Ok(report), kind, other_path).is_err());
+            // A correct callback cannot replace a rejected or mismatched future.
+            assert!(comms_result(
+                &CommsTestResult::Rejected {
+                    code: MelErrorCode::InvalidState,
+                    description: "rejected".into(),
+                },
+                request,
+                submission.label(),
+            )
+            .is_err());
+            assert!(comms_result(
+                &CommsTestResult::Completed {
+                    report: CommsTestReport {
+                        command_id: 0,
+                        ..report
+                    },
+                },
+                request,
+                submission.label()
+            )
+            .is_err());
+            // Any extra callback fails the active empty-queue observation.
+            assert!(no_telemetry(Ok(report), "extra CommsTest").is_err());
         }
     }
-    assert_eq!(operations, 8);
-    assert_eq!(observable_c2_events, 2);
+    assert_eq!(pairs.len(), 8);
+    assert!(comms_request(ChannelType::IrstTrack, Submission::Direct).is_err());
+}
+
+#[test]
+fn dedicated_c2_rejects_unexpected_event_variants() {
+    let report = CommsTestReport {
+        command_id: 110,
+        request_id: 210,
+    };
+    assert_eq!(
+        c2_comms_event(C2MetadataEvent::CommsTest(report)).unwrap(),
+        report
+    );
+    assert!(
+        c2_comms_event(C2MetadataEvent::BitConfiguration(BitConfiguration {
+            bit_types: vec![],
+        }))
+        .is_err()
+    );
+}
+
+#[test]
+fn empty_active_queue_is_timeout_not_cancellation_or_stopped() {
+    assert!(no_telemetry::<CommsTestReport>(
+        Err(Error::new(ErrorKind::Timeout, "empty")),
+        "common"
+    )
+    .is_ok());
+    for kind in [ErrorKind::StreamStopped, ErrorKind::ProviderFailed] {
+        assert!(
+            no_telemetry::<CommsTestReport>(Err(Error::new(kind, "failure")), "common").is_err()
+        );
+    }
+}
+
+#[test]
+fn registration_failure_preserves_native_error_and_actual_return_separately() {
+    let error = Error::from_native_parts(
+        ErrorKind::ProviderFailed,
+        Some("provider refusal diagnostic".into()),
+        Some(28),
+    );
+    for registration in [
+        None,
+        Some(CommandReturn::NotSupported),
+        Some(CommandReturn::Fail),
+    ] {
+        let message =
+            registration_error(&error, registration, "register Health CommsTest metadata");
+        assert!(message.contains("ProviderFailed"));
+        assert!(message.contains("provider refusal diagnostic"));
+        assert!(message.contains("Some(28)"));
+        assert!(message.contains(&format!("Return={registration:?}")));
+    }
+}
+
+#[test]
+fn all_seventeen_registrations_are_mandatory_and_precede_enablement() {
+    let source = include_str!("../../examples/minimal_ir_consumer.rs");
+    let run = source.split("fn run(path: &Path)").nth(1).unwrap();
+    let compact: String = run.chars().filter(|c| !c.is_whitespace()).collect();
+    let before_enable = run.split("c2.enable()").next().unwrap();
+    for registration in [
+        ".at(\"register C2 BIT_Configuration, CommandStatus, BIT_Status\")?",
+        ".at(\"register C2 CommsTest metadata\")?",
+        ".at(\"register six Health metadata families\")?",
+        "register Image BadPixelList, LineOfSightReport, LineOfSightEuler, NavigationReportResp",
+        ".at(\"register Health CommsTest metadata\")?",
+        ".at(\"register Image CommsTest metadata\")?",
+        ".at(\"register StackedImage CommsTest metadata\")?",
+    ] {
+        assert!(
+            before_enable.contains(registration),
+            "missing mandatory {registration}"
+        );
+    }
+    assert_eq!(
+        before_enable
+            .matches(".open_metadata(QUEUE_CAPACITY)")
+            .count(),
+        3
+    );
+    assert_eq!(
+        before_enable
+            .matches(".open_comms_metadata(QUEUE_CAPACITY)")
+            .count(),
+        3
+    );
+    assert_eq!(source.matches(".open_comms_metadata(").count(), 3);
+    assert!(before_enable.contains("c2_metadata\n        .enable_comms_test_events()"));
+    assert!(before_enable.contains("total=17"));
+    assert!(!source.contains("c2_view.open_comms_metadata"));
+    for owner in ["health_comms", "image_comms", "stacked_comms"] {
+        assert!(before_enable.contains(&format!("let mut {owner} =")));
+        assert!(run.contains(&format!("{owner}.receive(WAIT_MS)")));
+        assert!(compact.contains(&format!("{owner}.close().at(")));
+    }
+    assert!(compact.contains("c2_metadata.receive(WAIT_MS)"));
+    for (kind, receiver) in [
+        ("HealthAndStatus", "health_comms"),
+        ("IrstImage", "image_comms"),
+    ] {
+        assert!(compact.contains(&format!("ChannelType::{kind}=>{receiver}.receive(WAIT_MS)")));
+    }
+    assert!(compact.contains("_=>stacked_comms.receive(WAIT_MS)"));
+    let mut previous = 0;
+    for close in [
+        "image.stop()",
+        "c2_view.close()",
+        "health_view.close()",
+        "image_view.close()",
+        "stacked_view.close()",
+        "c2.close()",
+        "health.close()",
+        "image.close()",
+        "stacked.close()",
+        "c2_metadata.close()",
+        "health_metadata.close()",
+        "image_metadata.close()",
+        "health_comms.close()",
+        "image_comms.close()",
+        "stacked_comms.close()",
+        "session.close()",
+        "[OK]CommsTestparity:",
+    ] {
+        let position = compact
+            .find(close)
+            .unwrap_or_else(|| panic!("missing {close}"));
+        assert!(position > previous, "cleanup ordering: {close}");
+        previous = position;
+    }
 }
 
 #[test]
