@@ -1,16 +1,24 @@
 name: Documentation resize qualification (non-deploying)
 
 on:
-  pull_request:
+  push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      baseline_sha:
+        description: 'Full 40-hex baseline commit SHA; must be a strict ancestor of the selected source'
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 env:
-  DOC_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  BASE_SOURCE_SHA: ${{ github.event.pull_request.base.sha || '680ee5c7308869059a9c395e286bd5437e897634' }}
+  DOC_SOURCE_SHA: ${{ github.sha }}
   ALIRE_SETTINGS_DIR: ${{ github.workspace }}/.doc-tools/settings
 
 jobs:
@@ -24,6 +32,8 @@ jobs:
           ref: ${{ env.DOC_SOURCE_SHA }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Validate exact event source and baseline (no fallback)
+        run: python3 docs/tools/documentation_qualification_source.py
       - name: Install official pinned documentation tools
         run: sh docs/tools/install_docs_toolchain.sh
       - name: Reconstruct complete baseline and exact-head candidate
@@ -36,10 +46,17 @@ jobs:
               --directory "$PWD/.doc-tools/resize-baseline" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
             .doc-tools/enhancer/bin/python docs/tools/docs_ci.py build \
               --directory "$PWD/.doc-tools/resize-current" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
+            .doc-tools/enhancer/bin/python docs/tools/docs_ci.py build \
+              --directory "$PWD/.doc-tools/resize-repeated" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
             .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify \
               --directory "$PWD/.doc-tools/resize-qualified" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
+            # Parity is source-local: real content changes across commits are not sidebar regressions.
             .doc-tools/enhancer/bin/python docs/tools/resize_parity.py \
-              --baseline .doc-tools/resize-baseline --candidate .doc-tools/resize-current \
+              --root .doc-tools/resize-baseline-source \
+              --baseline .doc-tools/resize-baseline --candidate .doc-tools/resize-baseline \
+              --output .doc-tools/resize-baseline-parity.json &&
+            .doc-tools/enhancer/bin/python docs/tools/resize_parity.py \
+              --baseline .doc-tools/resize-current --candidate .doc-tools/resize-repeated \
               --output .doc-tools/resize-parity.json &&
             MEL_RESIZE_QUALIFICATION="$PWD/.doc-tools/resize-qualified" \
               .doc-tools/enhancer/bin/python -W error -m unittest discover \
@@ -63,8 +80,11 @@ jobs:
           path: |
             .doc-tools/resize-baseline/
             .doc-tools/resize-current/
+            .doc-tools/resize-repeated/
             .doc-tools/resize-qualified/
             .doc-tools/resize-qualified-generation.log
             .doc-tools/resize-parity.json
+            .doc-tools/resize-baseline-parity.json
+            .doc-tools/resize-source.json
             .doc-tools/resize-browser.json
           if-no-files-found: warn

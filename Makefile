@@ -17,6 +17,7 @@ check-ada-docs-changed:
 	@python3 scripts/check_ada_doc_annotations.py --base origin/main
 
 test-docs-ci:
+	@python3 -W error -m unittest discover -s docs/tests -p test_documentation_qualification_workflows.py -v
 	@python3 -W error -m unittest discover -s docs/tests -p test_docs_ci.py -v
 	@python3 -W error -m unittest discover -s docs/tests -p test_rustdoc_publication.py -v
 	@python3 -W error -m unittest discover -s docs/tests -p test_python_api_reference.py -v
