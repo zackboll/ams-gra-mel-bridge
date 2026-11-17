@@ -3,6 +3,7 @@
 import argparse
 import json
 from pathlib import Path
+import re
 import tempfile
 
 import authored_html
@@ -17,6 +18,23 @@ DELTA = {'api/gnatdoc-resize.css', 'api/gnatdoc-resize.js',
          'api/index.html', 'api/presentation.json'}
 
 
+def rust_projection(files):
+    """Remove only the source-qualified optional Rustdoc palette, never native assets."""
+    result = {n: d for n, d in files.items() if n.startswith('rust/')}
+    if 'rust/theme.css' not in result:
+        return result
+    epoch.require(epoch.sha(result.pop('rust/theme.css')) == rustdoc.THEME_SHA256,
+                  'unqualified Rustdoc theme in resize comparison')
+    pattern = rb'<link rel="stylesheet" href="(?:(?:\.\./)+|\./)?theme\.css">'
+    for name, data in result.items():
+        if name.endswith('.html'):
+            links = re.findall(pattern, data)
+            epoch.require(len(links) <= 1, 'duplicate Rustdoc theme inclusion')
+            if links:
+                result[name] = data.replace(links[0], b'', 1)
+    return result
+
+
 def qualify(root, baseline, candidate, output):
     before, after = (p.files(d / 'published') for d in (baseline, candidate))
     native_before, native_after = (p.files(d / 'pristine') for d in (baseline, candidate))
@@ -25,9 +43,19 @@ def qualify(root, baseline, candidate, output):
         epoch.require((baseline / name).read_bytes() == (candidate / name).read_bytes(),
                       'source/native identity differs: ' + name)
     changed = {n for n in before.keys() | after.keys() if before.get(n) != after.get(n)}
-    epoch.require(changed == DELTA, 'not the exact four-file resize publication delta')
-    epoch.require(set(after) - set(before) == DELTA - {'api/index.html', 'api/presentation.json'}
-                  and not set(before) - set(after), 'unexpected inventory delta')
+    # Subsequent PRs also run this workflow. A source-qualified Rust palette is
+    # orthogonal to Ada resize; all other Rust/Python bytes must remain identical.
+    epoch.require(rust_projection(before) == rust_projection(after), 'unrelated Rustdoc change')
+    non_rust_before = {n: d for n, d in before.items() if not n.startswith('rust/')}
+    non_rust_after = {n: d for n, d in after.items() if not n.startswith('rust/')}
+    ada_delta = {n for n in non_rust_before.keys() | non_rust_after.keys()
+                 if non_rust_before.get(n) != non_rust_after.get(n)}
+    already_enabled = 'api/gnatdoc-resize.js' in before
+    epoch.require(ada_delta == (set() if already_enabled else DELTA),
+                  'not the exact resize publication delta')
+    epoch.require(set(non_rust_after) - set(non_rust_before) ==
+                  (set() if already_enabled else DELTA - {'api/index.html', 'api/presentation.json'})
+                  and not set(non_rust_before) - set(non_rust_after), 'unexpected inventory delta')
     # Independently re-render the current immutable source with only resize off.
     with tempfile.TemporaryDirectory(prefix='mel-resize-control-') as temp:
         exported, control = Path(temp) / 'source', Path(temp) / 'published'
@@ -43,7 +71,14 @@ def qualify(root, baseline, candidate, output):
         # Assembly deliberately adds language portal links to index.html. Compare
         # the isolated Ada control first, then run the real assembly functions.
         expected_ada = p.files(baseline / 'ada-qualified')
-        epoch.require(control_files == expected_ada, 'resize-disabled control differs from production')
+        if already_enabled:
+            epoch.require(p.files(candidate / 'ada-qualified') == expected_ada,
+                          'qualified Ada publication changed')
+            control_delta = {n for n in control_files.keys() | expected_ada.keys()
+                             if control_files.get(n) != expected_ada.get(n)}
+            epoch.require(control_delta == DELTA, 'resize-disabled control delta differs')
+        else:
+            epoch.require(control_files == expected_ada, 'resize-disabled control differs from production')
         portal = authored_html.manifest(exported)
         authored_names = [portal['home'], portal['stylesheet'], *(g['path'] for g in portal['guides'])]
     result = {'passed': True, 'baseline': p.hashes(before), 'candidate': p.hashes(after),
@@ -61,8 +96,9 @@ def qualify(root, baseline, candidate, output):
                   rustdoc.assembled(control_files,
                       {n.removeprefix('rust/'): d for n, d in after.items() if n.startswith('rust/')}),
                   {n.removeprefix('python/'): d for n, d in after.items() if n.startswith('python/')}))}
-    epoch.require(result['disabled_complete_inventory'] == result['baseline'],
-                  'complete disabled assembly differs')
+    if not already_enabled:
+        epoch.require(result['disabled_complete_inventory'] == result['baseline'],
+                      'complete disabled assembly differs')
     output.write_bytes(epoch.canonical(result))
     print(json.dumps({k: result[k] for k in ('passed', 'counts', 'delta', 'unchanged_files')}))
     return result

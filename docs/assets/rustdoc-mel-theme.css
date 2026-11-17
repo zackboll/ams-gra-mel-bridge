@@ -1,0 +1,109 @@
+/* MEL palette from qualified ada-gnatdoc-enhancer 0.1.5 gnatdoc-theme.css.
+ * Authority SHA-256: cf06637732a8b047a7191bfb991a5c3da7cd31a52076876880d5f8a3f63929bc
+ * Rustdoc 1.98.1 --extend-css; native theme selection owns data-theme.
+ * No layout, navigation, font, icon or Ayu overrides.
+ */
+:root[data-theme="light"], :root:not([data-theme]) {
+  --mel-page: #ffffff;
+  --mel-nav: #f5f7fb;
+  --mel-text: #243247;
+  --mel-muted: #51627a;
+  --mel-border: #c8d4e3;
+  --mel-code: #f3f6fb;
+  --mel-link: #15559f;
+  --mel-active: #e1ecfa;
+  --mel-focus: #925100;
+  --mel-keyword: #7442a7;
+  --mel-string: #14663e;
+  --mel-number: #95520c;
+  --mel-comment: #53657b;
+  --mel-operator: #415572;
+}
+:root[data-theme="dark"] {
+  --mel-page: #141b26;
+  --mel-nav: #1c2634;
+  --mel-text: #e3eaf5;
+  --mel-muted: #b0c0d5;
+  --mel-border: #485b74;
+  --mel-code: #202d40;
+  --mel-link: #8bc4ff;
+  --mel-active: #293f5c;
+  --mel-focus: #ffd184;
+  --mel-keyword: #cfa8ff;
+  --mel-string: #8ddfb7;
+  --mel-number: #ffc48e;
+  --mel-comment: #b4c2d4;
+  --mel-operator: #c0cfe4;
+}
+:root[data-theme="light"], :root[data-theme="dark"], :root:not([data-theme]) {
+  --main-background-color: var(--mel-page);
+  --main-color: var(--mel-text);
+  --sidebar-background-color: var(--mel-nav);
+  --sidebar-background-color-hover: var(--mel-active);
+  --sidebar-border-color: var(--mel-border);
+  --code-block-background-color: var(--mel-code);
+  --headings-border-bottom-color: var(--mel-border);
+  --border-color: var(--mel-border);
+  --button-background-color: var(--mel-page);
+  --right-side-color: var(--mel-muted);
+  --code-attribute-color: var(--mel-focus);
+  --toggles-color: var(--mel-muted);
+  --search-input-focused-border-color: var(--mel-focus);
+  --settings-input-color: var(--mel-link);
+  --settings-input-border-color: var(--mel-muted);
+  --settings-button-color: var(--mel-text);
+  --settings-button-border-focus: var(--mel-focus);
+  --type-link-color: var(--mel-link);
+  --trait-link-color: var(--mel-link);
+  --assoc-item-link-color: var(--mel-link);
+  --function-link-color: var(--mel-link);
+  --macro-link-color: var(--mel-link);
+  --keyword-link-color: var(--mel-link);
+  --attribute-link-color: var(--mel-link);
+  --mod-link-color: var(--mel-link);
+  --link-color: var(--mel-link);
+  --sidebar-link-color: var(--mel-link);
+  --sidebar-current-link-background-color: var(--mel-active);
+  --search-result-link-focus-background-color: var(--mel-active);
+  --search-result-border-color: var(--mel-border);
+  --search-color: var(--mel-text);
+  --search-error-code-background-color: var(--mel-code);
+  --search-results-alias-color: var(--mel-text);
+  --search-results-grey-color: var(--mel-muted);
+  --search-tab-title-count-color: var(--mel-muted);
+  --search-tab-button-not-selected-border-top-color: var(--mel-border);
+  --search-tab-button-not-selected-background: var(--mel-nav);
+  --search-tab-button-selected-border-top-color: var(--mel-link);
+  --search-tab-button-selected-background: var(--mel-page);
+  --stab-background-color: var(--mel-code);
+  --stab-code-color: var(--mel-text);
+  --warning-border-color: var(--mel-focus);
+  --code-highlight-kw-color: var(--mel-keyword);
+  --code-highlight-kw-2-color: var(--mel-operator);
+  --code-highlight-lifetime-color: var(--mel-focus);
+  --code-highlight-prelude-color: var(--mel-link);
+  --code-highlight-prelude-val-color: var(--mel-keyword);
+  --code-highlight-number-color: var(--mel-number);
+  --code-highlight-string-color: var(--mel-string);
+  --code-highlight-literal-color: var(--mel-number);
+  --code-highlight-attribute-color: var(--mel-focus);
+  --code-highlight-self-color: var(--mel-keyword);
+  --code-highlight-macro-color: var(--mel-operator);
+  --code-highlight-question-mark-color: var(--mel-focus);
+  --code-highlight-comment-color: var(--mel-comment);
+  --code-highlight-doc-comment-color: var(--mel-comment);
+  --src-line-numbers-span-color: var(--mel-number);
+  --src-line-number-highlighted-background-color: var(--mel-active);
+  --target-background-color: var(--mel-active);
+  --target-border-color: var(--mel-link);
+  --kbd-color: var(--mel-text);
+  --kbd-background: var(--mel-code);
+  --kbd-box-shadow-color: var(--mel-border);
+  --crate-search-hover-border: var(--mel-focus);
+  --src-sidebar-background-selected: var(--mel-active);
+  --src-sidebar-background-hover: var(--mel-active);
+  --table-alt-row-background-color: var(--mel-code);
+  --codeblock-link-background: var(--mel-code);
+  --sidebar-resizer-hover: var(--mel-border);
+  --sidebar-resizer-active: var(--mel-link);
+}
