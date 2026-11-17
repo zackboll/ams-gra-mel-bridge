@@ -64,3 +64,28 @@ for resize. Skipped deploy/live jobs are not qualification successes. Independen
 technical review remains outstanding; no self-approval, auto-merge or PR merge.
 PR #233 is not modified and can incorporate corrected main only after this fix
 is independently reviewed and explicitly authorized for merge.
+
+## Main advanced during qualification
+
+The first integrated commit was `90c95185e4c6ea64c99b05bb56f81034b8c04caa`,
+tree `f522311cb852cdbb643a7168442172717e9c164d`. Its full serial campaign passed:
+128 fast documentation tests, 332 policy tests, separate main/current/repeated
+complete publications, both strict parity epochs, four real-artifact feature/
+tamper tests, deep reconstruction, four resize/five release/three search/five
+authored tests, 32 authored negatives, 11 source-epoch tests, resize/search
+Chromium, and `make check` (841 native tests, 72 IR coverage controls and Ada).
+Formatting and final integrity checks passed without tracked-source changes.
+No old-head passing record was used in place of this qualification.
+
+The guarded pre-push fetch then found main had advanced to
+`3b00a0a1b8019e6a5c2312a17659a6a7050f8e26`, tree
+`696ea59e851bb53f59beaf5f014777d0c7833695`, incorporating RUST-IR-019.
+Delivery stopped before pushing. That delta contains only the documented safe
+Rust Buffer feature and its tests/task document; no workflow, documentation
+helper, native, Ada or Python change. A second ordinary merge integrates it
+without conflicts. Its source-derived Rust documentation must be freshly built
+and independently verified, not hidden by a projection or a historical count.
+Final qualification uses fresh `.doc-tools/r1-current-main-*` artifacts and
+`/tmp/doc-resize-ci-001-r1-evidence/current-main/` logs. Product subtrees must
+match this newly incorporated main, and all exact-source documentation gates
+and final checks are re-run before pushing and manual hosted dispatch.
