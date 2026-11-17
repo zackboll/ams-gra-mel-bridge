@@ -26,12 +26,14 @@
     <pre><code class="language-sh">make native
 export PYTHONPATH="$PWD/python${PYTHONPATH:+:$PYTHONPATH}"
 export AMS_MEL_NATIVE_LIB="$PWD/native/build/lib/libams_mel_c.so.0"
-python3 -c 'import ams_mel; print(ams_mel.abi_version())'
+python3 -c 'from ams_mel.common import abi_version; print(abi_version())'
 </code></pre>
     <p><code>AMS_MEL_NATIVE_LIB</code> must be the absolute full path to
     <code>libams_mel_c.so.0</code> or <code>libams_mel_c.so</code>, set before the first
     import. Import loads this library and binds the required symbols. It does not
-    create a Session, attach a channel or invoke a provider factory. A missing or
+    create a Session, attach a channel or invoke a provider factory. This applies
+    to all three public modules, including <code>ams_mel.common</code>, because
+    Python initializes the parent package first. A missing or
     relative environment value raises <code>ImportError</code>; loader or symbol
     errors can also prevent import. Use a facade built from the matching checkout.</p>
     <p>{{api:abi_version}} reports the loaded facade's {{api:AbiVersion}}.
@@ -45,7 +47,7 @@ python3 -c 'import ams_mel; print(ams_mel.abi_version())'
     <code>instance</code> and <code>aperture</code> values. The bridge does not invent
     a configuration grammar or default sensor identity. This function returns owned
     results that remain usable after its session closes.</p>
-    <pre><code class="language-python">from ams_mel import Session
+    <pre><code class="language-python">from ams_mel.ir import Session
 
 
 def inspect_provider(provider_library, instance, aperture):
@@ -99,7 +101,7 @@ def inspect_provider(provider_library, instance, aperture):
     them into this function. Entering the stream context does not start acquisition;
     <code>start()</code> is explicit. The function returns copied pixel bytes and
     metadata, with no remaining dependency on its native owners.</p>
-    <pre><code class="language-python">from ams_mel import ImageConfig, Session
+    <pre><code class="language-python">from ams_mel.ir import ImageConfig, Session
 
 
 def receive_one_frame(provider_library, instance, aperture,

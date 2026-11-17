@@ -204,13 +204,23 @@ def verify_presentation(site, root, report, references, output, *, deep=False):
     from build_docs_portal import manifest as portal_manifest
     portal = portal_manifest(root)
     portal_names = {portal['home'], portal['stylesheet'], *(e['path'] for e in portal['guides'])}
-    require(set(actual) == set(raw) | p.EXTRAS | portal_names, "unexpected/missing publication files")
-    require(p.sha(actual["api/gnatdoc-navigation.js"]) == p.JAVASCRIPT_SHA256, "router asset changed")
+    import search_audit
+    import resize_audit
+    import tomllib
+    resizing = tomllib.loads((root / 'docs/gnatdoc-enhance.toml').read_text())['navigation'].get(
+        'resizable_sidebar', False)
+    require(set(actual) == set(raw) | p.EXTRAS | portal_names | search_audit.EXTRAS |
+            (resize_audit.EXTRAS if resizing else set()),
+            "unexpected/missing publication files")
+    # Reverse feature order: resize, full search, symbols/navigation, native.
+    index = resize_audit.qualify(actual) if resizing else actual['api/index.html'].decode()
+    search_insertion, search_report = search_audit.qualify(root, site, report, authority, actual)
     audit = []
     for name, data in raw.items():
         if name.startswith("api/") and name.endswith(".html"):
             text = actual[name].decode()
-            safe = p.restore_navigation(text, symbols) if name == "api/index.html" else text
+            safe = (p.restore_navigation(search_audit.restore(index, search_insertion), symbols)
+                    if name == "api/index.html" else text)
             require(not p.Page(safe).issues, "unsafe publication HTML")
             restored = p.restore_document(safe, data.decode(), name, authority)
             restored, occurrences = restore_page(Path(name).name, restored, authority)
@@ -286,7 +296,8 @@ def verify_presentation(site, root, report, references, output, *, deep=False):
             require(dest in actual, "missing publication destination")
             if parts.fragment:
                 require(dest in pages and unquote(parts.fragment) in pages[dest].ids, "missing publication fragment")
-    return {"symbols": symbols, "type_occurrences": audit, "files": p.hashes(actual)}
+    return {"symbols": symbols, "type_occurrences": audit, "files": p.hashes(actual),
+            "search": search_report}
 
 
 def qualify(root, target, candidate, output, prefix):
