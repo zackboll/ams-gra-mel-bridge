@@ -158,6 +158,11 @@ def run(site, executable, output):
                         color('.kw', 'color', palette['keyword'], 'syntax keyword')
                         color('.string', 'color', palette['string'], 'syntax string')
                         color('.comment', 'color', palette['comment'], 'syntax comment')
+                        for crate in ('ams_mel_common', 'ams_mel_ir', 'ams_mel_rf', 'ams_mel_sys'):
+                            goto('rust/' + crate + '/index.html')
+                            color('body', 'backgroundColor', palette['page'], crate + ' background')
+                            color('body', 'color', palette['text'], crate + ' text')
+                            color('h1', 'color', palette['text'], crate + ' heading')
                         goto('rust/ams_mel/enum.FailureLevel.html')
                         color('.docblock table', 'color', palette['text'], 'table foreground')
                         color('.docblock table tr:nth-child(even)', 'backgroundColor', palette['code'],
