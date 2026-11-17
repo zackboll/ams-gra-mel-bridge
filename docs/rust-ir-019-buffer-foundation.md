@@ -107,5 +107,51 @@ no channel, image acquisition or Frame.
 
 ## Qualification
 
-Actual commands/results and exact final-source hosted/review evidence are
-recorded below as qualification completes; no pending gate is a pass.
+Actual local qualification on the implementation source:
+
+- `make native`: passed, separate production tree.
+- `make test-native`: **821/821 passed**, compiled C and C++ tests.
+- `ctest --test-dir native/build-tests -R '^ir_buffer_(foundation|allocation)$'
+  --output-on-failure`: **2/2 passed**.
+- `cargo test --manifest-path rust/Cargo.toml --locked -p ams-mel-ir --lib
+  ir_buffer`: **10/10 passed** (private boundaries).
+- `cargo test --manifest-path rust/Cargo.toml --locked -p ams-mel-ir --test
+  ir_buffer`: **8/8 passed**, including five isolated lifecycle subprocesses.
+- `cargo test --manifest-path rust/Cargo.toml --locked --workspace`, with
+  `AMS_MEL_NATIVE_LIB_DIR=$PWD/native/build-tests/lib` and
+  `AMS_MEL_TEST_PROVIDER_DIR=$PWD/native/build-tests/test-providers`:
+  **638 passed, 15 existing opt-in ignored, zero failures**. This includes the
+  compatibility identity test and three new compile-fail owner doctests.
+- `cargo check --manifest-path rust/Cargo.toml --locked --workspace --all-targets`:
+  passed.
+- `cargo clippy --manifest-path rust/Cargo.toml --locked --workspace --all-targets
+  -- -D warnings`: passed.
+- `cargo fmt --manifest-path rust/Cargo.toml --all -- --check`: passed.
+- `RUSTDOCFLAGS='-D warnings' cargo doc --manifest-path rust/Cargo.toml --locked
+  --workspace --no-deps`: passed.
+- Executable example above: passed; exact bytes `[0, 127, 128, 255]`, duplicate
+  Host flags and signed context `-7` reported.
+- `make test-policy`: **328 tests across 14 suites passed**.
+- `python3 scripts/check_doc_source_integrity.py`: passed, **825** vendor files
+  and **6** workflows. `python3 scripts/check_final_newlines.py` and
+  `git diff --check`: passed.
+
+A first pinned `make check` passed both isolation directions/native suites but
+failed formatter project resolution because `GPR_PROJECT_PATH` did not include
+this isolated worktree's native project. It is being rerun with that path
+explicitly set, using installed GNAT 16.1.0 and the GPRbuild 26.0.1 package.
+Initial concurrent Rust/Python runs also raced native-tree reconfiguration;
+these are not counted as passes. The locked Rust rerun above is complete;
+Python is rerun sequentially after native qualification. No code or test was
+weakened to address an environment/setup failure.
+
+Delivery is non-draft PR [#240](https://github.com/zackboll/ams-gra-mel-bridge/pull/240),
+open and unmerged, auto-merge disabled. Hosted Bootstrap and source-derived
+API documentation must pass on exact final source; FULL_STRESS is mandatory
+for this source-changing PR, not COMPLETE_SMOKE. Final HEAD/tree, main identity,
+workflow URLs and final command results are recorded in PR delivery comments
+rather than self-referential commit identifiers here.
+
+Independent technical review was requested in the PR. An external automated
+review attempt failed authentication (expired OAuth), and no passed review is
+claimed. Review remains required before `READY_FOR_USER_MERGE`.
