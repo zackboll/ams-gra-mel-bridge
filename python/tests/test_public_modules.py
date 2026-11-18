@@ -41,6 +41,8 @@ class PublicModuleTests(unittest.TestCase):
         self.assertNotIn('Session', rf.__all__)
         for name in ('Session', 'ChannelView', 'CommandReturn', 'MelErrorCode',
                      'ImageStream', 'HealthStatusChannel', 'ControlChannel',
+                     'CameraProtectStatus', 'CameraProtectResponse',
+                     'CameraProtectResponseOpenError', 'CameraProtectResponseStream',
                      'Quaternion', 'LineOfSightQuaternion',
                      'LineOfSightQuaternionOpenError', 'LineOfSightQuaternionStream'):
             self.assertIn(name, ir.__all__)
@@ -60,6 +62,7 @@ class PublicModuleTests(unittest.TestCase):
             common.MFAState.STANDBY, common.ErrorKind.TIMEOUT,
             ir.CommsCompleted(ir.CommsTestReport(1, 2)),
             ir.SensorType(0xFFFFFFFF),
+            ir.CameraProtectResponse(0xFFFFFFFF, -(1 << 63), ir.CameraProtectStatus.UNAVAILABLE),
             ir.Quaternion(1.0, -0.0, 2.0, -3.0),
             ir.LineOfSightQuaternion(
                 -(1 << 63), ir.Quaternion(1.0, -0.0, 2.0, -3.0),
@@ -84,6 +87,10 @@ assert ams_mel.RFAdmin is rf.RFAdmin
 assert ams_mel.MFAState is common.MFAState
 assert ams_mel.abi_version is common.abi_version
 assert ams_mel.Quaternion is ir.Quaternion
+assert ams_mel.CameraProtectResponse is ir.CameraProtectResponse
+assert ams_mel.CameraProtectStatus is ir.CameraProtectStatus
+assert ams_mel.CameraProtectResponseStream is ir.CameraProtectResponseStream
+assert ams_mel.CameraProtectResponseOpenError is ir.CameraProtectResponseOpenError
 assert ams_mel.LineOfSightQuaternion is ir.LineOfSightQuaternion
 assert ir.ForwardRightDown is ams_mel.ForwardRightDown
 assert all(getattr(ams_mel, name).__module__ == 'ams_mel'
