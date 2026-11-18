@@ -399,3 +399,22 @@ the following `peak` update in `start()`. The test now waits for the existing
 asserting the unchanged peak value. Bootstrap 44420272958 is therefore a failed
 attempt overall, not an eight-job substitute for final qualification. No
 completion implementation or contract was weakened for either observation fix.
+
+### Second ordinary main reconciliation
+
+All nine Bootstrap jobs passed for dd49630 at
+<https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44422521707>, and API
+documentation passed at
+<https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44422521691>.
+Downloaded logs independently confirm exact HEAD/tree, FULL_STRESS mode, actual
+50-repeat execution and ordinary/stress 878/878 pass summaries in all four
+native configurations (43,900 stress executions each). Five targeted Health
+cases also passed 1,000 local repetitions each, 5,000 executions total.
+
+Before delivery, main advanced again to
+`63008c88e8987842a795ad61a7c3c739f3549c47` (safe Python camera-protection response,
+PR #242). Ordinary merge `4fed924f5eb7276848c7987ebc941d08010baa81` preserves that
+feature and all of its tests, as well as the previously integrated quaternion
+feature. No native/Ada/Rust bytes changed. The former ready-for-review checkpoint
+is historical: Python qualification and exact-final-HEAD hosted checks must be
+repeated on this integrated source. No independent review has been submitted.
