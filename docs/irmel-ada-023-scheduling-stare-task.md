@@ -391,3 +391,11 @@ GCC Release, Clang Release and Clang Debug logs prove actual FULL_STRESS executi
 ordinary suite plus 43,900 stress executions per configuration. Final evidence-
 commit hosted qualification must still be checked; these superseded-source
 results do not substitute for exact-final-HEAD CI or independent review.
+
+The fb010f0 GCC Debug campaign subsequently failed Health `metadata-stop` on a
+second test observation race: waiting for Worker `active` could return before
+the following `peak` update in `start()`. The test now waits for the existing
+`get_entries` barrier, which occurs after all startup accounting, before
+asserting the unchanged peak value. Bootstrap 44420272958 is therefore a failed
+attempt overall, not an eight-job substitute for final qualification. No
+completion implementation or contract was weakened for either observation fix.

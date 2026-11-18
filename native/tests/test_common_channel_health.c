@@ -296,7 +296,9 @@ int main(int argc, char **argv)
             CHECK(count(path, "control_destroyed\n") == 0U &&
                   count(path, "manager_destroyed\n") == 0U);
         } else {
-            CHECK(ams_mel_test_completion_wait(family, 1, 1U));
+            /* get-entry follows all Worker startup accounting. Observing only
+             * active can race the subsequent peak update in start(). */
+            CHECK(ams_mel_test_completion_wait(family, 4, 1U));
             CHECK(ams_mel_test_completion_snapshot(family, counters) && counters[2] == 1U);
         }
     }
