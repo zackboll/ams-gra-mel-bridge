@@ -2,6 +2,17 @@
 
 use std::ffi::{c_char, c_void};
 
+/// Complete raw outgoing IR TaskInfo; action is 0..=3, without implicit rewriting.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrTaskInfoV1 {
+    pub system_time_ns: i64,
+    pub request_id: u32,
+    pub action: u32,
+    pub precedence_within_priority: u32,
+    pub priority: u32,
+}
+
 extern "C" {
     pub fn ams_mel_rf_virtual_aperture_get_tx_radiated_power(
         va: *const AmsMelRfVa,
@@ -4247,6 +4258,14 @@ extern "C" {
     pub fn ams_mel_ir_scheduling_get_capabilities(
         scheduling: *mut AmsMelIrScheduling,
         out_capability: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_exec_abort(
+        scheduling: *mut AmsMelIrScheduling,
+        task: *const AmsMelIrTaskInfoV1,
+        out_request: *mut *mut AmsMelIrReturnRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

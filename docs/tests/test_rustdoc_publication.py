@@ -35,6 +35,7 @@ def fixture():
     files['src/ams_mel/lib.rs.html'] = b'<a id="1"></a><a id="2"></a>'
     files['static.files/style.css'] = b'body {font-family:test} @font-face {src:url("test.woff2")}'
     files['static.files/test.woff2'] = b'font'
+    files['theme.css'] = (ROOT / rust.THEME_SOURCE).read_bytes()
     return files
 
 
@@ -46,9 +47,75 @@ class AssemblyTests(unittest.TestCase):
         self.files = fixture()
         self.context = {'commit': 'a' * 40, 'tree': 'b' * 40}
         self.record = {'schema': 1, 'identity': self.context, 'toolchain': rust.TOOLCHAIN,
+                       'inputs': {'theme': dict(rust.THEME_IDENTITY)}, 'invocation': rust.invocation(),
+                       'diagnostics': {},
                        'flags': rust.FLAGS, 'tools': {t: {'version': v, 'binary_sha256': rust.BINARIES[t]}
                                                      for t, v in rust.VERSIONS.items()},
                        'files': rust.publication.hashes(self.files), 'counts': rust.validate(self.files)}
+
+    def test_missing_changed_and_symlink_theme_source_rejected_before_tools(self):
+        exported = self.directory / 'export'
+        theme = exported / rust.THEME_SOURCE
+        theme.parent.mkdir(parents=True)
+        with mock.patch.object(rust.subprocess, 'run') as tool:
+            for mutation in ('missing', 'changed', 'symlink'):
+                if mutation == 'changed':
+                    theme.write_bytes(b'body {color:red}')
+                elif mutation == 'symlink':
+                    theme.unlink()
+                    theme.symlink_to(ROOT / rust.THEME_SOURCE)
+                with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, 'theme'):
+                    rust.generate(exported, self.directory / mutation, self.context,
+                                  self.directory / 'log')
+            tool.assert_not_called()
+
+    def test_theme_identity_digest_and_additional_flags_are_not_manifest_authority(self):
+        for key, value in (
+                ('inputs', {'theme': dict(rust.THEME_IDENTITY, sha256='0' * 64)}),
+                ('inputs', {'theme': dict(rust.THEME_IDENTITY, source='extra.css')}),
+                ('invocation', dict(rust.invocation(), rustdoc_args=['--extend-css', 'extra.css']))):
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, 'inputs/invocation'):
+                rust.verify_record(self.files, dict(self.record, **{key: value}), self.context)
+        files = dict(self.files, **{'theme.css': b'body {color:red}'})
+        record = dict(self.record, files=rust.publication.hashes(files))
+        with self.assertRaisesRegex(ValueError, 'generated theme'):
+            rust.verify_record(files, record, self.context)
+
+    def test_independent_reconstruction_rejects_self_consistent_output_and_extra_css(self):
+        for name in ('unauthorized.css', 'static.files/main.js', 'static.files/style.css',
+                     'ams_mel/struct.Session.html'):
+            files = dict(self.files)
+            files[name] = files.get(name, b'') + b'\n/* unauthorized */'
+            record = dict(self.record, files=rust.publication.hashes(files), counts=rust.validate(files))
+            with mock.patch.object(rust, 'generate', return_value=(self.files, self.record)):
+                with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'independently regenerated'):
+                    rust.verify_regenerated(files, record, self.directory, self.directory / 'new',
+                                            self.context, self.directory / 'log')
+
+    def test_reconstruction_accepts_complete_identical_inventory(self):
+        with mock.patch.object(rust, 'generate', return_value=(self.files, self.record)):
+            rust.verify_regenerated(self.files, self.record, self.directory, self.directory / 'new',
+                                    self.context, self.directory / 'log')
+
+    def test_resize_parity_never_projects_away_rust_changes(self):
+        import resize_parity
+        before = {'rust/' + n: d for n, d in self.files.items() if n != 'theme.css'}
+        after = dict(before, **{'rust/theme.css': self.files['theme.css']})
+        after['rust/ams_mel/index.html'] += b'<link rel="stylesheet" href="../theme.css">'
+        with self.assertRaisesRegex(ValueError, 'exact four-file'):
+            resize_parity.compare(before, after)
+        for name in ('rust/static.files/main.js', 'rust/static.files/style.css'):
+            bad = dict(after)
+            bad[name] += b'changed'
+            with self.assertRaisesRegex(ValueError, 'exact four-file'):
+                resize_parity.compare(before, bad)
+        bad = dict(after, **{'rust/theme.css': b'forged'})
+        with self.assertRaisesRegex(ValueError, 'exact four-file'):
+            resize_parity.compare(before, bad)
+        bad = dict(after)
+        bad['rust/ams_mel/index.html'] += b'<link rel="stylesheet" href="../theme.css">'
+        with self.assertRaisesRegex(ValueError, 'exact four-file'):
+            resize_parity.compare(before, bad)
 
     def test_safe_raw_source_shared_css_font_and_script_links(self):
         rust.verify_record(self.files, self.record, self.context)
@@ -84,6 +151,9 @@ class AssemblyTests(unittest.TestCase):
             rust.verify_record(self.files, record, self.context)
 
     def test_generation_rejects_wrong_toolchain_before_cargo(self):
+        theme = self.directory / rust.THEME_SOURCE
+        theme.parent.mkdir(parents=True)
+        theme.write_bytes((ROOT / rust.THEME_SOURCE).read_bytes())
         with mock.patch.object(rust.subprocess, 'check_output', return_value='cargo 1.99.0\n'):
             with self.assertRaisesRegex(ValueError, 'unqualified Rust documentation toolchain'):
                 rust.generate(self.directory, self.directory / 'target', self.context, self.directory / 'log')

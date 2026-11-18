@@ -1,4 +1,4 @@
-"""Complete publication parity and disposable resize-disabled release control."""
+"""Exact four-file resize delta on one independently verified source revision."""
 
 import argparse
 import json
@@ -7,6 +7,7 @@ import tempfile
 
 import authored_html
 import build_enhanced_site as p
+import docs_ci
 import python_publication as pythondoc
 import rustdoc_publication as rustdoc
 import source_epoch as epoch
@@ -15,64 +16,99 @@ from example_sources import References
 
 DELTA = {'api/gnatdoc-resize.css', 'api/gnatdoc-resize.js',
          'api/index.html', 'api/presentation.json'}
+CONFIGURATION = 'docs/gnatdoc-enhance.toml'
+ENABLED = 'resizable_sidebar = true'
+DISABLED = 'resizable_sidebar = false'
 
 
-def qualify(root, baseline, candidate, output):
-    before, after = (p.files(d / 'published') for d in (baseline, candidate))
-    native_before, native_after = (p.files(d / 'pristine') for d in (baseline, candidate))
-    epoch.require(native_before == native_after, 'source/native or authored baseline differs')
-    for name in ('native-anchors.json', 'coverage.json'):
-        epoch.require((baseline / name).read_bytes() == (candidate / name).read_bytes(),
-                      'source/native identity differs: ' + name)
+def compare(before, after):
+    """Compare every byte, including all language subtrees; no projections."""
     changed = {n for n in before.keys() | after.keys() if before.get(n) != after.get(n)}
     epoch.require(changed == DELTA, 'not the exact four-file resize publication delta')
     epoch.require(set(after) - set(before) == DELTA - {'api/index.html', 'api/presentation.json'}
-                  and not set(before) - set(after), 'unexpected inventory delta')
-    # Independently re-render the current immutable source with only resize off.
+                  and not set(before) - set(after), 'unexpected resize inventory delta')
+    return sorted(changed)
+
+
+def qualify(root, candidate, output, manifest_sha, *, repeated=None, repeated_manifest_sha=None):
+    # A seal alone is not authority: verify exact checkout/event identity, native
+    # anchors, Ada restoration/search/destinations, complete assembly, Python
+    # source reconstruction and independently regenerated Rust bytes first.
+    manifest = docs_ci.verify(root, candidate, manifest_sha)
+    context = manifest['identity']
+    after = p.files(candidate / 'published')
+    native = p.files(candidate / 'pristine')
+    epoch.require((repeated is None) == (repeated_manifest_sha is None),
+                  'repeated publication and manifest digest must be supplied together')
+    if repeated is not None:
+        repeated_manifest = docs_ci.verify(root, repeated, repeated_manifest_sha)
+        epoch.require(repeated_manifest['identity'] == context, 'repeated source/run identity differs')
+        for name in ('published', 'pristine', 'ada-qualified'):
+            epoch.require(p.files(candidate / name) == p.files(repeated / name),
+                          'repeated source-local publication differs: ' + name)
+        for name in ('native-anchors.json', 'coverage.json'):
+            epoch.require((candidate / name).read_bytes() == (repeated / name).read_bytes(),
+                          'repeated source/native records differ: ' + name)
     with tempfile.TemporaryDirectory(prefix='mel-resize-control-') as temp:
         exported, control = Path(temp) / 'source', Path(temp) / 'published'
-        epoch.export(root, 'HEAD', exported)
-        path = exported / 'docs/gnatdoc-enhance.toml'
-        text = path.read_text()
-        epoch.require(text.count('resizable_sidebar = true') == 1, 'resize configuration differs')
-        path.write_text(text.replace('resizable_sidebar = true', 'resizable_sidebar = false'))
+        epoch.export(root, context['commit'], exported)
+        path = exported / CONFIGURATION
+        original = path.read_bytes()
+        epoch.require(original.count(ENABLED.encode()) == 1 and
+                      original.count(DISABLED.encode()) == 0,
+                      'resize configuration differs')
+        replacement = original.replace(ENABLED.encode(), DISABLED.encode(), 1)
+        path.write_bytes(replacement)
+        # This modified export is NOT an immutable Git checkout. No docs_ci
+        # identity or publication manifest is fabricated for its disabled output.
         site = candidate / 'pristine'
         report = measure(site, exported)
         epoch.enhance(site, exported, report, References(exported, site, ledger=report['native']), control)
         control_files = p.files(control)
-        # Assembly deliberately adds language portal links to index.html. Compare
-        # the isolated Ada control first, then run the real assembly functions.
-        expected_ada = p.files(baseline / 'ada-qualified')
-        epoch.require(control_files == expected_ada, 'resize-disabled control differs from production')
+        compare(control_files, p.files(candidate / 'ada-qualified'))
+        # Reuse only complete language inventories source-verified above. Real
+        # assembly inserts both portals; no unrelated mainline bytes are copied.
+        rust = {n.removeprefix('rust/'): d for n, d in after.items() if n.startswith('rust/')}
+        python = {n.removeprefix('python/'): d for n, d in after.items() if n.startswith('python/')}
+        before = pythondoc.assembled(rustdoc.assembled(control_files, rust), python)
+        delta = compare(before, after)
         portal = authored_html.manifest(exported)
         authored_names = [portal['home'], portal['stylesheet'], *(g['path'] for g in portal['guides'])]
-    result = {'passed': True, 'baseline': p.hashes(before), 'candidate': p.hashes(after),
-              'native': p.hashes(native_after), 'delta': sorted(changed),
-              'unchanged_files': len(set(before) - changed),
-              'counts': {'baseline': len(before), 'candidate': len(after),
-                         'baseline_ada': len(expected_ada),
-                         'candidate_ada': len(p.files(candidate / 'ada-qualified')),
-                         'rust': sum(n.startswith('rust/') for n in after),
-                         'python': sum(n.startswith('python/') for n in after)},
+    # Reject source or payload mutation during disposable reconstruction.
+    epoch.require(docs_ci.identity(root) == context, 'source changed during resize qualification')
+    payload = p.files(candidate)
+    del payload['manifest.json']
+    epoch.require(p.hashes(payload) == manifest['payload'], 'candidate changed during resize qualification')
+    result = {'passed': True, 'identity': context, 'manifest_sha256': manifest_sha,
+              'comparison': 'same-source-resize-toggle',
+              'disabled_control': {'mode': 'modified-export-not-deployable',
+                  'derived_from': context, 'configuration': CONFIGURATION,
+                  'original_sha256': p.sha(original), 'modified_sha256': p.sha(replacement),
+                  'ada_files': p.hashes(control_files)},
+              'disabled_complete_inventory': p.hashes(before), 'candidate': p.hashes(after),
+              'native': p.hashes(native), 'delta': delta,
+              'unchanged_files': len(set(before) - DELTA),
+              'counts': {'disabled': len(before), 'candidate': len(after),
+                         'rust': len(rust), 'python': len(python)},
+              'records': {n: p.sha((candidate / n).read_bytes()) for n in
+                          ('native-anchors.json', 'coverage.json', 'rustdoc.json', 'python-reference.json')},
               'authored': {n: p.sha(after[n]) for n in authored_names},
-              'search_sha256': p.sha(after['api/gnatdoc-search-index.json']),
-              'disabled_control': p.hashes(control_files),
-              'disabled_complete_inventory': p.hashes(pythondoc.assembled(
-                  rustdoc.assembled(control_files,
-                      {n.removeprefix('rust/'): d for n, d in after.items() if n.startswith('rust/')}),
-                  {n.removeprefix('python/'): d for n, d in after.items() if n.startswith('python/')}))}
-    epoch.require(result['disabled_complete_inventory'] == result['baseline'],
-                  'complete disabled assembly differs')
+              'search_sha256': p.sha(after['api/gnatdoc-search-index.json'])}
+    if repeated is not None:
+        result['repeated_manifest_sha256'] = repeated_manifest_sha
     output.write_bytes(epoch.canonical(result))
-    print(json.dumps({k: result[k] for k in ('passed', 'counts', 'delta', 'unchanged_files')}))
+    print(json.dumps({k: result[k] for k in ('passed', 'identity', 'counts', 'delta', 'unchanged_files')}))
     return result
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[2])
-    parser.add_argument('--baseline', type=Path, required=True)
     parser.add_argument('--candidate', type=Path, required=True)
+    parser.add_argument('--manifest-sha', required=True)
+    parser.add_argument('--repeated', type=Path)
+    parser.add_argument('--repeated-manifest-sha')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    qualify(args.root, args.baseline, args.candidate, args.output)
+    qualify(args.root, args.candidate, args.output, args.manifest_sha,
+            repeated=args.repeated, repeated_manifest_sha=args.repeated_manifest_sha)

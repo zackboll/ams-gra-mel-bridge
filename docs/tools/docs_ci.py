@@ -158,6 +158,9 @@ def verify(root, directory, manifest_sha, deployment=False):
                 'noncanonical/duplicate Python documentation record')
         base = pythondoc.verify_assembly(directory, exported, context, python_record)
         rustdoc.verify_assembly(directory, context, rust_record, published=base)
+        rust_files = {n.removeprefix('rust/'): d for n, d in base.items() if n.startswith('rust/')}
+        rustdoc.verify_regenerated(rust_files, rust_record, exported, Path(temp) / 'rust-generation',
+                                  context, Path(temp) / 'rustdoc.log')
     return manifest
 
 

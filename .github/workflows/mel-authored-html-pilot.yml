@@ -1,20 +1,19 @@
 name: MEL authored HTML qualification (non-deploying)
 
 on:
-  pull_request:
+  push:
     branches: [main]
-    paths:
-      - 'docs/**'
-      - 'scripts/**'
-      - 'ada/**'
-      - '.github/workflows/mel-authored-html-pilot.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 env:
-  DOC_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  DOC_SOURCE_SHA: ${{ github.sha }}
 
 jobs:
   pilot:
@@ -23,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.DOC_SOURCE_SHA }}
           fetch-depth: 0
           persist-credentials: false
       - name: Install official pinned documentation tools

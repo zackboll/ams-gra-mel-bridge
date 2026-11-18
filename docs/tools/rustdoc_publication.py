@@ -5,6 +5,7 @@ same-run manifest and bundle digests authorize its bytes and every generated fil
 Only generation from the Git export may create that seal.
 """
 
+import hashlib
 import os
 from pathlib import Path
 import posixpath
@@ -31,6 +32,10 @@ BINARIES = {
     'rustdoc': '3ff7fed6d1064d8d75d24ae8beff9fe1d68031d3d819966481d22c3c9002b709',
 }
 FLAGS = '--deny rustdoc::broken_intra_doc_links --warn missing_docs'
+THEME_SOURCE = 'docs/assets/rustdoc-mel-theme.css'
+THEME_SHA256 = '1c71d3a839a3ed6697083f1ad65a9917f3bd4c2201e7dbd3741dab9ce50d879e'
+THEME_BLOB = '5a763d03b62ba2d938e8582c5698825600a17ebd'
+THEME_IDENTITY = {'source': THEME_SOURCE, 'git_blob': THEME_BLOB, 'sha256': THEME_SHA256}
 INSERTION = (b'<section aria-label="Rust reference"><h2>Rust reference</h2>\n'
              b'<p><a href="rust/ams_mel/index.html">Safe Rust application API (ams-mel)</a></p>\n'
              b'<p><a href="rust/ams_mel_sys/index.html">Low-level unsafe Rust FFI implementation '
@@ -157,6 +162,26 @@ def validate(files):
     return graph(files, portal=True)
 
 
+def theme_input(exported):
+    """Read only the approved regular Git-exported theme, never a host override."""
+    path = exported / THEME_SOURCE
+    require(not any(p.is_symlink() for p in (path, *path.parents)), 'symlink Rustdoc theme input')
+    require(path.is_file(), 'missing Rustdoc theme source')
+    data = path.read_bytes()
+    blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+    require(epoch.sha(data) == THEME_SHA256 and blob == THEME_BLOB,
+            'Rustdoc theme source identity mismatch')
+    return path
+
+
+def invocation():
+    return {'cwd': 'source-export',
+            'commands': [['rustup', 'run', TOOLCHAIN, 'cargo', 'doc', '--manifest-path',
+                          'rust/Cargo.toml', '-p', crate, '--no-deps', '--locked',
+                          '--offline', '--message-format=json'] for crate in CRATES],
+            'rustdoc_args': FLAGS.split() + ['--extend-css', '${source-export}/' + THEME_SOURCE]}
+
+
 def generate(exported, output, context, log):
     """Foundation cargo-doc approach, fresh target and controlled host environment.
 
@@ -165,11 +190,13 @@ def generate(exported, output, context, log):
     configuration; this workspace has no registry dependencies to download.
     """
     started = time.monotonic()
+    theme = theme_input(exported)
     require(not output.exists(), 'Rustdoc target must be fresh')
     output.mkdir()
     env = {k: v for k, v in os.environ.items() if k in {'PATH', 'HOME', 'RUSTUP_HOME', 'TMPDIR'}}
     env.update(CARGO_HOME=str(output / 'cargo-home'), CARGO_TARGET_DIR=str(output / 'target'),
-               CARGO_NET_OFFLINE='true', RUSTDOCFLAGS=FLAGS,
+               CARGO_NET_OFFLINE='true',
+               CARGO_ENCODED_RUSTDOCFLAGS='\x1f'.join(FLAGS.split() + ['--extend-css', str(theme)]),
                AMS_MEL_NATIVE_LIB_DIR=str(output / 'absent-native-library'))
     tools = {}
     for tool, expected in VERSIONS.items():
@@ -180,13 +207,12 @@ def generate(exported, output, context, log):
         tools[tool] = {'version': result, 'binary_sha256': epoch.sha(binary.read_bytes())}
         require(tools[tool]['binary_sha256'] == BINARIES[tool], 'unqualified Rust executable bytes')
     counts = {}
-    for crate in CRATES:
-        command = ['rustup', 'run', TOOLCHAIN, 'cargo', 'doc', '--manifest-path',
-                   str(exported / 'rust/Cargo.toml'), '-p', crate, '--no-deps', '--locked',
-                   '--offline', '--message-format=json']
+    for crate, command in zip(CRATES, invocation()['commands']):
         result = subprocess.run(command, cwd=exported, env=env, capture_output=True, text=True)
         with log.open('a') as stream:
-            stream.write('$ ' + ' '.join(command) + '\n' + result.stdout + result.stderr)
+            stream.write('cwd=' + str(exported) + '\nCARGO_ENCODED_RUSTDOCFLAGS=' +
+                         repr(env['CARGO_ENCODED_RUSTDOCFLAGS']) + '\n$ ' +
+                         ' '.join(command) + '\n' + result.stdout + result.stderr)
         require(result.returncode == 0, 'Rustdoc generation failed; see ' + str(log))
         counts[crate] = diagnostics(result.stdout)
         require(not any('broken_intra_doc_links' in n or n.startswith('error:') for n in counts[crate]),
@@ -194,9 +220,11 @@ def generate(exported, output, context, log):
     site = output / 'target/doc'
     (site / 'index.html').write_bytes(LANDING)
     files = publication.files(site)
+    require(files.get('theme.css') == theme.read_bytes(), 'Rustdoc generated theme mismatch')
     measured = validate(files)
     record = {'schema': 1, 'identity': context, 'toolchain': TOOLCHAIN, 'tools': tools,
-              'flags': FLAGS, 'diagnostics': counts, 'counts': measured,
+              'flags': FLAGS, 'inputs': {'theme': dict(THEME_IDENTITY)}, 'invocation': invocation(),
+              'diagnostics': counts, 'counts': measured,
               'files': publication.hashes(files), 'seconds': time.monotonic() - started}
     return files, record
 
@@ -208,8 +236,21 @@ def verify_record(files, record, context):
                 record['tools'][t]['version'] == v and
                 record['tools'][t]['binary_sha256'] == BINARIES[t]
                 for t, v in VERSIONS.items()), 'Rustdoc toolchain mismatch')
+    require(record.get('inputs') == {'theme': THEME_IDENTITY} and
+            record.get('invocation') == invocation(), 'Rustdoc authorized inputs/invocation mismatch')
     require(publication.hashes(files) == record['files'], 'Rustdoc artifact inventory mismatch')
+    require('theme.css' in files and epoch.sha(files['theme.css']) == THEME_SHA256,
+            'Rustdoc generated theme mismatch')
     require(validate(files) == record['counts'], 'Rustdoc measured inventory mismatch')
+
+
+def verify_regenerated(files, record, exported, output, context, log):
+    """Output hashes cannot authorize a substituted stylesheet or regenerated forgery."""
+    verify_record(files, record, context)
+    expected, regenerated = generate(exported, output, context, log)
+    require(files == expected, 'Rustdoc differs from independently regenerated source')
+    for key in ('tools', 'inputs', 'invocation', 'flags', 'diagnostics', 'counts', 'files'):
+        require(record[key] == regenerated[key], 'Rustdoc regenerated record mismatch: ' + key)
 
 
 def verify_assembly(directory, context, record, *, published=None):
