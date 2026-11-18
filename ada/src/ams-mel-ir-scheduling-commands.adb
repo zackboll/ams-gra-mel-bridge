@@ -68,6 +68,26 @@ package body AMS.MEL.IR.Scheduling.Commands is
       end return;
    end Exec_Stare;
 
+   function Wait (Request : Stare_Request; Timeout_Milliseconds : Natural) return Stare_Result
+   is (Stare_Result (Abort_Result'(Wait (Abort_Request (Request), Timeout_Milliseconds))));
+
+   function Status (Result : Stare_Result) return Outcome
+   is (Status (Abort_Result (Result)));
+
+   function Value (Result : Stare_Result) return Command_Return
+   is (Value (Abort_Result (Result)));
+
+   function Rejection_Code (Result : Stare_Result) return Error_Code
+   is (Rejection_Code (Abort_Result (Result)));
+
+   function Description (Result : Stare_Result) return String
+   is (Description (Abort_Result (Result)));
+
+   procedure Close (Request : in out Stare_Request) is
+   begin
+      Close (Abort_Request (Request));
+   end Close;
+
    function Exec_Abort (Channel : Scheduling_Channel; Info : Task_Info) return Abort_Request is
       Raw : aliased C.IR_Task_Info_V1 :=
         (Info.System_Time_NS,

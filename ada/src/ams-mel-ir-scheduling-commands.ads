@@ -64,10 +64,10 @@ package AMS.MEL.IR.Scheduling.Commands is
    type Abort_Result is private;
    --  Owned cached terminal result, independent of all provider owners.
 
-   subtype Stare_Request is Abort_Request;
+   type Stare_Request is limited private;
    --  Limited-controlled Return observer sharing Wait, Close and non-raising
    --  finalization with Abort_Request. Timeout and Close do not cancel work.
-   subtype Stare_Result is Abort_Result;
+   type Stare_Result is private;
    --  Owned cached Return or MEL rejection; uses Status, Value, Rejection_Code
    --  and Description below. No acknowledgement or execution report is inferred.
 
@@ -79,6 +79,37 @@ package AMS.MEL.IR.Scheduling.Commands is
    --  @return Limited observer; Wait reports actual Return or explicit MEL rejection.
    --  @exception Provider_Error Ineligible owner, native failure or provider exec exception.
    --  @exception Resource_Exhausted Session completion admission limit reached.
+
+   function Wait (Request : Stare_Request; Timeout_Milliseconds : Natural) return Stare_Result;
+   --  Observe the shared cached Return engine; zero timeout polls without cancellation.
+   --  @param Request Open observer, serialized against Close.
+   --  @param Timeout_Milliseconds Maximum wait in milliseconds; zero polls.
+   --  @return Actual Return or complete MEL rejection, never physical execution proof.
+   --  @exception Timeout_Error Still pending; request remains open and unconsumed.
+   --  @exception Provider_Error Closed observer, malformed payload or future exception.
+   function Status (Result : Stare_Result) return AMS.MEL.IR.Channel.Outcome;
+   --  Inspect the terminal outcome, independently of the Return payload.
+   --  @param Result Owned cached result.
+   --  @return Success for a valid Return, Rejected for an explicit MEL rejection.
+   function Value (Result : Stare_Result) return AMS.MEL.IR.Channel.Command_Return;
+   --  Inspect the actual provider Return value.
+   --  @param Result Successful terminal result.
+   --  @return Exact Return including Fail, Not_Supported and Not_Implemented.
+   --  @exception Provider_Error Result is Rejected.
+   function Rejection_Code (Result : Stare_Result) return AMS.MEL.IR.Channel.Error_Code;
+   --  Inspect an explicit MEL rejection, distinct from a Return payload.
+   --  @param Result Rejected terminal result.
+   --  @return Exact MEL error code.
+   --  @exception Provider_Error Result is Success.
+   function Description (Result : Stare_Result) return String;
+   --  Copy the complete owned MEL rejection description.
+   --  @param Result Rejected terminal result.
+   --  @return Full provider rejection text, including long descriptions.
+   --  @exception Provider_Error Result is Success.
+   procedure Close (Request : in out Stare_Request);
+   --  Idempotently close the observer without cancelling admitted provider work.
+   --  @param Request Observer to close, serialized against Wait.
+   --  @exception Provider_Error Native observer closure failed.
 
    function Exec_Abort (Channel : Scheduling_Channel; Info : Task_Info) return Abort_Request;
    --  Submit exactly one real upstream exec outside the Scheduling lifecycle lock.
@@ -133,4 +164,6 @@ private
       Result_Code   : AMS.MEL.IR.Channel.Error_Code := AMS.MEL.IR.Channel.None;
       Result_Text   : US.Unbounded_String;
    end record;
+   type Stare_Request is new Abort_Request with null record;
+   type Stare_Result is new Abort_Result;
 end AMS.MEL.IR.Scheduling.Commands;
