@@ -40,7 +40,9 @@ class PublicModuleTests(unittest.TestCase):
         self.assertIn('RFAdmin', rf.__all__)
         self.assertNotIn('Session', rf.__all__)
         for name in ('Session', 'ChannelView', 'CommandReturn', 'MelErrorCode',
-                     'ImageStream', 'HealthStatusChannel', 'ControlChannel'):
+                     'ImageStream', 'HealthStatusChannel', 'ControlChannel',
+                     'Quaternion', 'LineOfSightQuaternion',
+                     'LineOfSightQuaternionOpenError', 'LineOfSightQuaternionStream'):
             self.assertIn(name, ir.__all__)
         # These are the same shared value objects used by implementation code,
         # including code that requires exact types instead of subclass matches.
@@ -58,6 +60,10 @@ class PublicModuleTests(unittest.TestCase):
             common.MFAState.STANDBY, common.ErrorKind.TIMEOUT,
             ir.CommsCompleted(ir.CommsTestReport(1, 2)),
             ir.SensorType(0xFFFFFFFF),
+            ir.Quaternion(1.0, -0.0, 2.0, -3.0),
+            ir.LineOfSightQuaternion(
+                -(1 << 63), ir.Quaternion(1.0, -0.0, 2.0, -3.0),
+                ir.ForwardRightDown(4.0, 5.0, 6.0)),
         )
         for value in values:
             with self.subTest(value=value):
@@ -77,6 +83,9 @@ assert ams_mel.Session is ir.Session
 assert ams_mel.RFAdmin is rf.RFAdmin
 assert ams_mel.MFAState is common.MFAState
 assert ams_mel.abi_version is common.abi_version
+assert ams_mel.Quaternion is ir.Quaternion
+assert ams_mel.LineOfSightQuaternion is ir.LineOfSightQuaternion
+assert ir.ForwardRightDown is ams_mel.ForwardRightDown
 assert all(getattr(ams_mel, name).__module__ == 'ams_mel'
            for name in ams_mel.__all__)
 '''

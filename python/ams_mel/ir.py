@@ -34,6 +34,13 @@ from ._image_metadata import (
     ImageMetadataStream,
 )
 
+from ._los_quaternion import (
+    Quaternion,
+    LineOfSightQuaternion,
+    LineOfSightQuaternionOpenError,
+    LineOfSightQuaternionStream,
+)
+
 from ._optical_distortion_map import (
     ForwardRightDown,
     RowCol,
@@ -230,6 +237,10 @@ from ._session import (
 
 
 __all__ = [
+    "Quaternion",
+    "LineOfSightQuaternion",
+    "LineOfSightQuaternionOpenError",
+    "LineOfSightQuaternionStream",
     "ForwardRightDown",
     "RowCol",
     "OpticalDistortionMap",
