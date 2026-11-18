@@ -56,8 +56,7 @@ R3 adds this reconciliation report and corrects one inherited copy-pasted
 comment in the private Scheduling ExecuteTaskAck ABI test: that binding is
 private, whereas the safe Python quaternion API already exists. Its assertion
 is unchanged; focused ABI qualification is rerun after the comment correction.
-Coverage
-delta: zero new operations, ABI records, signatures or exports; native/Ada
+Coverage delta: zero new operations, ABI records, signatures or exports; native/Ada
 structured inventories are inherited unchanged from main.
 
 ## ABI and documentation contracts
@@ -94,9 +93,22 @@ production `nm -D --defined-only` output equals freshly fetched main's exports.
 The final-source qualification ledger in existing PR #233 records each actual
 exit/count, final feature HEAD/tree and hosted run URL, preserving all historical
 R1/R2 evidence rather than replacing it. Local command logs and exact runner
-scripts are retained in `/tmp/py018-r3-qualification`; generated publication,
+scripts are retained in `.doc-tools/py018-r3-evidence` (initial evidence was
+copied from `/tmp/py018-r3-qualification` after inode exhaustion); generated publication,
 repeated reconstruction, parity and browser evidence use uniquely named
 `.doc-tools/py018-r3-*` paths. These local diagnostics are not deployment authority.
+
+The first `make check` exited 2 during linking because `/tmp` exhausted all
+1,048,576 inodes. A following focused import failed because that interrupted
+link had removed its test-library output. Moving compiler temporaries to disk
+recovered the library, but existing C fixtures hardcode `/tmp`; the next check
+failed 776 fixture file-creation operations. Both failure logs and CTest output
+are retained. No source or assertion was changed to bypass these failures.
+An unprivileged process-private mount namespace binds the disk-backed ignored
+temporary directory as `/tmp` for the retry, without changing the host mount or
+deleting other worktrees' files. The ledger records that retry's actual result.
+Focused Python independently passed 119 tests with disk-backed temporaries
+after the test library recovered. Required final checks remain mandatory.
 
 Required final-source commands (listing a command is not a pass claim):
 
