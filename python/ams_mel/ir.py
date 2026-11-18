@@ -63,6 +63,13 @@ from ._navigation_types import (
     PositionVelocityCovariance,
 )
 
+from ._camera_protect_response import (
+    CameraProtectStatus,
+    CameraProtectResponse,
+    CameraProtectResponseOpenError,
+    CameraProtectResponseStream,
+)
+
 from ._camera_response import (
     CameraCommandResponse,
     CameraResponseCounters,
@@ -237,6 +244,10 @@ from ._session import (
 
 
 __all__ = [
+    "CameraProtectStatus",
+    "CameraProtectResponse",
+    "CameraProtectResponseOpenError",
+    "CameraProtectResponseStream",
     "Quaternion",
     "LineOfSightQuaternion",
     "LineOfSightQuaternionOpenError",
