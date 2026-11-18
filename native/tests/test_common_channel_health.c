@@ -12,6 +12,7 @@
 extern int ams_mel_test_completion_wait(unsigned, unsigned, uint64_t);
 extern int ams_mel_test_completion_snapshot(unsigned, uint64_t *);
 extern int ams_mel_test_completion_owner(unsigned, uint64_t, uint64_t *);
+extern int ams_mel_test_completion_owner_notify(unsigned, unsigned, uint64_t, uint64_t *);
 typedef int (*gate_fn)(unsigned, uint64_t, uint64_t *, uint64_t *);
 typedef int (*release_fn)(unsigned, unsigned);
 typedef int (*send_barrier_fn)(unsigned, unsigned, unsigned);
@@ -362,6 +363,9 @@ int main(int argc, char **argv)
         CHECK(ams_mel_test_completion_wait(family, 3, 1U));
         uint64_t observed = 0;
         CHECK(ams_mel_test_completion_owner(family, 1U, &observed));
+        /* The post-publication Return case also creates an admission-refused
+         * Return input. Its destruction alone cannot prove worker retirement. */
+        if (post) CHECK(ams_mel_test_completion_owner_notify(family, 0, 0, &observed));
         if (health) {
             size_t requests = 99;
             CHECK(ams_mel_test_health_requests(health, &requests) && requests == 0U);

@@ -298,3 +298,43 @@ R1 changes no production exports, public C layout, Ada API, Stare conversion,
 TaskInfo, metadata independence, coverage classification, safe Rust/Python API,
 vendor header or CI/documentation policy. Export count remains 333 under
 `AMS_MEL_0.1`, and safe-Ada coverage remains 59 operations.
+
+### Main reconciliation and hosted stress correction
+
+Main advanced to `f6c81cfff415566595ba177a50d41eb9f12a51d4` during qualification.
+Ordinary merge `d604fa6f0882c2c069f98e6dc028e3a4f13b0da3` preserves its unrelated
+safe Python LOS-quaternion implementation, tests and documentation fixture.
+Native/Ada/Rust source bytes were unchanged by that merge. Synthetic merge
+`9dc0e58bf978e495253b936aba3945f40feb4894` had tree
+`088aebee456cbec36c39bfe70ef7b07d24a85c9b`, equal to the intended head tree and
+`git merge-tree --write-tree` reconstruction.
+
+On that integrated source, sequential local native 878/878, focused Stare 37/37,
+common completion 114/114, focused stress 17,100 executions, full Ada smoke/
+negative/example (55 PASS markers), and pinned Alire library build/tests passed.
+Coverage/check/Rust/Python/policy qualification is still in progress at this
+checkpoint. Pre-merge results are retained separately, not substituted for these.
+
+Hosted API documentation passed for correction c414a61 and integrated d604fa6:
+<https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44418600730> and
+<https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44419201063>.
+Bootstrap runs
+<https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44418600922> and
+<https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44419201079> exposed a
+Health **test observation race** during actual FULL_STRESS. Publication failure
+and the admission-refused probe each created a Return input; waiting for just
+one destroyed input could observe the refused input rather than the pending
+worker. The test now requires the existing all-created-owner notification
+barrier before asserting zero admission. This strengthens synchronization and
+does not relax retirement. Those failed hosted attempts are not passing gates.
+The library implementation is unchanged by this test correction.
+
+All applicable checks must pass on the final correction HEAD, with actual
+FULL_STRESS evidence in all four native jobs. Independent technical review has
+been requested for pre-send preparation, handoff/abort, non-throwing post-send
+operations, invalid futures, provider DSO lifetime, claim retirement, shared
+Return/Comms regression, reentry/Close and ABI preservation. No review or approval
+has been supplied. Until final qualification completes, disposition is BLOCKED;
+after qualification alone it can be READY_FOR_INDEPENDENT_REVIEW, not approval
+for automatic merge. PR #241 stays open, non-draft and unmerged with auto-merge
+disabled.
