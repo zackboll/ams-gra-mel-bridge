@@ -338,3 +338,56 @@ has been supplied. Until final qualification completes, disposition is BLOCKED;
 after qualification alone it can be READY_FOR_INDEPENDENT_REVIEW, not approval
 for automatic merge. PR #241 stays open, non-draft and unmerged with auto-merge
 disabled.
+
+### Completed sequential local qualification
+
+The production/library implementation remains exactly c414a61 after main merge
+and the Health observation correction. The following commands completed without
+overlapping native/Ada build-tree writers, using GNAT 16.1.0, GPRbuild 26.0.1 and
+Alire 2.1.1 with the existing pinned crate configuration. Each command's actual
+exit is 0; logs and individual exit files are in
+`/home/zboll/irmel023-r1/integrated` unless noted.
+
+| Command | Actual result |
+|---|---|
+| `make test-native` | 878/878 passed |
+| focused Stare CTest | 37/37 passed |
+| focused common/C2/admission CTest | 114/114 passed |
+| shared/Scheduling stress, `--parallel 4 --repeat until-fail:100` | 171 cases, 17,100 executions passed |
+| `make test-ada` | full build, 55 smoke PASS markers, 14 minimal negative controls, Stare example passed |
+| `alr -n -C ada build` | pinned library build passed |
+| `alr -n -C ada/tests run` | pinned smoke/negative tests passed |
+| `make check-ir-api-coverage` | 75/75 controls passed; safe_ada=59 unchanged |
+| `make check` | passed; isolated build-tree regression, 878-test native suite, formatting, Ada and newline/whitespace checks |
+| `make test-rust` | 640 passed, 0 failed, 15 existing ignored (53 suite summaries) |
+| workspace `cargo check`, Clippy all-targets `-D warnings`, `cargo fmt --check` | all passed |
+| `make test-python` | 718 passed; package compileall passed |
+| `make test-policy` | 332 passed across 14 sub-suites |
+| source integrity | 825 vendor files, six workflows; passed |
+| final newline and `git diff --check` | passed |
+| `make check-ada-format` | passed |
+| `make check-ada-docs-changed` | 12 public declarations; zero missing/invalid annotations |
+
+The former overlap-related `make check` failure is resolved by the isolated
+successful execution (23:22:46–23:30:16 UTC, 2026-11-18). Existing GPR imported-
+project warnings about no C sources remain unchanged; no first-party compiler
+warning was introduced or suppressed.
+
+The outer integrated qualification wrapper exited 127 after all individual
+commands recorded success: editing that running shell script to pause for main
+integration left a stale trailing shell token. That wrapper exit is **not** a
+passing aggregate result. The affected final documentation command and all
+final focused/ABI checks were independently rerun by the unmodified
+`finish-final.sh`, exit 0. Its final-source stress again passed 17,100 executions;
+Stare passed 37/37. The compiled production DSO was compared against
+`exports.map`: exactly 333 `AMS_MEL_0.1` exports, no test exports.
+
+On fb010f0, API documentation passed:
+<https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44420272832>.
+Bootstrap <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44420272958>
+had eight jobs passed at this checkpoint, with GCC Debug still running. Retrieved
+GCC Release, Clang Release and Clang Debug logs prove actual FULL_STRESS execution
+(`ctest --parallel 4 --repeat until-fail:50`) and two 878/878 pass summaries each:
+ordinary suite plus 43,900 stress executions per configuration. Final evidence-
+commit hosted qualification must still be checked; these superseded-source
+results do not substitute for exact-final-HEAD CI or independent review.
