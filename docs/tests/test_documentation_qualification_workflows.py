@@ -92,12 +92,16 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('run: python3 docs/tools/documentation_qualification_source.py', text)
         self.assertIn('git worktree add --detach .doc-tools/resize-baseline-source "$BASE_SOURCE_SHA"', text)
         self.assertIn('--root .doc-tools/resize-baseline-source', text)
-        self.assertIn('--baseline .doc-tools/resize-baseline --candidate .doc-tools/resize-baseline', text)
-        self.assertIn('--baseline .doc-tools/resize-current --candidate .doc-tools/resize-repeated', text)
-        self.assertNotIn('--baseline .doc-tools/resize-baseline --candidate .doc-tools/resize-current', text)
+        self.assertIn('--candidate .doc-tools/resize-baseline', text)
+        self.assertIn('--candidate .doc-tools/resize-current', text)
+        self.assertIn('--repeated .doc-tools/resize-repeated', text)
+        self.assertNotIn('--baseline ', text)
+        for name in ('resize-baseline', 'resize-current', 'resize-repeated'):
+            self.assertIn('sha256sum .doc-tools/' + name + '/manifest.json', text)
+        self.assertIn('GITHUB_ACTIONS=false .doc-tools/enhancer/bin/python docs/tools/resize_parity.py', text)
         self.assertIn('.doc-tools/resize-source.json', text)
         for command in ('docs/tools/docs_ci.py qualify', 'test_resize_publication.py',
-                        'test_enhancer_release.py', 'docs/tools/resize_browser.py',
+                        'test_enhancer_release.py', 'test_resize_parity.py', 'docs/tools/resize_browser.py',
                         'playwright install --with-deps chromium'):
             self.assertIn(command, text)
 

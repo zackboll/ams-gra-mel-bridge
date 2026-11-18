@@ -97,23 +97,25 @@ class AssemblyTests(unittest.TestCase):
             rust.verify_regenerated(self.files, self.record, self.directory, self.directory / 'new',
                                     self.context, self.directory / 'log')
 
-    def test_resize_projection_allows_only_the_qualified_palette(self):
+    def test_resize_parity_never_projects_away_rust_changes(self):
         import resize_parity
         before = {'rust/' + n: d for n, d in self.files.items() if n != 'theme.css'}
         after = dict(before, **{'rust/theme.css': self.files['theme.css']})
         after['rust/ams_mel/index.html'] += b'<link rel="stylesheet" href="../theme.css">'
-        self.assertEqual(resize_parity.rust_projection(after), before)
+        with self.assertRaisesRegex(ValueError, 'exact four-file'):
+            resize_parity.compare(before, after)
         for name in ('rust/static.files/main.js', 'rust/static.files/style.css'):
             bad = dict(after)
             bad[name] += b'changed'
-            self.assertNotEqual(resize_parity.rust_projection(bad), before)
+            with self.assertRaisesRegex(ValueError, 'exact four-file'):
+                resize_parity.compare(before, bad)
         bad = dict(after, **{'rust/theme.css': b'forged'})
-        with self.assertRaisesRegex(ValueError, 'unqualified Rustdoc theme'):
-            resize_parity.rust_projection(bad)
+        with self.assertRaisesRegex(ValueError, 'exact four-file'):
+            resize_parity.compare(before, bad)
         bad = dict(after)
         bad['rust/ams_mel/index.html'] += b'<link rel="stylesheet" href="../theme.css">'
-        with self.assertRaisesRegex(ValueError, 'duplicate Rustdoc theme'):
-            resize_parity.rust_projection(bad)
+        with self.assertRaisesRegex(ValueError, 'exact four-file'):
+            resize_parity.compare(before, bad)
 
     def test_safe_raw_source_shared_css_font_and_script_links(self):
         rust.verify_record(self.files, self.record, self.context)
