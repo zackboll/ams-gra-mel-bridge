@@ -71,6 +71,10 @@ from .common import (
 )
 
 from .ir import (
+    Quaternion,
+    LineOfSightQuaternion,
+    LineOfSightQuaternionOpenError,
+    LineOfSightQuaternionStream,
     ForwardRightDown,
     RowCol,
     OpticalDistortionMap,
@@ -265,6 +269,10 @@ for _public_symbol in (
     OpticalDistortionMap,
     OpticalDistortionMapOpenError,
     OpticalDistortionMapStream,
+    Quaternion,
+    LineOfSightQuaternion,
+    LineOfSightQuaternionOpenError,
+    LineOfSightQuaternionStream,
     BadPixel,
     BadPixelList,
     BadPixelReason,
@@ -408,6 +416,10 @@ __all__ = [
     "OpticalDistortionMap",
     "OpticalDistortionMapOpenError",
     "OpticalDistortionMapStream",
+    "Quaternion",
+    "LineOfSightQuaternion",
+    "LineOfSightQuaternionOpenError",
+    "LineOfSightQuaternionStream",
     "AttitudeRate",
     "NavigationCompleted",
     "NavigationRejected",

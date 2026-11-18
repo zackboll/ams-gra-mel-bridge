@@ -65,7 +65,7 @@ class GeneratedSourceTests(unittest.TestCase):
         return destination
 
     def assembled_fixture(self, directory):
-        """Keep original Ada negatives behind the new isolated assembly boundary."""
+        """Keep Ada negatives behind the complete Ada/Rust/Python assembly boundary."""
         from check_doc_coverage import measure
         import rustdoc_publication as rustdoc
         import python_publication as pythondoc

@@ -10,6 +10,7 @@ from ._navigation_types import NavigationReport
 from ._camera_response import CameraResponseStream, _open_camera_response
 from ._image_metadata import ImageMetadataStream, _open_metadata
 from ._optical_distortion_map import OpticalDistortionMapStream, _open_optical_distortion_map
+from ._los_quaternion import LineOfSightQuaternionStream, _open_line_of_sight_quaternion
 from ._nuc import NucStream, _open_nuc
 from ._errors import (
     ErrorKind,
@@ -76,6 +77,14 @@ class ImageStream:
     def open_optical_distortion_map(self, queue_capacity: int = 16) -> OpticalDistortionMapStream:
         """Opt into optional one-shot ODM reception, without starting acquisition."""
         return _open_optical_distortion_map(self, queue_capacity)
+
+    def open_line_of_sight_quaternion(self, queue_capacity: int = 16) -> LineOfSightQuaternionStream:
+        """Opt into conditional one-shot quaternion reception, without Start.
+
+        Registration requires sensor support and an Attached or Running Image.
+        Externally serialize registration against parent operations.
+        """
+        return _open_line_of_sight_quaternion(self, queue_capacity)
 
     def start(self) -> None:
         """Explicitly start acquisition or enable a control-only Image attachment.
