@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include <ams_mel/abi.h>
+#include "admission_observation.h"
 #include <dlfcn.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -8,6 +9,8 @@
 #include <unistd.h>
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
+extern int ams_mel_test_completion_snapshot(unsigned, uint64_t *);
+extern int ams_mel_test_completion_boundary(unsigned, unsigned, uint64_t, uint64_t *);
 extern int ams_mel_test_completion_owner_notify(unsigned, unsigned, uint64_t, uint64_t *);
 extern int ams_mel_test_scheduling_requests(const ams_mel_ir_scheduling *, size_t *);
 typedef unsigned (*calls_fn)(void);
@@ -71,6 +74,7 @@ int main(int argc, char **argv)
     char scenario[100], path[] = "/tmp/ams-stare-XXXXXX", diagnostic[1200];
     const char *mode;
     ams_mel_session *session = NULL;
+    ams_mel_test_admission_token *admission = NULL;
     ams_mel_ir_scheduling_config_v1 config = {0};
     ams_mel_ir_return_result_v1 result = {0}, cached = {0};
     ams_mel_ir_return_request *keepalive = NULL;
@@ -94,7 +98,9 @@ int main(int argc, char **argv)
     if (!strcmp(mode, "failed")) strcpy(scenario, "sched-enable-fail");
     fd = mkstemp(path); CHECK(fd >= 0 && close(fd) == 0);
     CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
-    CHECK(ams_mel_session_open(AMS_MEL_TEST_MOCK_PROVIDER, scenario, "", &session, NULL, 0, NULL) == AMS_MEL_OK);
+    const ams_mel_session_options_v1 options = {8};
+    CHECK(ams_mel_session_open_with_options(AMS_MEL_TEST_MOCK_PROVIDER, scenario, "", &options, &session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_test_admission(session, 0, &admission, NULL, NULL));
     pin = dlopen(AMS_MEL_TEST_MOCK_PROVIDER, RTLD_NOW | RTLD_NOLOAD); CHECK(pin);
     *(void **)(&calls) = dlsym(pin, "mock_scheduling_stare_calls");
     *(void **)(&other) = dlsym(pin, "mock_scheduling_specific_calls");
@@ -132,24 +138,94 @@ int main(int argc, char **argv)
         CHECK(ams_mel_ir_scheduling_exec_stare(channel, &input, &request, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
         CHECK(calls() == 0);
         info.action = 0;
-        if (!strncmp(mode, "post-", 5)) {
+        if (!strcmp(mode, "return-invalid-future") || !strcmp(mode, "comms-invalid-future")) {
+            const unsigned family = !strncmp(mode, "comms", 5) ? 2U : 1U;
+            uint64_t counters[6] = {0};
+            size_t pending = 99;
+            submitted = family == 2U ?
+                ams_mel_ir_channel_submit_comms_test(view, &ids, &comms, NULL, 0, NULL) :
+                ams_mel_ir_channel_send_keepalive(view, &keepalive, NULL, 0, NULL);
+            CHECK(submitted == AMS_MEL_PROVIDER_FAILED && !comms && !keepalive);
+            CHECK(ams_mel_test_completion_owner_notify(family, 0, 0, &observed));
+            CHECK(ams_mel_test_completion_snapshot(family, counters));
+            CHECK(counters[0] == 0 && counters[4] == 0 && counters[5] == 0);
+            CHECK(ams_mel_test_scheduling_requests(channel, &pending) && pending == 0);
+            CHECK(count(path, family == 2U ? "comms_sent" : "keepalive_sent") == 1);
+            dispatches = 0;
+            goto cleanup;
+        }
+        if (!strncmp(mode, "pre-", 4)) {
+            size_t pending = 99;
+            const char *fault = mode + 4;
+            const int common_comms = !strncmp(fault, "comms-", 6);
+            const int common_return = !strncmp(fault, "return-", 7);
+            if (common_comms) fault += 6;
+            if (common_return) fault += 7;
+            CHECK(setenv("AMS_MEL_TEST_COMMON_PRE_SEND_FAILURE", fault, 1) == 0);
+            if (common_comms)
+                submitted = ams_mel_ir_channel_submit_comms_test(view, &ids, &comms, NULL, 0, NULL);
+            else if (common_return)
+                submitted = ams_mel_ir_channel_send_keepalive(view, &keepalive, NULL, 0, NULL);
+            else submit(NULL);
+            CHECK(!comms && !keepalive);
+            CHECK(count(path, "comms_sent") == 0 && count(path, "keepalive_sent") == 0);
+            CHECK(submitted == AMS_MEL_INTERNAL_ERROR && !request && calls() == 0);
+            CHECK(ams_mel_test_scheduling_requests(channel, &pending) && pending == 0);
+            uint32_t active = 99, maximum = 0;
+            CHECK(ams_mel_test_completion_owner_notify(1, 0, 0, &observed));
+            CHECK(ams_mel_test_completion_owner_notify(2, 0, 0, &observed));
+            CHECK(ams_mel_test_admission(NULL, 1, &admission, &active, &maximum) && active == 0);
+            CHECK(unsetenv("AMS_MEL_TEST_COMMON_PRE_SEND_FAILURE") == 0);
+            dispatches = 0;
+        } else if (!strncmp(mode, "post-", 5)) {
             size_t pending = 0;
             CHECK(setenv("AMS_MEL_TEST_COMMON_POST_SEND_FAILURE", mode + 5, 1) == 0);
             submit(NULL);
             CHECK(submitted == AMS_MEL_INTERNAL_ERROR && !request && calls() == 1);
             CHECK(ams_mel_test_scheduling_requests(channel, &pending) && pending == 1);
+            uint32_t active = 99, maximum = 0;
+            CHECK(ams_mel_test_admission(NULL, 1, &admission, &active, &maximum) && active == 1);
+            CHECK(ams_mel_ir_scheduling_close(&channel, NULL, 0, NULL) == AMS_MEL_OK);
+            CHECK(ams_mel_ir_channel_close(&view, NULL, 0, NULL) == AMS_MEL_OK);
+            CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+            CHECK(ams_mel_test_completion_boundary(1, 0, 0, NULL));
+            CHECK(dlclose(pin) == 0);
+            CHECK(count(path, "library_unloaded") == 0);
+            CHECK(count(path, "scheduling_disabled") == 0);
+            /* The admitted graph pins this function until release returns. */
+            CHECK(release(16, 1));
+            CHECK(ams_mel_test_completion_boundary(1, 1, 1, NULL));
+            CHECK(ams_mel_test_completion_boundary(1, 2, 0, NULL));
+            CHECK(ams_mel_test_completion_owner_notify(1, 0, 0, &observed));
+            CHECK(count(path, "library_unloaded") == 1);
+            CHECK(count(path, "scheduling_disabled") == 1);
+            CHECK(count(path, "scheduling_channel_destroyed") == 1);
+            CHECK(count(path, "channel_detached") == 1);
+            CHECK(ams_mel_test_admission(NULL, 1, &admission, &active, &maximum) && active == 0);
+            CHECK(ams_mel_test_admission(NULL, 2, &admission, NULL, NULL));
+            CHECK(unlink(path) == 0);
+            return 0;
+        }
+        if (!strncmp(mode, "pre-", 4)) goto cleanup;
+        if (!strcmp(mode, "detach-fail")) {
+            submit(NULL);
+            CHECK(submitted == AMS_MEL_OK && request && calls() == 1);
+            CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
             CHECK(ams_mel_ir_scheduling_close(&channel, NULL, 0, NULL) == AMS_MEL_OK);
             CHECK(ams_mel_ir_channel_close(&view, NULL, 0, NULL) == AMS_MEL_OK);
             CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
             CHECK(release(16, 1));
+            CHECK(ams_mel_test_completion_owner_notify(1, 0, 0, &observed));
+            CHECK(count(path, "channel_detach_failed") == 1);
+            CHECK(count(path, "scheduling_disabled") == 1);
+            CHECK(count(path, "scheduling_channel_destroyed") == 0);
             CHECK(dlclose(pin) == 0);
             CHECK(count(path, "library_unloaded") == 0);
-            CHECK(count(path, "scheduling_disabled") == 0);
-            CHECK(count(path, "scheduling_channel_destroyed") == 0);
-            /* No completion worker was launched; the existing engine retains
-             * this uncertain graph permanently instead of unsafe teardown. */
+            uint32_t active = 99, maximum = 0;
+            CHECK(ams_mel_test_admission(NULL, 1, &admission, &active, &maximum) && active == 0);
+            CHECK(ams_mel_test_admission(NULL, 2, &admission, NULL, NULL));
             CHECK(unlink(path) == 0);
-            return 0;
+            return 0; /* Real detach uncertainty still conservatively retains. */
         }
         if (!strcmp(mode, "reentry")) set_reentry(reenter);
         if (!strcmp(mode, "concurrent-close")) {
@@ -265,6 +341,7 @@ int main(int argc, char **argv)
             }
         }
     }
+cleanup:
     if (pin) CHECK(calls() == dispatches && other() == 0);
     CHECK(ams_mel_ir_scheduling_execute_task_ack_close(&ack, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_ir_scheduling_task_executing_close(&rep, NULL, 0, NULL) == AMS_MEL_OK);
@@ -281,6 +358,7 @@ int main(int argc, char **argv)
         CHECK(dlclose(pin) == 0);
     }
     CHECK(count(path, "library_unloaded") == 1);
+    CHECK(ams_mel_test_admission(NULL, 2, &admission, NULL, NULL));
     CHECK(unlink(path) == 0);
     return 0;
 }

@@ -6087,6 +6087,7 @@ public:
     {
         c2_send_boundary(1);
         record("keepalive_sent");
+        if (scenario_ == "sched-stare-return-invalid-future") return {};
         if (scenario_ == "sched-keepalive-throw")
             throw std::runtime_error("mock Scheduling keepalive send exception");
         if (scenario_ == "sched-ada-common")
@@ -6097,6 +6098,7 @@ public:
     {
         c2_send_boundary(2);
         record("comms_sent");
+        if (scenario_ == "sched-stare-comms-invalid-future") return {};
         if (request.getCommandID() != 0x80000001U || request.getChannelID() != 0xf0000002U ||
             request.getRequestID() != 0xe0000003U)
             throw std::runtime_error("Scheduling CommsTest IDs changed");
@@ -6231,7 +6233,7 @@ public:
         c2_send_boundary(16);
         if (scenario_ == "sched-stare-exec-throw")
             throw std::runtime_error("mock StareTask exec exception");
-        if (scenario_ == "sched-stare-delayed")
+        if (scenario_ == "sched-stare-delayed" || scenario_ == "sched-stare-detach-fail")
             return held_request(std::make_shared<Return>(Return::Success), 16);
         if (scenario_ == "sched-stare-unsupported" || scenario_ == "sched-stare-invalid-state") {
             std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
@@ -6756,6 +6758,7 @@ public:
              instance_ == "losq-detach-fail" ||
              /* IRMEL-ADA-011: Scheduling owner and open-time rollback detach
                 failures. */
+             instance_ == "sched-stare-detach-fail" ||
              instance_ == "sched-detach-fail" ||
              instance_ == "sched-enabled-detach-fail" ||
              instance_ == "sched-open-detach-fail" ||

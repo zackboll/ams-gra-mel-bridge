@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
+extern int ams_mel_test_completion_boundary(unsigned, unsigned, uint64_t, uint64_t *);
 extern int ams_mel_test_completion_owner_notify(unsigned, unsigned, uint64_t, uint64_t *);
 extern int ams_mel_test_scheduling_requests(const ams_mel_ir_scheduling *, size_t *);
 typedef unsigned (*calls_fn)(void);
@@ -107,13 +108,19 @@ int main(int argc, char **argv)
             CHECK(ams_mel_ir_scheduling_close(&channel, NULL, 0, NULL) == AMS_MEL_OK);
             CHECK(ams_mel_ir_channel_close(&view, NULL, 0, NULL) == AMS_MEL_OK);
             CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
-            CHECK(release(15, 1));
+            CHECK(ams_mel_test_completion_boundary(1, 0, 0, NULL));
             CHECK(dlclose(pin) == 0);
             CHECK(count(path, "library_unloaded") == 0);
             CHECK(count(path, "scheduling_disabled") == 0);
-            CHECK(count(path, "scheduling_channel_destroyed") == 0);
-            /* No completion worker was launched; the existing engine retains
-             * this uncertain graph permanently instead of unsafe teardown. */
+            /* The admitted graph pins this function until release returns. */
+            CHECK(release(15, 1));
+            CHECK(ams_mel_test_completion_boundary(1, 1, 1, NULL));
+            CHECK(ams_mel_test_completion_boundary(1, 2, 0, NULL));
+            CHECK(ams_mel_test_completion_owner_notify(1, 0, 0, &observed));
+            CHECK(count(path, "library_unloaded") == 1);
+            CHECK(count(path, "scheduling_disabled") == 1);
+            CHECK(count(path, "scheduling_channel_destroyed") == 1);
+            CHECK(count(path, "channel_detached") == 1);
             CHECK(unlink(path) == 0);
             return 0;
         }

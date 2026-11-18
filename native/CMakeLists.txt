@@ -1338,7 +1338,9 @@ if(AMS_MEL_BUILD_TESTS)
     ams_mel_warnings(test_ir_scheduling_stare)
     foreach(case IN ITEMS success fail not-supported not-implemented unsupported invalid-state
             null malformed invalid-future invalid-return exec-throw future-throw delayed reentry closure observer-close concurrent-close failed
-            post-allocation post-worker-launch)
+            post-allocation post-worker-launch detach-fail pre-allocation pre-worker-launch pre-after-claim pre-detach
+            pre-return-allocation pre-return-worker-launch pre-return-after-claim pre-return-detach
+            pre-comms-allocation pre-comms-worker-launch pre-comms-after-claim pre-comms-detach return-invalid-future comms-invalid-future)
         add_test(NAME ir_scheduling_stare_${case} COMMAND test_ir_scheduling_stare ${case})
         set_tests_properties(ir_scheduling_stare_${case} PROPERTIES TIMEOUT 60)
     endforeach()

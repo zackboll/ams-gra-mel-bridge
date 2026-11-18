@@ -76,8 +76,8 @@ explicit ErrorOr Unsupported/InvalidState rejection. None proves physical
 staring, acquisition, ExecuteTaskAck or TaskExecutingRep delivery.
 
 Focused malformed-input controls exposed two defects in the shared Return
-submission/completion implementation. It now rejects an invalid future before
-starting a worker (matching existing typed-command policy), and rejects a
+submission/completion implementation. It rejects an invalid future before
+starting completion processing (the R1 prepared worker takes its abort path), and rejects a
 non-null successful shared_ptr with no ownership control block before
 dereferencing it. These are shared-engine correctness fixes, not a second engine.
 
@@ -180,15 +180,121 @@ Malformed shared ownership is detectable only where the public shared_ptr
 contract provides evidence; arbitrary dangling pointers from a malicious provider
 cannot be made safe by a consumer facade.
 
-The existing shared engine permanently retains an uncertain provider graph when
-the post-send allocation/worker-launch failpoint prevents establishing a worker.
-This task reuses that conservative behavior and tests that it does **not** unload
-pending provider code. It does not pretend that later promise completion causes
-eventual unload on that path. This is a concrete unresolved acceptance mismatch
-with the task's post-send eventual-unload requirement. Resolving it requires a
-reviewed shared-engine recovery/retirement contract, not weaker lifetime tests or
-a new Stare-only worker architecture. Disposition remains **BLOCKED** while that
-requirement is unresolved, regardless of ordinary-path successful teardown.
+The initial implementation permanently retained a provider graph after post-send
+allocation/worker-establishment failure. R1 below replaces that submission path;
+the old conservative-retention qualification above is historical evidence, not
+the corrected retirement contract. Qualification and independent review of R1
+remain required before declaring readiness.
 
 Independent review of the exact final HEAD remains required. Updating the
 structured coverage evidence is not independent technical approval.
+
+## IRMEL-ADA-023-R1 — prepared shared completion worker
+
+### Reproduction and ownership obligations
+
+Baseline `7e90d596fbd862a54c9d8eec7496a5b63d6aab4b` reproduced both
+`ir_scheduling_stare_post-allocation` and
+`ir_scheduling_stare_post-worker-launch`: 2/2 passed by demonstrating permanent
+retention, even after completing the held provider promise. That was the blocker,
+not evidence of eventual retirement.
+
+The former `WorkerInput.emergency_self` cycle retained the future, completion and
+Session admission permit. Completion's `CommonRequestClaim` retained the typed
+family state. Scheduling state retained both provider channel views and Session;
+Session retained Control, manager and `SharedLibrary`. Member destruction order
+keeps the library alive while those provider objects and deleters run. A public
+request owns only completion, not an independent cancellation capability. An idle
+common Channel view is weak. The completion worker must consume/destroy the
+provider outcome and future before finishing the family claim, and must release
+the admission permit exactly once after the provider-dependent work is finished.
+
+### Corrected submission and handoff
+
+The existing Return/Comms template allocates completion, worker input and public
+request before admission. It reserves the Session permit and family claim, then
+constructs **and detaches** the completion thread before calling the provider.
+Both thread establishment operations are fallible, but no provider task exists
+yet. An injected detach failure aborts and joins the still-joinable prepared
+thread; it does not abandon its thread object. A startup or after-claim failure
+finishes the claim and releases the permit without dispatch.
+
+The worker waits on the input's preconstructed atomic gate: 0 prepared, 1 valid
+future published, 2 abort. An acquire read of 1 synchronizes with the submitter's
+release store after future assignment. On 2 it returns without reading future,
+completion or claim. Provider send exceptions and invalid futures always signal
+abort; there is no indefinitely waiting prestarted worker on a refused request.
+Invalid futures never enter `get()` or completion processing.
+
+The actual provider call is outside lifecycle locks. `RequestFor<T>` is the
+pinned `std::future<ErrorOr<shared_ptr<T>>>`; the empty destination's move
+assignment and `valid()` are noexcept (compile-time checked). Shared-pointer
+reset, atomic store/notification and unique-owner release do not allocate and are
+non-throwing. No bridge resource establishment remains between successful send
+and handoff. All failpoint selection is also prepared before provider entry.
+Immediate-ready futures, pending futures and future exceptions use the same
+worker and cached terminal-result implementation.
+
+Typed C2 Return commands/KeepAlive and CommsTest formerly had duplicate launch
+logic using these workers. They now delegate to the same submission template;
+the C2 adapter preserves enabled-only command admission and attached-or-enabled
+KeepAlive/Comms admission. C2 Mode and other typed completion engines are outside
+this correction and unchanged.
+
+### Guarantees and limits
+
+- **Recoverable pre-send failure:** genuine error, zero dispatches, zero pending
+  family claim and no remaining admission permit or asynchronous obligation.
+- **Valid admitted future:** an established worker owns the completion path,
+  independently of public request/channel/Session closure. On provider readiness
+  and successful cleanup it consumes the future, retires the claim/permit and
+  permits safe unload after the last legitimate provider owner releases.
+- **Provider/ownership uncertainty:** a never-ready future remains pending; a
+  failed detach retains the family graph conservatively. Timeout is not
+  cancellation, and no unconditional eventual-unload promise is made. Worker
+  retention remains available for unexpected completion/cleanup synchronization
+  failure, not ordinary submission resource establishment.
+
+The historical `COMMON_POST_SEND_FAILURE` (and typed-C2 counterpart) test knobs
+retain their case names but now explicitly inject **public publication failure**
+after worker handoff. They are not renamed pre-send failures: they still dispatch
+once, return an error without a public request, and must retire after provider
+completion. The eliminated allocation/thread-start window is separately tested
+with `COMMON_PRE_SEND_FAILURE`: allocation, worker-launch, after-claim and detach
+for Stare, common Return and Comms. Existing post-send tests for other engines
+retain their original contracts.
+
+### R1 qualification evidence
+
+Artifacts live outside the worktree in `/home/zboll/irmel023-r1`. `/tmp` remains
+inode-exhausted; qualification uses a private mount namespace mapping task-owned
+disk scratch to `/tmp`, without deleting unrelated temporary files.
+
+- Baseline reproduction: 2/2 tests passed with the old retention behavior.
+- `cmake --build build/irmel023-gcc-Debug --parallel 3`: exited 0, warnings as
+  errors; both public C tests and private C++ implementation compiled.
+- Focused shared/Scheduling/C2/admission CTest selection: **171/171 passed**.
+- Full GCC Debug CTest suite: **878/878 passed** (15 new deterministic cases).
+- Earlier development runs failed on stale retention assertions and incorrect
+  admission-observer use; they are retained as failed logs, not counted as passes.
+- Focused deterministic stress (`ctest --parallel 4 --repeat until-fail:100`
+  over those 171 cases): **17,100 executions passed**, exit 0.
+- Sequential mandatory qualification is running; results must be recorded on
+  completion, not inferred from this initial pass.
+
+The post-publication Stare/Abort tests close all public owners, park the
+post-`get`/pre-cleanup barrier, drop the test DSO pin while the future is pending,
+verify no teardown, complete the provider promise, then release the barrier.
+FinalOwner notification proves retirement before checking exactly one disable,
+detach, channel destruction and actual DSO unload. Stare additionally checks the
+Session permit changes 1 → 0. The explicit Scheduling detach-failure case proves
+claim/permit retirement but conservative graph retention on real cleanup failure.
+Common Image/C2 Return and Comms plus Health/Instrumentation/Track publication
+failure controls now require retirement; cross-family tests require Session
+reuse after it. Invalid-future Return and Comms controls independently prove
+zero completion starts/gets and zero remaining Scheduling claims.
+
+R1 changes no production exports, public C layout, Ada API, Stare conversion,
+TaskInfo, metadata independence, coverage classification, safe Rust/Python API,
+vendor header or CI/documentation policy. Export count remains 333 under
+`AMS_MEL_0.1`, and safe-Ada coverage remains 59 operations.

@@ -151,6 +151,8 @@ struct ReturnWorkerInput {
     std::shared_ptr<ReturnWorkerInput> emergency_self;
     ReturnWorkerInput *emergency_next{};
     std::atomic<bool> emergency_retained{};
+    // 0 = prepared; 1 = valid future published; 2 = abort without future access.
+    // Release/acquire publication covers future assignment and claim ownership.
     std::atomic<unsigned> launch_state{};
 };
 
@@ -171,6 +173,8 @@ struct CommsWorkerInput {
     std::shared_ptr<CommsWorkerInput> emergency_self;
     CommsWorkerInput *emergency_next{};
     std::atomic<bool> emergency_retained{};
+    // 0 = prepared; 1 = valid future published; 2 = abort without future access.
+    // Release/acquire publication covers future assignment and claim ownership.
     std::atomic<unsigned> launch_state{};
 };
 
