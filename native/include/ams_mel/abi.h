@@ -3378,6 +3378,28 @@ typedef struct ams_mel_ir_task_info_v1 {
     uint32_t priority;
 } ams_mel_ir_task_info_v1;
 
+/* Owned StareTask input. Angles are IEEE-754 double radians, frame references
+ * are independently Inertial=0 or Aircraft=1, duration is signed nanoseconds.
+ * No range, time-order, priority or identifier constraints are inferred. */
+typedef struct ams_mel_ir_stare_task_v1 {
+    double center_azimuth_rad;
+    double center_elevation_rad;
+    int64_t duration_ns;
+    uint32_t elevation_frame;
+    uint32_t azimuth_frame;
+    uint32_t command_id;
+    ams_mel_ir_task_info_v1 task_info;
+} ams_mel_ir_stare_task_v1;
+
+/* Submit exactly SchedulingChannel::exec(IRSTStareTask). Same admission,
+ * ownership, output-slot and Return wait/close contract as exec_abort below.
+ * Unknown frames/action reject before provider entry. No callbacks registered
+ * or synthesized. Completion is not proof of physical staring or acquisition. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_exec_stare(
+    ams_mel_ir_scheduling *scheduling, const ams_mel_ir_stare_task_v1 *task,
+    ams_mel_ir_return_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* Submit the actual SchedulingChannel::exec(AbortTask) on an Enabled owner.
  * Borrows and copies task during this call; does not rewrite action to Abort.
  * Uses the existing Return request wait/close API. Output must point to NULL.

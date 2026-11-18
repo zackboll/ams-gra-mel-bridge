@@ -9,6 +9,11 @@ package body AMS.MEL.IR.Scheduling.Commands is
    use type Interfaces.C.char;
    use type Interfaces.C.size_t;
 
+   pragma
+     Compile_Time_Error
+       (Long_Float'Size /= 64 or else Long_Float'Machine_Mantissa /= 53,
+        "Scheduling stare angles require IEEE-754 binary64 Long_Float");
+
    type Diagnostic_Array is array (C.Size_T range <>) of aliased Interfaces.C.char
    with Convention => C;
    subtype Fixed_Diagnostic is Diagnostic_Array (0 .. 511);
@@ -38,6 +43,31 @@ package body AMS.MEL.IR.Scheduling.Commands is
       return (if Value'Length = 0 then "native common Channel operation failed" else Value);
    end Failure_Message;
 
+   function Exec_Stare (Channel : Scheduling_Channel; Value : Stare_Task) return Stare_Request is
+      Raw : aliased C.IR_Stare_Task_V1 :=
+        (Center_Azimuth_Rad   => Interfaces.C.double (Value.Parameters.Center_Azimuth_Rad),
+         Center_Elevation_Rad => Interfaces.C.double (Value.Parameters.Center_Elevation_Rad),
+         Duration_NS          => Value.Parameters.Duration_NS,
+         Elevation_Frame      => Coordinate_Frame_Reference'Pos (Value.Parameters.Elevation_Frame),
+         Azimuth_Frame        => Coordinate_Frame_Reference'Pos (Value.Parameters.Azimuth_Frame),
+         Command_ID           => Value.Command_ID,
+         Info                 =>
+           (Value.Info.System_Time_NS,
+            Value.Info.Request_ID,
+            Task_List_Action'Pos (Value.Info.Action),
+            Value.Info.Precedence_Within_Priority,
+            Value.Info.Priority));
+      D   : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      return Result : Stare_Request do
+         Check_Submission
+           (C.IR_Scheduling_Exec_Stare
+              (Channel.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
+            Failure_Message (D));
+      end return;
+   end Exec_Stare;
+
    function Exec_Abort (Channel : Scheduling_Channel; Info : Task_Info) return Abort_Request is
       Raw : aliased C.IR_Task_Info_V1 :=
         (Info.System_Time_NS,
@@ -64,21 +94,21 @@ package body AMS.MEL.IR.Scheduling.Commands is
    function Value (Result : Abort_Result) return Command_Return is
    begin
       if Result.Result_Status /= Success then
-         raise Provider_Error with "AbortTask result is rejected";
+         raise Provider_Error with "Scheduling task result is rejected";
       end if;
       return Result.Result_Value;
    end Value;
    function Rejection_Code (Result : Abort_Result) return Error_Code is
    begin
       if Result.Result_Status /= Rejected then
-         raise Provider_Error with "AbortTask result is not rejected";
+         raise Provider_Error with "Scheduling task result is not rejected";
       end if;
       return Result.Result_Code;
    end Rejection_Code;
    function Description (Result : Abort_Result) return String is
    begin
       if Result.Result_Status /= Rejected then
-         raise Provider_Error with "AbortTask result is not rejected";
+         raise Provider_Error with "Scheduling task result is not rejected";
       end if;
       return US.To_String (Result.Result_Text);
    end Description;
@@ -118,7 +148,7 @@ package body AMS.MEL.IR.Scheduling.Commands is
            R'Access);
    begin
       if Code = C.Timeout then
-         raise Timeout_Error with "Scheduling AbortTask request timed out";
+         raise Timeout_Error with "Scheduling task request timed out";
       elsif Code = C.Success then
          if Raw.Value > Command_Return'Pos (Command_Return'Last) then
             raise Provider_Error with "native common Channel returned unknown IR Return value";
@@ -157,7 +187,7 @@ package body AMS.MEL.IR.Scheduling.Commands is
                     or else Retry_Required /= R
                   then
                      raise Provider_Error
-                       with "native AbortTask rejection changed during diagnostic retry";
+                       with "native Scheduling task rejection changed during diagnostic retry";
                   end if;
                   Text := US.To_Unbounded_String (Message (Complete));
                end;

@@ -24,3 +24,5 @@ AMS_MEL_TEST_PROVIDER_DIR="${AMS_MEL_TEST_PROVIDER_DIR:-$root/native/build-tests
 export AMS_MEL_TEST_PROVIDER_DIR
 "$root/ada/tests/bin/ams_mel_smoke"
 "$root/ada/tests/bin/ams_mel_ir_minimal_negative"
+"$root/ada/tests/bin/ams_mel_ir_scheduling_stare_example" \
+    "$AMS_MEL_TEST_PROVIDER_DIR/libmock_ir_provider.so"

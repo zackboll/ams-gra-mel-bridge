@@ -171,6 +171,14 @@ ams_mel_status_t submit_common(const CommonChannelAccess& access, Owner **output
             return AMS_MEL_PROVIDER_EXCEPTION;
         }
         channel.reset();
+        if (!input->future.valid()) {
+            /* No shared state can retain provider results or complete. Match
+             * the existing typed-command invalid-future policy: no worker. */
+            input->emergency_self.reset();
+            (void)completion->claim.finish();
+            diagnostic("provider returned an invalid common request future", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
         const auto failure = common_failure();
         if (failure == CommonFailure::Allocation) throw std::bad_alloc{};
         if (failure == CommonFailure::WorkerLaunch)
@@ -573,9 +581,9 @@ void complete_return(const std::shared_ptr<ReturnCompletion>& state,
         auto outcome = AMS_MEL_PROBE_GET(Return, future.get());
         if (outcome) {
             const auto& value = outcome.get();
-            if (!value) {
+            if (!value || value.use_count() == 0) {
                 kind = CompletionKind::ProviderFailure;
-                message = "provider returned null successful Return result";
+                message = "provider returned null or unowned successful Return result";
             } else if (!map_return(*value, result.value)) {
                 kind = CompletionKind::ProviderFailure;
                 message = "provider returned unknown IR Return value";

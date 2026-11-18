@@ -13,6 +13,19 @@ pub struct AmsMelIrTaskInfoV1 {
     pub priority: u32,
 }
 
+/// Raw StareTask input; radians and signed nanoseconds, independent frames 0..=1.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrStareTaskV1 {
+    pub center_azimuth_rad: f64,
+    pub center_elevation_rad: f64,
+    pub duration_ns: i64,
+    pub elevation_frame: u32,
+    pub azimuth_frame: u32,
+    pub command_id: u32,
+    pub task_info: AmsMelIrTaskInfoV1,
+}
+
 extern "C" {
     pub fn ams_mel_rf_virtual_aperture_get_tx_radiated_power(
         va: *const AmsMelRfVa,
@@ -4258,6 +4271,14 @@ extern "C" {
     pub fn ams_mel_ir_scheduling_get_capabilities(
         scheduling: *mut AmsMelIrScheduling,
         out_capability: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_exec_stare(
+        scheduling: *mut AmsMelIrScheduling,
+        task: *const AmsMelIrStareTaskV1,
+        out_request: *mut *mut AmsMelIrReturnRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

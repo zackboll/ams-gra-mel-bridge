@@ -3103,12 +3103,34 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::SchedulingChannel::exec(IRSTStareTask)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_stare"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Stare"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_stare.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_stare_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-023: complete owned StareTask and StareTaskParam, binary64 radians with independent elevation/azimuth frames, signed nanoseconds and unchanged five-field TaskInfo; published setters, actual constructor and all getters verified before real exec(IRSTStareTask). Shared Return engine and limited-controlled Ada observer; completion and metadata remain independent.",
+      "limitations": [
+        "Mock-provider qualification only; Return completion does not prove physical staring, acquisition or metadata delivery.",
+        "Existing post-send worker-establishment failures conservatively retain uncertain provider state permanently; eventual unload on that exceptional path remains unresolved."
+      ],
       "representation": []
     },
     {
@@ -10736,27 +10758,64 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::IRSTStareTask",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_stare"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Stare"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_stare.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_stare_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-023: complete owned StareTask and StareTaskParam, binary64 radians with independent elevation/azimuth frames, signed nanoseconds and unchanged five-field TaskInfo; published setters, actual constructor and all getters verified before real exec(IRSTStareTask). Shared Return engine and limited-controlled Ada observer; completion and metadata remain independent.",
+      "limitations": [
+        "Mock-provider qualification only; Return completion does not prove physical staring, acquisition or metadata delivery.",
+        "Existing post-send worker-establishment failures conservatively retain uncertain provider state permanently; eventual unload on that exceptional path remains unresolved."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Stare"
+            }
+          ]
         },
         {
           "upstream": "getParams",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Stare"
+            }
+          ]
         },
         {
           "upstream": "getTaskInfo",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Stare"
+            }
+          ]
         }
       ]
     },
@@ -12901,9 +12960,9 @@
       "native": [],
       "ada": [],
       "tests": [],
-      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks.",
+      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks. IRMEL-ADA-023 adds actual exec(IRSTStareTask) with complete owned parameters and the existing TaskInfo; metadata remains independent.",
       "limitations": [
-        "Eight Scheduling-specific operations remain missing: three other exec overloads, send(PrioritizedTrackListCmd), and four other registrations. AbortTask future completion is independent of ExecuteTaskAck and TaskExecutingRep; no physical task abortion or metadata delivery is inferred.",
+        "Seven Scheduling-specific operations remain missing: two other exec overloads, send(PrioritizedTrackListCmd), and four other registrations. AbortTask and StareTask future completion is independent of ExecuteTaskAck and TaskExecutingRep; no physical task abortion or metadata delivery is inferred.",
         "Disable is performed only inside Close; there is no standalone Disable.",
         "Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.",
         "Positive evidence is mock-provider only; no real provider or hardware tasking ran."
@@ -13348,32 +13407,74 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::StareTaskParam",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_stare"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Stare"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_stare.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_stare_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-023: complete owned StareTask and StareTaskParam, binary64 radians with independent elevation/azimuth frames, signed nanoseconds and unchanged five-field TaskInfo; published setters, actual constructor and all getters verified before real exec(IRSTStareTask). Shared Return engine and limited-controlled Ada observer; completion and metadata remain independent.",
+      "limitations": [
+        "Mock-provider qualification only; Return completion does not prove physical staring, acquisition or metadata delivery.",
+        "Existing post-send worker-establishment failures conservatively retain uncertain provider state permanently; eventual unload on that exceptional path remains unresolved."
+      ],
       "representation": [
         {
           "upstream": "getCenter",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Stare"
+            }
+          ]
         },
         {
           "upstream": "getCentFrameRefEl",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Stare"
+            }
+          ]
         },
         {
           "upstream": "getCentFrameRefAz",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Stare"
+            }
+          ]
         },
         {
           "upstream": "getDurationNanoseconds",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Stare"
+            }
+          ]
         }
       ]
     },
