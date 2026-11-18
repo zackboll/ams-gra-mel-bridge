@@ -52,7 +52,11 @@ All documentation tools and the named search/resize/theme/CI regression tests
 equal main. The source-epoch fixture retains actual source-derived Rust/Python
 records and complete Ada/Rust/Python assembly; its only difference from main
 is a clarifying docstring. No assertions or source-verification checks change.
-R3 adds only this reconciliation report beyond the ordinary merge. Coverage
+R3 adds this reconciliation report and corrects one inherited copy-pasted
+comment in the private Scheduling ExecuteTaskAck ABI test: that binding is
+private, whereas the safe Python quaternion API already exists. Its assertion
+is unchanged; focused ABI qualification is rerun after the comment correction.
+Coverage
 delta: zero new operations, ABI records, signatures or exports; native/Ada
 structured inventories are inherited unchanged from main.
 

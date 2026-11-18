@@ -277,7 +277,7 @@ class AbiTests(unittest.TestCase):
             self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
             self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
             self.assertIs(function.restype, ctypes.c_int32)
-        # No safe Python quaternion line-of-sight API is introduced.
+        # Scheduling ExecuteTaskAck remains a private raw Python binding.
         import ams_mel
         self.assertFalse([n for n in dir(ams_mel) if "execute_task_ack" in n.lower()])
 
