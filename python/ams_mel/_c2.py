@@ -6,6 +6,7 @@ import ctypes as _ctypes
 
 from . import _native
 from ._c2_metadata import C2MetadataStream
+from ._camera_protect_response import CameraProtectResponseStream, _open_camera_protect_response
 from ._errors import (
     ErrorKind,
     _call_with_diagnostic,
@@ -93,6 +94,17 @@ class ControlChannel:
             metadata.__del__()
             raise
         return metadata
+
+    def open_camera_protect_response(self, queue_capacity: int = 16) -> CameraProtectResponseStream:
+        """Opt into CameraProtectCmdResp once while Attached or Enabled.
+
+        Never enables C2 or submits a command. Synchronous callbacks are allowed.
+        Every native attempt consumes this independent one-shot, even on failure;
+        closing the consumer cannot reset it. Unsupported providers raise
+        CameraProtectResponseOpenError with a known NOT_SUPPORTED registration
+        Return, not a received status. Serialize with other parent C2 operations.
+        """
+        return _open_camera_protect_response(self, queue_capacity)
 
     def submit_mode(self, command: ModeCommand) -> ModeRequest:
         """Submit one complete ModeCmd while Enabled; completion is not a physical transition.

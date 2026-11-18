@@ -12,6 +12,35 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_camera_protect_response_reuses_private_abi(self) -> None:
+        import ams_mel
+        from ams_mel import ir, _camera_protect_response
+        self.assertIs(ams_mel.CameraProtectResponse, ir.CameraProtectResponse)
+        self.assertIs(_camera_protect_response.C2MetadataCounters, ir.C2MetadataCounters)
+        self.assertFalse(hasattr(ams_mel.ControlChannel, "submit_camera_protect"))
+        pointer = ctypes.POINTER
+        signatures = {
+            "ams_mel_ir_c2_camera_protect_open": [
+                _native.IrC2Handle, ctypes.c_size_t,
+                pointer(_native.IrCameraProtectMetadataHandle), pointer(ctypes.c_uint32)],
+            "ams_mel_ir_camera_protect_receive": [
+                _native.IrCameraProtectMetadataHandle, ctypes.c_uint32,
+                pointer(_native.IrCameraProtectEventHandle)],
+            "ams_mel_ir_camera_protect_get_counters": [
+                _native.IrCameraProtectMetadataHandle, pointer(_native.IrC2MetadataCountersV1)],
+            "ams_mel_ir_camera_protect_close": [pointer(_native.IrCameraProtectMetadataHandle)],
+            "ams_mel_ir_camera_protect_event_view": [
+                _native.IrCameraProtectEventHandle, pointer(pointer(_native.IrCameraProtectResponseV1))],
+            "ams_mel_ir_camera_protect_event_close": [pointer(_native.IrCameraProtectEventHandle)],
+        }
+        for name, args in signatures.items():
+            function = getattr(_native, name)
+            self.assertEqual(function.argtypes, args + [
+                _native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+            self.assertIs(function.restype, ctypes.c_int32)
+            self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertFalse(hasattr(ams_mel, name))
+
     def test_private_common_comms_metadata_signatures(self) -> None:
         pointer = ctypes.POINTER
         owner = _native.IrChannelCommsMetadataHandle
