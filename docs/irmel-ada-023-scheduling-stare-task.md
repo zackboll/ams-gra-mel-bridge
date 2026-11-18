@@ -56,8 +56,8 @@ epoch, range, identifier correlation, priority or ordering constraints are added
 IRMEL-ADA-022 type. Public angles are binary64 `Long_Float` (compile-time checked),
 duration is `Interfaces.Integer_64` and CommandID is `Interfaces.Unsigned_32`.
 
-`Stare_Request` and `Stare_Result` are distinct private types, privately derived
-from the existing limited-controlled Return observer and owned result. Thin
+`Stare_Request` and `Stare_Result` are distinct private types containing
+the existing limited-controlled Return observer and owned result. Thin
 public forwarding operations reuse Wait, zero-timeout polling, cached terminal
 results, actual Return values, complete MEL rejection descriptions and Close.
 Non-raising finalization also uses the existing implementation rather than a copied
@@ -159,6 +159,9 @@ rejected the initial public subtype aliases to private Abort types with
 `independent type audit: private ordinary subtype target`. The safe types now
 have distinct private declarations and forwarding operations, preserving shared
 completion/finalization implementation without modifying the documentation audit.
+The subsequent hosted run rejected the private null-record extension in its
+coverage parser; using ordinary private owner-containing records removes that
+unsupported source shape without changing either audit or completion semantics.
 The changed-public-API checker inspects 12 declarations with zero missing or
 invalid annotations. That failed hosted run is not a passing gate.
 

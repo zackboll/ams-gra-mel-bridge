@@ -164,6 +164,10 @@ private
       Result_Code   : AMS.MEL.IR.Channel.Error_Code := AMS.MEL.IR.Channel.None;
       Result_Text   : US.Unbounded_String;
    end record;
-   type Stare_Request is new Abort_Request with null record;
-   type Stare_Result is new Abort_Result;
+   type Stare_Request is limited record
+      Owner : Abort_Request;
+   end record;
+   type Stare_Result is record
+      Owner : Abort_Result;
+   end record;
 end AMS.MEL.IR.Scheduling.Commands;

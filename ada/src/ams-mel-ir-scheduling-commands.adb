@@ -63,29 +63,34 @@ package body AMS.MEL.IR.Scheduling.Commands is
       return Result : Stare_Request do
          Check_Submission
            (C.IR_Scheduling_Exec_Stare
-              (Channel.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
+              (Channel.Handle,
+               Raw'Access,
+               Result.Owner.Handle'Access,
+               D'Address,
+               D'Length,
+               R'Access),
             Failure_Message (D));
       end return;
    end Exec_Stare;
 
    function Wait (Request : Stare_Request; Timeout_Milliseconds : Natural) return Stare_Result
-   is (Stare_Result (Abort_Result'(Wait (Abort_Request (Request), Timeout_Milliseconds))));
+   is (Owner => Wait (Request.Owner, Timeout_Milliseconds));
 
    function Status (Result : Stare_Result) return Outcome
-   is (Status (Abort_Result (Result)));
+   is (Status (Result.Owner));
 
    function Value (Result : Stare_Result) return Command_Return
-   is (Value (Abort_Result (Result)));
+   is (Value (Result.Owner));
 
    function Rejection_Code (Result : Stare_Result) return Error_Code
-   is (Rejection_Code (Abort_Result (Result)));
+   is (Rejection_Code (Result.Owner));
 
    function Description (Result : Stare_Result) return String
-   is (Description (Abort_Result (Result)));
+   is (Description (Result.Owner));
 
    procedure Close (Request : in out Stare_Request) is
    begin
-      Close (Abort_Request (Request));
+      Close (Request.Owner);
    end Close;
 
    function Exec_Abort (Channel : Scheduling_Channel; Info : Task_Info) return Abort_Request is
