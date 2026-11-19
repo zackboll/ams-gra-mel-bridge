@@ -97,6 +97,12 @@ def page(name, raw):
     return value.encode(), len(lines)
 
 
+def source_pages(root):
+    return {'api/source/' + path.relative_to(root).as_posix() + '.html':
+            page(path.relative_to(root).as_posix(), path.read_bytes())[0]
+            for path in sources(root).values()}
+
+
 def reconstruct(root, site, authority):
     records, pages, insertions = [], {}, {}
     for package, path in sorted(sources(root).items(), key=lambda item: item[0].lower()):

@@ -53,7 +53,7 @@ def run(root, site, output):
                      'function Submit_Navigation_Report')):
                 search = page.locator('#package-search')
                 search.fill(query)
-                link = page.locator('#documentation-search-results li a').filter(has_text=name)
+                link = page.locator('#documentation-search-results li a').get_by_text(name, exact=True)
                 expect(link).to_have_count(1)
                 link.click()
                 frame = page.frame_locator('iframe[name="document-content"]')

@@ -198,7 +198,13 @@ def live(directory, base, evidence):
     base = base_url(base)
     files = presentation.files(directory / 'published')
     # Run the unchanged active-content/anchor policy on the isolated Ada bytes.
-    graph(presentation.files(directory / 'ada-qualified'))
+    import source_view_audit
+    context = identity(ROOT)
+    with tempfile.TemporaryDirectory(prefix='docs-live-source-') as temp:
+        exported = Path(temp) / 'source'
+        epoch.export(ROOT, context['commit'], exported)
+        graph(presentation.files(directory / 'ada-qualified'),
+              source_pages=source_view_audit.source_pages(exported))
     rustdoc.validate({n.removeprefix('rust/'): d for n, d in files.items() if n.startswith('rust/')})
     pythondoc.validate({n.removeprefix('python/'): d for n, d in files.items() if n.startswith('python/')})
     attempts = []
