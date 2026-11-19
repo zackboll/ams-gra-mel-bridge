@@ -2486,6 +2486,20 @@ private package AMS.MEL_C_API is
       Info                                       : IR_Task_Info_V1;
    end record
    with Convention => C;
+   type IR_Scan_Task_V1 is record
+      Scan_Parameters : IR_Scan_Param_V1;
+      Info            : IR_Task_Info_V1;
+      Command_ID      : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   function IR_Scheduling_Exec_Scan
+     (Handle              : Scheduling_Handle;
+      Value               : access constant IR_Scan_Task_V1;
+      Output              : access Return_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_exec_scan";
    function IR_Scheduling_Exec_Stare
      (Handle              : Scheduling_Handle;
       Value               : access constant IR_Stare_Task_V1;

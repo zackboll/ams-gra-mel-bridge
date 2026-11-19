@@ -1,3 +1,4 @@
+#include "internal/ir_scan_param.hpp"
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
@@ -144,33 +145,8 @@ bool convert_mode(ams_mel_ir_mfa_mode_t value, irmel::MFA_Mode& mode) noexcept
     return true;
 }
 
-bool valid_scan(const ams_mel_ir_scan_param_v1& value) noexcept
-{
-    return value.elevation_defined_with_range_and_altitude <= 1U &&
-           value.center_frame_ref_el <= AMS_MEL_IR_COORD_FRAME_AIRCRAFT &&
-           value.center_frame_ref_az <= AMS_MEL_IR_COORD_FRAME_AIRCRAFT &&
-           value.degradation_method <= AMS_MEL_IR_DEGRADATION_REVISIT;
-}
-
-irmel::ScanParam convert_scan(const ams_mel_ir_scan_param_v1& value)
-{
-    irmel::ScanType type;
-    type.setContinuousScan(value.scan_type.continuous_scan);
-    type.setReturning(value.scan_type.returning);
-    type.setAgileScan(value.scan_type.agile_scan);
-    return {value.elevation_defined_with_range_and_altitude != 0U,
-            AzEl{value.center_az_rad, value.center_el_rad},
-            static_cast<irmel::CoordFrameRef>(value.center_frame_ref_el),
-            static_cast<irmel::CoordFrameRef>(value.center_frame_ref_az),
-            value.scan_width_rad, value.scan_height_rad, std::move(type),
-            value.scan_id, value.scan_rate_rad_per_second,
-            value.preferred_revisit_interval_seconds,
-            value.required_revisit_interval_seconds,
-            value.max_range_of_interest_m, value.min_range_of_interest_m,
-            value.elevation_scan_center_altitude_m,
-            value.elevation_scan_center_range_m,
-            static_cast<irmel::DegradationMethod>(value.degradation_method)};
-}
+using ams_mel::internal::valid_scan;
+using ams_mel::internal::convert_scan;
 
 bool valid_span(const ams_mel_u32_span_v1& span) noexcept
 { return span.data != nullptr || span.size == 0U; }

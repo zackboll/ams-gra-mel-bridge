@@ -1,3 +1,4 @@
+with AMS.MEL.IR.C2;
 with Interfaces;
 private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
@@ -63,6 +64,63 @@ package AMS.MEL.IR.Scheduling.Commands is
    --  does not cancel admitted work. Serialize Wait and Close on this observer.
    type Abort_Result is private;
    --  Owned cached terminal result, independent of all provider owners.
+
+   type Scan_Task is record
+      Command_ID : Interfaces.Unsigned_32 := 0;
+      Parameters : AMS.MEL.IR.C2.Scan_Parameters;
+      Info       : Task_Info;
+   end record;
+   --  Complete owned IRSTScanTask; success is acceptance, not physical scanning.
+   --  @field Command_ID Complete unsigned identifier without inferred correlation.
+   --  @field Parameters Existing complete C2 scan values, without normalization.
+   --  @field Info Existing general TaskInfo without action rewriting.
+
+   type Scan_Request is limited private;
+   --  Limited-controlled Return observer sharing Wait, Close and non-raising
+   --  finalization with Abort_Request. Timeout and Close do not cancel work.
+   type Scan_Result is private;
+   --  Owned cached Return or MEL rejection; uses Status, Value, Rejection_Code
+   --  and Description below. No acknowledgement or execution report is inferred.
+
+   function Exec_Scan (Channel : Scheduling_Channel; Value : Scan_Task) return Scan_Request;
+   --  Submit exactly SchedulingChannel::exec(IRSTScanTask), without registering
+   --  metadata. Admission, completion and physical execution are distinct facts.
+   --  @param Channel Live Enabled owner, serialized against Close until admission.
+   --  @param Value Complete owned values copied and verified before provider entry.
+   --  @return Limited observer; Wait reports actual Return or explicit MEL rejection.
+   --  @exception Provider_Error Ineligible owner, native failure or provider exec exception.
+   --  @exception Resource_Exhausted Session completion admission limit reached.
+
+   function Wait (Request : Scan_Request; Timeout_Milliseconds : Natural) return Scan_Result;
+   --  Observe the shared cached Return engine; zero timeout polls without cancellation.
+   --  @param Request Open observer, serialized against Close.
+   --  @param Timeout_Milliseconds Maximum wait in milliseconds; zero polls.
+   --  @return Actual Return or complete MEL rejection, never physical execution proof.
+   --  @exception Timeout_Error Still pending; request remains open and unconsumed.
+   --  @exception Provider_Error Closed observer, malformed payload or future exception.
+   function Status (Result : Scan_Result) return AMS.MEL.IR.Channel.Outcome;
+   --  Inspect the terminal outcome, independently of the Return payload.
+   --  @param Result Owned cached result.
+   --  @return Success for a valid Return, Rejected for an explicit MEL rejection.
+   function Value (Result : Scan_Result) return AMS.MEL.IR.Channel.Command_Return;
+   --  Inspect the actual provider Return value.
+   --  @param Result Successful terminal result.
+   --  @return Exact Return including Fail, Not_Supported and Not_Implemented.
+   --  @exception Provider_Error Result is Rejected.
+   function Rejection_Code (Result : Scan_Result) return AMS.MEL.IR.Channel.Error_Code;
+   --  Inspect an explicit MEL rejection, distinct from a Return payload.
+   --  @param Result Rejected terminal result.
+   --  @return Exact MEL error code.
+   --  @exception Provider_Error Result is Success.
+   function Description (Result : Scan_Result) return String;
+   --  Copy the complete owned MEL rejection description.
+   --  @param Result Rejected terminal result.
+   --  @return Full provider rejection text, including long descriptions.
+   --  @exception Provider_Error Result is Success.
+   procedure Close (Request : in out Scan_Request);
+   --  Idempotently close the observer without cancelling admitted provider work.
+   --  @param Request Observer to close, serialized against Wait.
+   --  @exception Provider_Error Native observer closure failed.
 
    type Stare_Request is limited private;
    --  Limited-controlled Return observer sharing Wait, Close and non-raising
@@ -168,6 +226,12 @@ private
       Owner : Abort_Request;
    end record;
    type Stare_Result is record
+      Owner : Abort_Result;
+   end record;
+   type Scan_Request is limited record
+      Owner : Abort_Request;
+   end record;
+   type Scan_Result is record
       Owner : Abort_Result;
    end record;
 end AMS.MEL.IR.Scheduling.Commands;
