@@ -324,3 +324,11 @@ is outstanding and must examine nested coverage, validation, borrowing, event
 cleanup/uncertain ownership, one-shot registration, provider lifetime, compiled
 regressions, namespaces and any subsequent main changes. No self-approval, merge
 or `READY_FOR_USER_MERGE` claim is made.
+
+
+A final **base-relative** `git diff origin/main --check` additionally found one
+trailing blank line at EOF in the new test module that clean-working-tree checks
+do not expose. Removed without behavioral change; both base-relative and working-
+tree diff checks pass. The final PR ledger supersedes the evidence-only commit
+identity above and records renewed exact-HEAD CI. No whitespace failure is
+retroactively reported as a pass.
