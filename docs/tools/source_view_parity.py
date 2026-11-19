@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import tempfile
+import subprocess
 
 import authored_html
 import build_enhanced_site as p
@@ -45,7 +46,7 @@ def compare(root, site, before, after, authority):
                 disabled=p.hashes(before), enabled=p.hashes(after))
 
 
-def qualify(root, candidate, manifest_sha, output):
+def qualify(root, candidate, manifest_sha, output, previous_python):
     seal = docs_ci.verify(root, candidate, manifest_sha)
     context = seal['identity']
     after = p.files(candidate / 'published')
@@ -63,11 +64,28 @@ def qualify(root, candidate, manifest_sha, output):
         report = measure(site, exported)
         epoch.enhance(site, exported, report, References(exported, site, ledger=report['native']), control)
         disabled = p.files(control)
+        legacy = Path(temp) / 'previous'
+        report_path = Path(temp) / 'report.json'
+        report_path.write_bytes(epoch.canonical(report))
+        subprocess.run([str(previous_python), str(Path(__file__).with_name('source_view_previous.py')),
+                        '--root', str(exported), '--site', str(site), '--report', str(report_path),
+                        '--output', str(legacy)], check=True)
+        previous = p.files(legacy)
+        epoch.require(set(previous) == set(disabled), 'previous publication inventory differs')
+        epoch.require({n for n in previous if previous[n] != disabled[n]} == {'api/presentation.json'},
+                      'previous compatibility delta exceeds enhancer metadata')
+        old_manifest = json.loads(previous['api/presentation.json'])
+        new_manifest = json.loads(disabled['api/presentation.json'])
+        epoch.require(old_manifest.pop('enhancer_version') == '0.1.6' and
+                      new_manifest.pop('enhancer_version') == '0.1.7' and old_manifest == new_manifest,
+                      'previous compatibility metadata differs')
         rust_files = {n.removeprefix('rust/'): d for n, d in after.items() if n.startswith('rust/')}
         python_files = {n.removeprefix('python/'): d for n, d in after.items() if n.startswith('python/')}
         before = python.assembled(rust.assembled(disabled, rust_files), python_files)
         config_path.write_bytes(original)
         result = compare(exported, site, before, after, authority)
+        result['previous_release'] = dict(passed=True, files=p.hashes(previous),
+                                         delta=['api/presentation.json:enhancer_version'])
         portal = authored_html.manifest(exported)
         names = [portal['home'], portal['stylesheet'], *(g['path'] for g in portal['guides'])]
         result['authored'] = {n: p.sha(after[n]) for n in names}
@@ -89,6 +107,7 @@ if __name__ == '__main__':
     parser.add_argument('--candidate', type=Path, required=True)
     parser.add_argument('--manifest-sha', required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--previous-python', type=Path, required=True)
     args = parser.parse_args()
-    result = qualify(args.root, args.candidate, args.manifest_sha, args.output)
+    result = qualify(args.root, args.candidate, args.manifest_sha, args.output, args.previous_python)
     print(json.dumps({k: result[k] for k in ('passed', 'source_pages', 'source_links', 'unaffected_files')}))

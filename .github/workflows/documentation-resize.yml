@@ -39,9 +39,10 @@ jobs:
       - name: Reconstruct complete baseline and exact-head candidate
         run: |
           git worktree add --detach .doc-tools/resize-baseline-source "$BASE_SOURCE_SHA"
+          sh .doc-tools/resize-baseline-source/docs/tools/install_enhancer.sh .doc-tools/resize-baseline-enhancer
           alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
             cd ../..
-            GITHUB_ACTIONS=false .doc-tools/enhancer/bin/python .doc-tools/resize-baseline-source/docs/tools/docs_ci.py build \
+            GITHUB_ACTIONS=false .doc-tools/resize-baseline-enhancer/bin/python .doc-tools/resize-baseline-source/docs/tools/docs_ci.py build \
               --root "$PWD/.doc-tools/resize-baseline-source" \
               --directory "$PWD/.doc-tools/resize-baseline" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
             .doc-tools/enhancer/bin/python docs/tools/docs_ci.py build \
@@ -51,7 +52,7 @@ jobs:
             .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify \
               --directory "$PWD/.doc-tools/resize-qualified" --gnatdoc-prefix "$PWD/.doc-tools/gnatdoc-26.0.0" &&
             # Parity is source-local: real content changes across commits are not sidebar regressions.
-            GITHUB_ACTIONS=false .doc-tools/enhancer/bin/python docs/tools/resize_parity.py \
+            GITHUB_ACTIONS=false .doc-tools/resize-baseline-enhancer/bin/python .doc-tools/resize-baseline-source/docs/tools/resize_parity.py \
               --root .doc-tools/resize-baseline-source \
               --candidate .doc-tools/resize-baseline \
               --manifest-sha "$(sha256sum .doc-tools/resize-baseline/manifest.json | cut -d " " -f 1)" \

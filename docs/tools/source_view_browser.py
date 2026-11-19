@@ -91,7 +91,11 @@ def run(root, site, output):
                     const range = document.createRange(); range.selectNodeContents(node);
                     const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
                     return selection.toString(); }''')
-                require(selected == expected_text, 'line numbers contaminate source selection')
+                # Chromium Selection.toString omits a terminal block newline;
+                # textContent above remains the exact original byte projection.
+                require(selected == expected_text or
+                        (expected_text.endswith('\n') and selected == expected_text[:-1]),
+                        'line numbers contaminate source selection')
                 fresh.locator('.source-line-number').first.focus()
                 expect(fresh.locator('.source-line-number').first).to_be_focused()
                 fresh.close()

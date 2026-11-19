@@ -1,0 +1,2 @@
+# Compatibility control only; never the production documentation interpreter.
+ada-gnatdoc-enhancer @ https://github.com/zackboll/ada-gnatdoc-enhancer/releases/download/v0.1.6/ada_gnatdoc_enhancer-0.1.6-py3-none-any.whl --hash=sha256:adfec71188a868e3fb70a6da71a124c937f9e63e26a2f2e31af45364f49ffb27
