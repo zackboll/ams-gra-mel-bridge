@@ -42,6 +42,8 @@ class PublicModuleTests(unittest.TestCase):
         for name in ('Session', 'ChannelView', 'CommandReturn', 'MelErrorCode',
                      'CalibrationControlInterface', 'SubsystemCalibration', 'CalibrationConfiguration',
                      'CalibrationConfigurationOpenError', 'CalibrationConfigurationStream',
+                     'CalibrationConfigurationCommand', 'CalibrationConfigurationCompleted',
+                     'CalibrationConfigurationRejected', 'CalibrationConfigurationRequest',
                      'ImageStream', 'HealthStatusChannel', 'ControlChannel',
                      'CameraProtectStatus', 'CameraProtectResponse',
                      'CameraProtectCommand', 'CameraProtectCompleted',
@@ -62,6 +64,9 @@ class PublicModuleTests(unittest.TestCase):
 
     def test_domain_values_keep_legacy_pickle_paths(self):
         values = (
+            ir.CalibrationConfigurationCommand(0xFFFFFFFF, 0),
+            ir.CalibrationConfigurationCompleted(ir.CalibrationConfiguration(())),
+            ir.CalibrationConfigurationRejected(ir.MelErrorCode.INVALID_PARAMETERS, '校正'),
             ir.CalibrationConfiguration((ir.SubsystemCalibration(
                 common.UciId(bytes(range(16)), 'calibration µ'),
                 ir.CalibrationControlInterface.CALIBRATION_STATE_COMMAND,
@@ -103,6 +108,10 @@ assert ams_mel.CameraProtectStatus is ir.CameraProtectStatus
 assert ams_mel.CameraProtectResponseStream is ir.CameraProtectResponseStream
 assert ams_mel.CameraProtectResponseOpenError is ir.CameraProtectResponseOpenError
 assert ams_mel.CalibrationConfiguration is ir.CalibrationConfiguration
+assert ams_mel.CalibrationConfigurationCommand is ir.CalibrationConfigurationCommand
+assert ams_mel.CalibrationConfigurationCompleted is ir.CalibrationConfigurationCompleted
+assert ams_mel.CalibrationConfigurationRejected is ir.CalibrationConfigurationRejected
+assert ams_mel.CalibrationConfigurationRequest is ir.CalibrationConfigurationRequest
 assert ams_mel.SubsystemCalibration is ir.SubsystemCalibration
 assert ams_mel.CalibrationControlInterface is ir.CalibrationControlInterface
 assert ams_mel.CalibrationConfigurationStream is ir.CalibrationConfigurationStream
