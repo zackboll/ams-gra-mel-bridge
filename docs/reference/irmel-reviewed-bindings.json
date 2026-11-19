@@ -2518,12 +2518,34 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::SchedulingChannel::exec(IRSTTrackTask)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_track"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Track"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_track.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_track_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-025: complete owned fixed 255-entry TrackTask representation, including entries beyond count, signed IDs and nanoseconds, independent binary64 location/rate components and all TaskInfo actions. Published setters and constructor followed by getter verification before actual exec(IRSTTrackTask). Existing Scheduling admission and shared Return engine.",
+      "limitations": [
+        "Mock-provider qualification only. Success means scheduling acceptance, not physical tracking or metadata delivery.",
+        "Count above 255 rejects before admission. No frame conversion, association, reordering, deduplication or interpretation of inactive entries. Uncertain detach conservatively retains provider ownership."
+      ],
       "representation": []
     },
     {
@@ -10433,27 +10455,64 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::IRSTTrackTask",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_track"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Track"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_track.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_track_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-025: complete owned fixed 255-entry TrackTask representation, including entries beyond count, signed IDs and nanoseconds, independent binary64 location/rate components and all TaskInfo actions. Published setters and constructor followed by getter verification before actual exec(IRSTTrackTask). Existing Scheduling admission and shared Return engine.",
+      "limitations": [
+        "Mock-provider qualification only. Success means scheduling acceptance, not physical tracking or metadata delivery.",
+        "Count above 255 rejects before admission. No frame conversion, association, reordering, deduplication or interpretation of inactive entries. Uncertain detach conservatively retains provider ownership."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Track"
+            }
+          ]
         },
         {
           "upstream": "getParams",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Track"
+            }
+          ]
         },
         {
           "upstream": "getTaskInfo",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Track"
+            }
+          ]
         }
       ]
     },
@@ -12380,9 +12439,9 @@
       "native": [],
       "ada": [],
       "tests": [],
-      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks. IRMEL-ADA-023 adds actual exec(IRSTStareTask) with complete owned parameters and the existing TaskInfo; metadata remains independent. IRMEL-ADA-024 adds actual exec(IRSTScanTask) reusing complete C2 ScanParam and TaskInfo; metadata remains independent.",
+      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks. IRMEL-ADA-023 adds actual exec(IRSTStareTask) with complete owned parameters and the existing TaskInfo; metadata remains independent. IRMEL-ADA-024 adds actual exec(IRSTScanTask) reusing complete C2 ScanParam and TaskInfo; metadata remains independent. IRMEL-ADA-025 adds actual exec(IRSTTrackTask), preserving all 255 stored targets, signed IDs/duration and independent binary64 location/rate values; metadata remains independent.",
       "limitations": [
-        "Six Scheduling-specific operations remain missing: exec(IRSTTrackTask), send(PrioritizedTrackListCmd), and four other registrations. AbortTask, StareTask and ScanTask futures are independent of ExecuteTaskAck and TaskExecutingRep; no physical execution or metadata delivery is inferred.",
+        "Five Scheduling-specific operations remain missing: send(PrioritizedTrackListCmd) and four other registrations. AbortTask, StareTask, ScanTask and TrackTask futures are independent of ExecuteTaskAck and TaskExecutingRep; no physical execution or metadata delivery is inferred.",
         "Disable is performed only inside Close; there is no standalone Disable.",
         "Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.",
         "Positive evidence is mock-provider only; no real provider or hardware tasking ran."
@@ -14383,53 +14442,127 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::TrackTaskData",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_track"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Track"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_track.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_track_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-025: complete owned fixed 255-entry TrackTask representation, including entries beyond count, signed IDs and nanoseconds, independent binary64 location/rate components and all TaskInfo actions. Published setters and constructor followed by getter verification before actual exec(IRSTTrackTask). Existing Scheduling admission and shared Return engine.",
+      "limitations": [
+        "Mock-provider qualification only. Success means scheduling acceptance, not physical tracking or metadata delivery.",
+        "Count above 255 rejects before admission. No frame conversion, association, reordering, deduplication or interpretation of inactive entries. Uncertain detach conservatively retains provider ownership."
+      ],
       "representation": [
         {
           "upstream": "getTargetID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Track"
+            }
+          ]
         },
         {
           "upstream": "getTargetLocation",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Track"
+            }
+          ]
         },
         {
           "upstream": "getTargetRate",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Track"
+            }
+          ]
         }
       ]
     },
     {
       "id": "ir:type:ams::iface::irmel::TrackTaskParam",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_track"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Track"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_track.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_track_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-025: complete owned fixed 255-entry TrackTask representation, including entries beyond count, signed IDs and nanoseconds, independent binary64 location/rate components and all TaskInfo actions. Published setters and constructor followed by getter verification before actual exec(IRSTTrackTask). Existing Scheduling admission and shared Return engine.",
+      "limitations": [
+        "Mock-provider qualification only. Success means scheduling acceptance, not physical tracking or metadata delivery.",
+        "Count above 255 rejects before admission. No frame conversion, association, reordering, deduplication or interpretation of inactive entries. Uncertain detach conservatively retains provider ownership."
+      ],
       "representation": [
         {
           "upstream": "getDurationNanoseconds",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Track"
+            }
+          ]
         },
         {
           "upstream": "getCount",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Track"
+            }
+          ]
         },
         {
           "upstream": "getTargetData",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Track"
+            }
+          ]
         }
       ]
     },
@@ -15117,12 +15250,12 @@
     "ada/src/ams-mel-status.ads": "309b6e11b9979a86661ea65807c534b156da3f42e84e451dfbb3226540127f06",
     "ada/src/ams-mel.adb": "5f3abf3e9ee264da4da5898ad7500ea1e550d5a7ce76563243463f1f287fe7db",
     "ada/src/ams-mel.ads": "8356a8d10aa905993f849affe0e01d23b4343a4f81b1f8d0704ba0366a9fc426",
-    "ada/src/ams-mel_c_api.ads": "ddd13b523e5d5c08e147e967492524288bf5c43e4b60395a90a88b70f5ff2473",
-    "native/include/ams_mel/abi.h": "a9ce7602c0cc9dc83ea0f834e4d4b92c5bc60ba2331f9a8ad72383ff09adaa4e",
+    "ada/src/ams-mel_c_api.ads": "4bce048040ea2f590e862325db88930b5e8d7c2b5187f15eb7cccf783e624e9d",
+    "native/include/ams_mel/abi.h": "19c7ffef260148967d5ce2af10da42a8046ed342142990a5f8aa98c7c11d75c2",
     "native/src/abi.cpp": "a8a2c41770297b7bb5a3b0d8f8e50fce89ea275a596cc56d207fe41f345501b1",
     "native/src/common_channel_requests.cpp": "cdaa0bc5aaed0457d3f94978a17f44a79e260f109cdaf81cbf1e794fb89093f6",
     "native/src/completion_probe.cpp": "b8470e409b4013f001039d800060eaeda4c045935c13e9c7e67c03dd5abfcb10",
-    "native/src/exports.map": "0c9dc7b7e493ea84248d1f5492516f0c3512d622f223281ba156fcd1b6779a62",
+    "native/src/exports.map": "cb2630eec87d8b22d990bcbcf820f34f1c21354783f512bbbe9f109800a5a37b",
     "native/src/internal.hpp": "d3ccd4d633f6563fb26f56834f7ddae5802a64335402e04ee13c6318257f5b6b",
     "native/src/internal/common_channel_requests.hpp": "f0c3e5e90d91470ea8a885a531ce0c8059c21e6b42eed876545c2429a274f67d",
     "native/src/internal/completion_probe.hpp": "00001e661c4aaf132920d9bdd06860454024db2a82371b59c699f61ce5b93a80",
@@ -15170,10 +15303,11 @@
     "native/tests/test_image_checkout.c": "b298aa094232f0b08580ec616df9a149fa0f661b6a4d3e0360556430b97711c0",
     "native/tests/test_image_checkout_allocation.cpp": "7118864358763daf1e36964b960ebdd3d445aaf70ee25d169b7a4df725136323",
     "ada/tests/src/ams_mel_ir_checkout_tests.adb": "00f1234ccd21d8dfec24b80d0c85bbb5a21c4766f1f923a2ae3156088b51b76b",
-    "native/src/ir_scheduling.cpp": "8433e9192adc5c3d26bc912057645877f621118a9c72c1a9416e06717da7f403",
+    "native/src/ir_scheduling.cpp": "39260b944ab361c684adf834484129c3af21f494f17efd9644bf44a3020b7730",
     "native/src/internal/ir_task_info.hpp": "d0b9f07e210d7dd08d530675226a1aa21a2437080b3738b46eebea9cbad0a7d8",
-    "ada/src/ams-mel-ir-scheduling-commands.ads": "da4c6f177f11af8cc74157a2e47207942e3ca5ac1db0a10984a01100b9dbe6d6",
-    "ada/src/ams-mel-ir-scheduling-commands.adb": "e9a185a915dfd317d8cfef14c7bfe8d3e9c448513b92f6cc667a61dff7539d17",
-    "ada/src/ams-mel-ir-scheduling.ads": "05982680b143478604b685bf58e6915346975f03d4e8758f3cedd4d338b909ec"
+    "ada/src/ams-mel-ir-scheduling-commands.ads": "f31ba8c5bb72985943cacabb39b11f18de6d90b60f4d79017566d6279bdb9c60",
+    "ada/src/ams-mel-ir-scheduling-commands.adb": "ba1029ac42f722516e1ffcab58922b61df6ba36f0f7a92105ff1a1eca400aae1",
+    "ada/src/ams-mel-ir-scheduling.ads": "05982680b143478604b685bf58e6915346975f03d4e8758f3cedd4d338b909ec",
+    "native/src/internal/ir_track_task.hpp": "57603388252390860046152439e4420851b67833e34ab880dbf8dd1dd1aa2d4f"
   }
 }

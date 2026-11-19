@@ -235,3 +235,67 @@ fn scheduling_scan_abi() {
         ]
     );
 }
+
+#[test]
+fn scheduling_track_abi() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrScheduling,
+        *const AmsMelIrTrackTaskV1,
+        *mut *mut AmsMelIrReturnRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_scheduling_exec_track;
+    type S = AmsMelIrTrackTaskV1;
+    type D = AmsMelIrTrackTaskDataV1;
+    type P = AmsMelIrTrackTaskParamV1;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable = std::env::temp_dir().join(format!("ams-track-sys-{}", std::process::id()));
+    assert!(
+        Command::new(std::env::var("CC").unwrap_or_else(|_| "cc".into()))
+            .args([
+                "-std=c11",
+                "-pedantic-errors",
+                "-Wall",
+                "-Wextra",
+                "-Werror"
+            ])
+            .arg(format!("-I{}", root.join("native/include").display()))
+            .arg(root.join("native/tests/scheduling_track_layout_probe.c"))
+            .arg("-o")
+            .arg(&executable)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    assert_eq!(
+        actual,
+        vec![
+            size_of::<D>(),
+            align_of::<D>(),
+            offset_of!(D, target_id),
+            offset_of!(D, location_azimuth_rad),
+            offset_of!(D, location_elevation_rad),
+            offset_of!(D, rate_azimuth_rad_per_second),
+            offset_of!(D, rate_elevation_rad_per_second),
+            size_of::<P>(),
+            align_of::<P>(),
+            offset_of!(P, duration_ns),
+            offset_of!(P, count),
+            offset_of!(P, targets),
+            size_of::<S>(),
+            align_of::<S>(),
+            offset_of!(S, track_parameters),
+            offset_of!(S, task_info),
+            offset_of!(S, command_id)
+        ]
+    );
+}

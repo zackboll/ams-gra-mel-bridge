@@ -15,6 +15,30 @@ pub struct AmsMelIrTaskInfoV1 {
 
 /// Raw ScanTask input reusing the complete C2 scan and TaskInfo records.
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrTrackTaskDataV1 {
+    pub target_id: i32,
+    pub location_azimuth_rad: f64,
+    pub location_elevation_rad: f64,
+    pub rate_azimuth_rad_per_second: f64,
+    pub rate_elevation_rad_per_second: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrTrackTaskParamV1 {
+    pub duration_ns: i64,
+    pub count: u32,
+    pub targets: [AmsMelIrTrackTaskDataV1; 255],
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrTrackTaskV1 {
+    pub track_parameters: AmsMelIrTrackTaskParamV1,
+    pub task_info: AmsMelIrTaskInfoV1,
+    pub command_id: u32,
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrScanTaskV1 {
     pub scan_parameters: AmsMelIrScanParamV1,
@@ -4280,6 +4304,14 @@ extern "C" {
     pub fn ams_mel_ir_scheduling_get_capabilities(
         scheduling: *mut AmsMelIrScheduling,
         out_capability: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_exec_track(
+        scheduling: *mut AmsMelIrScheduling,
+        task: *const AmsMelIrTrackTaskV1,
+        out_request: *mut *mut AmsMelIrReturnRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

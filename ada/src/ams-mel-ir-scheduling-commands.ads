@@ -75,6 +75,92 @@ package AMS.MEL.IR.Scheduling.Commands is
    --  @field Parameters Existing complete C2 scan values, without normalization.
    --  @field Info Existing general TaskInfo without action rewriting.
 
+   type Track_Target is record
+      Target_ID                     : Interfaces.Integer_32 := 0;
+      Location_Azimuth_Rad          : Long_Float := 0.0;
+      Location_Elevation_Rad        : Long_Float := 0.0;
+      Rate_Azimuth_Rad_Per_Second   : Long_Float := 0.0;
+      Rate_Elevation_Rad_Per_Second : Long_Float := 0.0;
+   end record;
+   --  Complete TrackTaskData, without association or frame conversion.
+   --  @field Target_ID Exact signed 32-bit identifier, including negative values.
+   --  @field Location_Azimuth_Rad Binary64 location azimuth, preserving signed zero.
+   --  @field Location_Elevation_Rad Independent binary64 location elevation.
+   --  @field Rate_Azimuth_Rad_Per_Second Independent binary64 azimuth rate.
+   --  @field Rate_Elevation_Rad_Per_Second Independent binary64 elevation rate.
+
+   subtype Track_Target_Index is Positive range 1 .. 255;
+   --  One-based index of every stored upstream array entry.
+   type Track_Target_Array is array (Track_Target_Index) of Track_Target;
+   --  Owned fixed collection; entries beyond Count are copied and verified too.
+
+   type Track_Parameters is record
+      Duration_NS : Interfaces.Integer_64 := 0;
+      Count       : Interfaces.Unsigned_32 := 0;
+      Targets     : Track_Target_Array;
+   end record;
+   --  Complete TrackTaskParam; Count does not shorten the stored collection.
+   --  @field Duration_NS Exact signed nanoseconds without epoch or unit conversion.
+   --  @field Count Active count, rejected before dispatch if greater than 255.
+   --  @field Targets All 255 entries in order, including duplicates and inactive entries.
+
+   type Track_Task is record
+      Command_ID : Interfaces.Unsigned_32 := 0;
+      Parameters : Track_Parameters;
+      Info       : Task_Info;
+   end record;
+   --  Complete owned IRSTTrackTask; acceptance is not physical tracking success.
+   --  @field Command_ID Complete unsigned 32-bit command identifier.
+   --  @field Parameters Complete parameters with the full fixed array.
+   --  @field Info Existing five-field TaskInfo, including all four actions.
+
+   type Track_Request is limited private;
+   --  Limited-controlled Return observer sharing Wait, Close and non-raising
+   --  finalization with Abort_Request. Timeout and Close do not cancel work.
+   type Track_Result is private;
+   --  Owned cached Return or MEL rejection; uses Status, Value, Rejection_Code
+   --  and Description below. No acknowledgement or execution report is inferred.
+
+   function Exec_Track (Channel : Scheduling_Channel; Value : Track_Task) return Track_Request;
+   --  Submit exactly SchedulingChannel::exec(IRSTTrackTask), without registering
+   --  metadata. Admission, completion and physical execution are distinct facts.
+   --  @param Channel Live Enabled owner, serialized against Close until admission.
+   --  @param Value Complete owned values copied and verified before provider entry.
+   --  @return Limited observer; Wait reports actual Return or explicit MEL rejection.
+   --  @exception Provider_Error Ineligible owner, native failure or provider exec exception.
+   --  @exception Resource_Exhausted Session completion admission limit reached.
+
+   function Wait (Request : Track_Request; Timeout_Milliseconds : Natural) return Track_Result;
+   --  Observe the shared cached Return engine; zero timeout polls without cancellation.
+   --  @param Request Open observer, serialized against Close.
+   --  @param Timeout_Milliseconds Maximum wait in milliseconds; zero polls.
+   --  @return Actual Return or complete MEL rejection, never physical execution proof.
+   --  @exception Timeout_Error Still pending; request remains open and unconsumed.
+   --  @exception Provider_Error Closed observer, malformed payload or future exception.
+   function Status (Result : Track_Result) return AMS.MEL.IR.Channel.Outcome;
+   --  Inspect the terminal outcome, independently of the Return payload.
+   --  @param Result Owned cached result.
+   --  @return Success for a valid Return, Rejected for an explicit MEL rejection.
+   function Value (Result : Track_Result) return AMS.MEL.IR.Channel.Command_Return;
+   --  Inspect the actual provider Return value.
+   --  @param Result Successful terminal result.
+   --  @return Exact Return including Fail, Not_Supported and Not_Implemented.
+   --  @exception Provider_Error Result is Rejected.
+   function Rejection_Code (Result : Track_Result) return AMS.MEL.IR.Channel.Error_Code;
+   --  Inspect an explicit MEL rejection, distinct from a Return payload.
+   --  @param Result Rejected terminal result.
+   --  @return Exact MEL error code.
+   --  @exception Provider_Error Result is Success.
+   function Description (Result : Track_Result) return String;
+   --  Copy the complete owned MEL rejection description.
+   --  @param Result Rejected terminal result.
+   --  @return Full provider rejection text, including long descriptions.
+   --  @exception Provider_Error Result is Success.
+   procedure Close (Request : in out Track_Request);
+   --  Idempotently close the observer without cancelling admitted provider work.
+   --  @param Request Observer to close, serialized against Wait.
+   --  @exception Provider_Error Native observer closure failed.
+
    type Scan_Request is limited private;
    --  Limited-controlled Return observer sharing Wait, Close and non-raising
    --  finalization with Abort_Request. Timeout and Close do not cancel work.
@@ -232,6 +318,12 @@ private
       Owner : Abort_Request;
    end record;
    type Scan_Result is record
+      Owner : Abort_Result;
+   end record;
+   type Track_Request is limited record
+      Owner : Abort_Request;
+   end record;
+   type Track_Result is record
       Owner : Abort_Result;
    end record;
 end AMS.MEL.IR.Scheduling.Commands;

@@ -27,6 +27,7 @@
 #include "internal/ir_task_info.hpp"
 #include "internal/ir_stare_task.hpp"
 #include "internal/ir_scan_task.hpp"
+#include "internal/ir_track_task.hpp"
 
 #include <irmel/library/scheduling/SchedulingChannel.h>
 
@@ -387,6 +388,32 @@ extern "C" ams_mel_status_t ams_mel_ir_scheduling_exec_scan(
             }, &command, request, out, capacity, required);
     } catch (...) {
         diagnostic("ScanTask construction failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_scheduling_exec_track(
+    ams_mel_ir_scheduling *owner, const ams_mel_ir_track_task_v1 *task,
+    ams_mel_ir_return_request **request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!owner || !owner->state || !task || !request || *request || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        irmel::IRSTTrackTask command;
+        if (!ams_mel::internal::convert_track_task(*task, command)) {
+            diagnostic("invalid Scheduling TrackTask", out, capacity, required);
+            return AMS_MEL_INVALID_ARGUMENT;
+        }
+        return ams_mel_common::submit_return(
+            ams_mel_common::scheduling_access<true>(owner),
+            [](irmel::Channel& channel, const void *context) {
+                return dynamic_cast<irmel::SchedulingChannel&>(channel).exec(
+                    *static_cast<const irmel::IRSTTrackTask *>(context));
+            }, &command, request, out, capacity, required);
+    } catch (...) {
+        diagnostic("TrackTask construction failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
 }

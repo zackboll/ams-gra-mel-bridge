@@ -2486,6 +2486,29 @@ private package AMS.MEL_C_API is
       Info                                       : IR_Task_Info_V1;
    end record
    with Convention => C;
+   type IR_Track_Task_Data_V1 is record
+      Target_ID                     : Interfaces.Integer_32;
+      Location_Azimuth_Rad          : Interfaces.C.double;
+      Location_Elevation_Rad        : Interfaces.C.double;
+      Rate_Azimuth_Rad_Per_Second   : Interfaces.C.double;
+      Rate_Elevation_Rad_Per_Second : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type IR_Track_Target_Array is array (Natural range 0 .. 254) of IR_Track_Task_Data_V1
+   with Convention => C;
+   type IR_Track_Task_Param_V1 is record
+      Duration_NS : Interfaces.Integer_64;
+      Count       : Interfaces.Unsigned_32;
+      Targets     : IR_Track_Target_Array;
+   end record
+   with Convention => C;
+   type IR_Track_Task_V1 is record
+      Track_Parameters : IR_Track_Task_Param_V1;
+      Info             : IR_Task_Info_V1;
+      Command_ID       : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+
    type IR_Scan_Task_V1 is record
       Scan_Parameters : IR_Scan_Param_V1;
       Info            : IR_Task_Info_V1;
@@ -2500,6 +2523,15 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_exec_scan";
+
+   function IR_Scheduling_Exec_Track
+     (Handle              : Scheduling_Handle;
+      Value               : access constant IR_Track_Task_V1;
+      Output              : access Return_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_exec_track";
    function IR_Scheduling_Exec_Stare
      (Handle              : Scheduling_Handle;
       Value               : access constant IR_Stare_Task_V1;
