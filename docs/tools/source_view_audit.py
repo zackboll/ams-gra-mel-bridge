@@ -160,6 +160,7 @@ def restore(text, original, record):
         text = text.replace(marker + link, marker, 1)
     p.require('view-source' not in text and 'gnatdoc-source' not in text,
               'unauthorized source-view insertion')
+    p.require(not p.Page(text).issues, 'unsafe declaration publication HTML')
     return text
 
 

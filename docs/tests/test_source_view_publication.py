@@ -129,6 +129,40 @@ class SourcePublicationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'symlink'):
                 source.sources(root)
 
+    def test_source_paths_and_private_or_body_inputs_cannot_authorize_publication(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            directory = root / 'ada/src'
+            directory.mkdir(parents=True)
+            (directory / 'safe.ads').write_text('package Safe is\nend Safe;\n')
+            (directory / 'hidden.ads').write_text('private package Hidden is\nend Hidden;\n')
+            (directory / 'safe.adb').write_text('package body Safe is\nend Safe;\n')
+            self.assertEqual(set(source.source_pages(root)), {'api/source/ada/src/safe.ads.html'})
+            for name in ('bad%2fpath.ads', 'bad name.ads'):
+                path = directory / name
+                path.write_text('package Unsafe is\nend Unsafe;\n')
+                with self.subTest(name=name), self.assertRaises(ValueError):
+                    source.source_pages(root)
+                path.unlink()
+            path = directory / 'safe.ads'
+            path.unlink()
+            path.symlink_to(ROOT / 'ada/src/ams.ads')
+            with self.assertRaisesRegex(ValueError, 'symlink'):
+                source.source_pages(root)
+
+    def test_native_source_insertions_are_exact_and_cannot_add_attributes(self):
+        name, record = next(iter(self.insertions.items()))
+        original = self.actual[name].decode()
+        for text in (original.replace('class="view-source"', 'class="view-source" data-forged="1"', 1),
+                     original.replace('class="view-source"', 'class="view-source" onclick="alert(1)"', 1),
+                     original.replace(source.HEAD, source.HEAD + '<script>alert(1)</script>', 1),
+                     original.replace(source.HEAD, source.HEAD + source.HEAD, 1),
+                     original.replace('href="source/', 'href="https://evil.invalid/source/', 1),
+                     original.replace('href="source/', 'href="source/../', 1),
+                     original.replace('href="source/', 'href="source/%2e%2e/', 1)):
+            with self.assertRaises(ValueError):
+                self.qualify(self.reseal(dict(self.actual, **{name: text.encode()})))
+
     def test_malicious_comments_are_only_exact_escaped_source_text(self):
         from check_live_docs_site import GraphPage
         raw = b'package Safe is\n-- <script>alert(1)</script> {{ /home/user file:///tmp/x\nend Safe;\n'

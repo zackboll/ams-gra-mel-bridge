@@ -66,7 +66,9 @@ def qualify(root, candidate, manifest_sha, output, previous_python):
         disabled = p.files(control)
         legacy = Path(temp) / 'previous'
         report_path = Path(temp) / 'report.json'
-        report_path.write_bytes(epoch.canonical(report))
+        # Authored schema-3 inputs hash the inherited native-ledger JSON bytes;
+        # retain the measured mapping's insertion order across this process hop.
+        report_path.write_text(json.dumps(report))
         subprocess.run([str(previous_python), str(Path(__file__).with_name('source_view_previous.py')),
                         '--root', str(exported), '--site', str(site), '--report', str(report_path),
                         '--output', str(legacy)], check=True)

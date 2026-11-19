@@ -199,12 +199,15 @@ def live(directory, base, evidence):
     files = presentation.files(directory / 'published')
     # Run the unchanged active-content/anchor policy on the isolated Ada bytes.
     import source_view_audit
-    context = identity(ROOT)
-    with tempfile.TemporaryDirectory(prefix='docs-live-source-') as temp:
-        exported = Path(temp) / 'source'
-        epoch.export(ROOT, context['commit'], exported)
-        graph(presentation.files(directory / 'ada-qualified'),
-              source_pages=source_view_audit.source_pages(exported))
+    ada_files = presentation.files(directory / 'ada-qualified')
+    if any(n.startswith('api/source/') for n in ada_files):
+        context = identity(ROOT)
+        with tempfile.TemporaryDirectory(prefix='docs-live-source-') as temp:
+            exported = Path(temp) / 'source'
+            epoch.export(ROOT, context['commit'], exported)
+            graph(ada_files, source_pages=source_view_audit.source_pages(exported))
+    else:
+        graph(ada_files)
     rustdoc.validate({n.removeprefix('rust/'): d for n, d in files.items() if n.startswith('rust/')})
     pythondoc.validate({n.removeprefix('python/'): d for n, d in files.items() if n.startswith('python/')})
     attempts = []

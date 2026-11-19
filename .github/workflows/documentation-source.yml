@@ -53,7 +53,7 @@ jobs:
             MEL_SEARCH_QUALIFICATION="$PWD/.doc-tools/source-qualified" \
               .doc-tools/enhancer/bin/python -W error -m unittest discover \
               -s docs/tests -p test_search_publication.py -v &&
-            MEL_RESIZE_QUALIFICATION="$PWD/.doc-tools/source-qualified" \
+            MEL_RESIZE_QUALIFICATION="$PWD/.doc-tools/source-repeated" \
               .doc-tools/enhancer/bin/python -W error -m unittest discover \
               -s docs/tests -p test_resize_publication.py -v &&
             GNATDOC_PREFIX="$PWD/.doc-tools/gnatdoc-26.0.0" make test-documentation-source'
