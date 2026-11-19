@@ -1,3 +1,4 @@
+with AMS.MEL.IR.Scan_Conversion;
 with Interfaces.C;
 with System;
 
@@ -42,6 +43,52 @@ package body AMS.MEL.IR.Scheduling.Commands is
    begin
       return (if Value'Length = 0 then "native common Channel operation failed" else Value);
    end Failure_Message;
+
+   function Exec_Scan (Channel : Scheduling_Channel; Value : Scan_Task) return Scan_Request is
+      Raw : aliased C.IR_Scan_Task_V1 :=
+        (Scan_Parameters => AMS.MEL.IR.Scan_Conversion.To_Raw (Value.Parameters),
+         Command_ID      => Value.Command_ID,
+         Info            =>
+           (Value.Info.System_Time_NS,
+            Value.Info.Request_ID,
+            Task_List_Action'Pos (Value.Info.Action),
+            Value.Info.Precedence_Within_Priority,
+            Value.Info.Priority));
+      D   : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      return Result : Scan_Request do
+         Check_Submission
+           (C.IR_Scheduling_Exec_Scan
+              (Channel.Handle,
+               Raw'Access,
+               Result.Owner.Handle'Access,
+               D'Address,
+               D'Length,
+               R'Access),
+            Failure_Message (D));
+      end return;
+   end Exec_Scan;
+
+   function Wait (Request : Scan_Request; Timeout_Milliseconds : Natural) return Scan_Result
+   is (Owner => Wait (Request.Owner, Timeout_Milliseconds));
+
+   function Status (Result : Scan_Result) return Outcome
+   is (Status (Result.Owner));
+
+   function Value (Result : Scan_Result) return Command_Return
+   is (Value (Result.Owner));
+
+   function Rejection_Code (Result : Scan_Result) return Error_Code
+   is (Rejection_Code (Result.Owner));
+
+   function Description (Result : Scan_Result) return String
+   is (Description (Result.Owner));
+
+   procedure Close (Request : in out Scan_Request) is
+   begin
+      Close (Request.Owner);
+   end Close;
 
    function Exec_Stare (Channel : Scheduling_Channel; Value : Stare_Task) return Stare_Request is
       Raw : aliased C.IR_Stare_Task_V1 :=

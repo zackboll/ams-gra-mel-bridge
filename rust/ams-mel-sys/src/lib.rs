@@ -13,6 +13,15 @@ pub struct AmsMelIrTaskInfoV1 {
     pub priority: u32,
 }
 
+/// Raw ScanTask input reusing the complete C2 scan and TaskInfo records.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrScanTaskV1 {
+    pub scan_parameters: AmsMelIrScanParamV1,
+    pub task_info: AmsMelIrTaskInfoV1,
+    pub command_id: u32,
+}
+
 /// Raw StareTask input; radians and signed nanoseconds, independent frames 0..=1.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
@@ -4271,6 +4280,14 @@ extern "C" {
     pub fn ams_mel_ir_scheduling_get_capabilities(
         scheduling: *mut AmsMelIrScheduling,
         out_capability: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_exec_scan(
+        scheduling: *mut AmsMelIrScheduling,
+        task: *const AmsMelIrScanTaskV1,
+        out_request: *mut *mut AmsMelIrReturnRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

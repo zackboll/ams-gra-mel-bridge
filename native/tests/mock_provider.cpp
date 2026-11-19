@@ -61,15 +61,15 @@ struct C2SendBarrier {
  * IRMEL-ADA-005 CalibrationConfigurationCmd send, and family 10 is the
  * IRMEL-ADA-006 CalibrationStatusCmd send. IRMEL-ADA-007 appends EraseCommand (11).
  * IRMEL-ADA-008 appends C2 SystemTrackDataResponse (12). */
-C2SendBarrier c2_send_barriers[17];
-unsigned send_entries[17]{};
+C2SendBarrier c2_send_barriers[18];
+unsigned send_entries[18]{};
 std::mutex c2_send_mutex;
 std::condition_variable c2_send_ready;
 
 extern "C" __attribute__((visibility("default"))) int mock_c2_send_barrier(
     unsigned family, unsigned operation, unsigned throws)
 {
-    if (family >= 17U || operation > 3U) return 0;
+    if (family >= 18U || operation > 3U) return 0;
     std::unique_lock lock{c2_send_mutex};
     if (operation == 3U) return static_cast<int>(send_entries[family]);
     auto& barrier = c2_send_barriers[family];
@@ -216,7 +216,7 @@ extern "C" __attribute__((visibility("default"))) int mock_completion_gate(
 extern "C" __attribute__((visibility("default"))) int mock_completion_release_family(
     unsigned family, unsigned amount)
 {
-    if (family >= 17U) return 0;
+    if (family >= 18U) return 0;
     for (unsigned index = 0; index < amount; ++index) {
         std::function<void()> complete;
         {
@@ -5761,7 +5761,7 @@ public:
         /* IRMEL-ADA-013: "sched-both-*" also offers ExecuteTaskAck, so both
          * families can be active on one Scheduling channel. */
         if (scenario.rfind("sched-ack-", 0U) != 0U && scenario.rfind("sched-both-", 0U) != 0U &&
-            scenario != "sched-abort-delayed" && scenario != "sched-stare-delayed")
+            scenario != "sched-abort-delayed" && scenario != "sched-stare-delayed" && scenario != "sched-scan-delayed")
             return Return::NotSupported;
         callback_ = std::move(callback);
         if (scenario == "sched-ack-register-throw")
@@ -5914,7 +5914,7 @@ std::thread rep_detached_producer;
 bool rep_scenario(const std::string& scenario)
 {
     return scenario.rfind("sched-rep-", 0U) == 0U || scenario.rfind("sched-both-", 0U) == 0U ||
-        scenario == "sched-abort-delayed" || scenario == "sched-stare-delayed";
+        scenario == "sched-abort-delayed" || scenario == "sched-stare-delayed" || scenario == "sched-scan-delayed";
 }
 
 bool rep_sync_scenario(const std::string& scenario)
@@ -6063,6 +6063,16 @@ extern "C" __attribute__((visibility("default"))) void mock_scheduling_stare_ree
 { scheduling_stare_reentry = callback; }
 extern "C" __attribute__((visibility("default"))) void mock_scheduling_stare_values(std::uint64_t *output)
 { std::copy(scheduling_stare_values.begin(), scheduling_stare_values.end(), output); }
+std::atomic<unsigned> scheduling_scan_calls{};
+void (*scheduling_scan_reentry)(){};
+std::array<std::uint64_t, 26> scheduling_scan_values{};
+std::unique_ptr<Return> malformed_scan_value;
+extern "C" __attribute__((visibility("default"))) unsigned mock_scheduling_scan_calls(void)
+{ return scheduling_scan_calls.load(); }
+extern "C" __attribute__((visibility("default"))) void mock_scheduling_scan_reentry(void (*callback)())
+{ scheduling_scan_reentry = callback; }
+extern "C" __attribute__((visibility("default"))) void mock_scheduling_scan_values(std::uint64_t *output)
+{ std::copy(scheduling_scan_values.begin(), scheduling_scan_values.end(), output); }
 std::atomic<unsigned> scheduling_abort_calls{};
 void (*scheduling_abort_reentry)(){};
 extern "C" __attribute__((visibility("default"))) unsigned mock_scheduling_abort_calls(void)
@@ -6087,7 +6097,7 @@ public:
     {
         c2_send_boundary(1);
         record("keepalive_sent");
-        if (scenario_ == "sched-stare-return-invalid-future") return {};
+        if (scenario_ == "sched-stare-return-invalid-future" || scenario_ == "sched-scan-return-invalid-future") return {};
         if (scenario_ == "sched-keepalive-throw")
             throw std::runtime_error("mock Scheduling keepalive send exception");
         if (scenario_ == "sched-ada-common")
@@ -6098,7 +6108,7 @@ public:
     {
         c2_send_boundary(2);
         record("comms_sent");
-        if (scenario_ == "sched-stare-comms-invalid-future") return {};
+        if (scenario_ == "sched-stare-comms-invalid-future" || scenario_ == "sched-scan-comms-invalid-future") return {};
         if (request.getCommandID() != 0x80000001U || request.getChannelID() != 0xf0000002U ||
             request.getRequestID() != 0xe0000003U)
             throw std::runtime_error("Scheduling CommsTest IDs changed");
@@ -6210,8 +6220,69 @@ public:
             scenario_ == "sched-abort-invalid-return" ? static_cast<Return>(UINT32_MAX) : Return::Success;
         return ready_request(std::make_shared<Return>(value));
     }
-    mel::RequestFor<Return> exec(irmel::IRSTScanTask) override
-    { return unsupported<Return>("scheduling_scan_task_exec"); }
+    mel::RequestFor<Return> exec(irmel::IRSTScanTask task) override
+    {
+        if (scenario_.rfind("sched-scan-", 0) != 0)
+            return unsupported<Return>("scheduling_scan_task_exec");
+        const auto params = task.getParams();
+        const auto center = params.getCenter();
+        const auto info = task.getTaskInfo();
+        const auto& type = params.getScanType();
+        scheduling_scan_values = {task.getCommandID(),
+            static_cast<std::uint64_t>(params.getIsDefinedWithRangeAndAltitude()),
+            std::bit_cast<std::uint64_t>(center.az), std::bit_cast<std::uint64_t>(center.el),
+            static_cast<std::uint64_t>(params.getCentFrameRefEl()),
+            static_cast<std::uint64_t>(params.getCentFrameRefAz()),
+            std::bit_cast<std::uint64_t>(params.getScanWidth()),
+            std::bit_cast<std::uint64_t>(params.getScanHeight()),
+            type.getContinuousScan(), type.getReturning(), type.getAgileScan(), params.getScanId(),
+            std::bit_cast<std::uint64_t>(params.getScanRate()),
+            std::bit_cast<std::uint64_t>(params.getPreferredRevisitInterval()),
+            std::bit_cast<std::uint64_t>(params.getRequiredRevisitInterval()),
+            params.getMaxRangeOfInterest(), params.getMinRangeOfInterest(),
+            params.getElevationScanCenterAltitude(), params.getElevationScanCenterRange(),
+            static_cast<std::uint64_t>(params.getDegredationType()),
+            static_cast<std::uint64_t>(info.getSystemTime().count()), info.getReqId(),
+            static_cast<std::uint64_t>(info.getAction()), info.getPrecedenceWithinPriority(),
+            info.getPriority(), 0U};
+        ++scheduling_scan_calls;
+        record("scheduling_scan_task_exec");
+        if (auto callback = std::exchange(scheduling_scan_reentry, nullptr)) callback();
+        c2_send_boundary(17);
+        if (scenario_ == "sched-scan-exec-throw")
+            throw std::runtime_error("mock ScanTask exec exception");
+        if (scenario_ == "sched-scan-delayed" || scenario_ == "sched-scan-detach-fail")
+            return held_request(std::make_shared<Return>(Return::Success), 17);
+        if (scenario_ == "sched-scan-unsupported" || scenario_ == "sched-scan-invalid-state") {
+            std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
+            auto future = promise.get_future();
+            promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{mel::Error{
+                scenario_ == "sched-scan-unsupported" ? mel::ErrorCode::Unsupported :
+                    mel::ErrorCode::InvalidState,
+                "ScanTask rejection: " + std::string(1024, 'x')}});
+            return future;
+        }
+        if (scenario_ == "sched-scan-future-throw") {
+            std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
+            auto future = promise.get_future();
+            promise.set_exception(std::make_exception_ptr(std::runtime_error("mock ScanTask future exception")));
+            return future;
+        }
+        if (scenario_ == "sched-scan-invalid-future") return {};
+        if (scenario_ == "sched-scan-malformed") {
+            auto value = std::make_unique<Return>(Return::Success);
+            std::shared_ptr<Return> malformed{std::shared_ptr<Return>{}, value.get()};
+            auto future = ready_request(malformed);
+            malformed_scan_value = std::move(value);
+            return future;
+        }
+        if (scenario_ == "sched-scan-null") return ready_request<Return>(nullptr);
+        const auto value = scenario_ == "sched-scan-fail" ? Return::Fail :
+            scenario_ == "sched-scan-not-supported" ? Return::NotSupported :
+            scenario_ == "sched-scan-not-implemented" ? Return::NotImplemented :
+            scenario_ == "sched-scan-invalid-return" ? static_cast<Return>(UINT32_MAX) : Return::Success;
+        return ready_request(std::make_shared<Return>(value));
+    }
     mel::RequestFor<Return> exec(irmel::IRSTStareTask task) override
     {
         if (scenario_.rfind("sched-stare-", 0) != 0)
@@ -6759,6 +6830,7 @@ public:
              /* IRMEL-ADA-011: Scheduling owner and open-time rollback detach
                 failures. */
              instance_ == "sched-stare-detach-fail" ||
+             instance_ == "sched-scan-detach-fail" ||
              instance_ == "sched-detach-fail" ||
              instance_ == "sched-enabled-detach-fail" ||
              instance_ == "sched-open-detach-fail" ||

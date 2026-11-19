@@ -3093,12 +3093,34 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::SchedulingChannel::exec(IRSTScanTask)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_scan"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Scan"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_scan.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_scan_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-024: complete owned ScanTask, reusing C2 ScanParam conversion and representation and unchanged TaskInfo. All published getters verified before actual exec(IRSTScanTask); binary64 bits, independent frames, full uint32 ScanType controls and all four actions preserved. Shared Return observer and Scheduling admission/lifetime engine; no synthetic metadata or physical execution claim.",
+      "limitations": [
+        "Mock-provider qualification only; Return completion does not prove physical scanning, acquisition or metadata delivery.",
+        "Shared Return workers are established before dispatch; a failed public request publication still retires the real future and graph. A failed provider detach conservatively retains uncertain ownership rather than unloading code unsafely."
+      ],
       "representation": []
     },
     {
@@ -10732,27 +10754,64 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::IRSTScanTask",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_exec_scan"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Exec_Scan"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_scan.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_scan_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-024: complete owned ScanTask, reusing C2 ScanParam conversion and representation and unchanged TaskInfo. All published getters verified before actual exec(IRSTScanTask); binary64 bits, independent frames, full uint32 ScanType controls and all four actions preserved. Shared Return observer and Scheduling admission/lifetime engine; no synthetic metadata or physical execution claim.",
+      "limitations": [
+        "Mock-provider qualification only; Return completion does not prove physical scanning, acquisition or metadata delivery.",
+        "Shared Return workers are established before dispatch; a failed public request publication still retires the real future and graph. A failed provider detach conservatively retains uncertain ownership rather than unloading code unsafely."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Scan"
+            }
+          ]
         },
         {
           "upstream": "getParams",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Scan"
+            }
+          ]
         },
         {
           "upstream": "getTaskInfo",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Exec_Scan"
+            }
+          ]
         }
       ]
     },
@@ -12960,9 +13019,9 @@
       "native": [],
       "ada": [],
       "tests": [],
-      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks. IRMEL-ADA-023 adds actual exec(IRSTStareTask) with complete owned parameters and the existing TaskInfo; metadata remains independent.",
+      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks. IRMEL-ADA-023 adds actual exec(IRSTStareTask) with complete owned parameters and the existing TaskInfo; metadata remains independent. IRMEL-ADA-024 adds actual exec(IRSTScanTask) reusing complete C2 ScanParam and TaskInfo; metadata remains independent.",
       "limitations": [
-        "Seven Scheduling-specific operations remain missing: two other exec overloads, send(PrioritizedTrackListCmd), and four other registrations. AbortTask and StareTask future completion is independent of ExecuteTaskAck and TaskExecutingRep; no physical task abortion or metadata delivery is inferred.",
+        "Six Scheduling-specific operations remain missing: exec(IRSTTrackTask), send(PrioritizedTrackListCmd), and four other registrations. AbortTask, StareTask and ScanTask futures are independent of ExecuteTaskAck and TaskExecutingRep; no physical execution or metadata delivery is inferred.",
         "Disable is performed only inside Close; there is no standalone Disable.",
         "Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.",
         "Positive evidence is mock-provider only; no real provider or hardware tasking ran."
@@ -15652,7 +15711,7 @@
   "priorities": [
     "C2 EraseCommand and typed EraseCommandType result; no speculative commands.",
     "Independent C2 SystemTrackDataResponse send; reuse value conversion, not Track request accounting.",
-    "Scheduling exec(IRSTScanTask/IRSTStareTask/IRSTTrackTask), send(PrioritizedTrackListCmd) and four remaining callback families as successive vertical slices on the IRMEL-ADA-011 owner foundation.",
+    "Scheduling exec(IRSTTrackTask), send(PrioritizedTrackListCmd) and four remaining callback families as successive vertical slices on the IRMEL-ADA-011 owner foundation.",
     "LOS3D dependency closure, StackedImage reception and image-format/buffer extensions as separately qualified slices."
   ],
   "qualifications": [
@@ -15679,6 +15738,7 @@
     "IRMEL-ADA-016: StackedImage ownership/common operations only; four inherited exposures safe_ada, Close-only disable partial, three required registrations and optional LOS3D missing. No acquisition or complete required-interface parity. See docs/irmel-ada-016-stacked-channel-foundation.md for actual qualification.",
     "IRMEL-ADA-018 adds the standalone bridge-owned host Buffer foundation: seven operations become safe_ada (factory, init, size, context, flag get/set/add), unique safe Ada operations 50 -> 57; address getters remain partial classifications, Buffer remains partial, BufferFlag becomes safe_ada, and generic application-managed buffers become partial. No registration, checkout release, image-layout or physical GPU/RDMA support. Mock qualification only.",
     "IRMEL-ADA-020: application-owned host Buffer registration/unregistration exposed as safe Ada on the four required channel families (Image control-only); eight inherited exposures improve without increasing the 57 unique safe Ada operations. Both common operations remain partial overall. Success does not prove callback quiescence; unresolved provider ownership/checkouts retain the native graph. See docs/irmel-ada-020-buffer-registration.md for qualification and limitations.",
-    "IRMEL-ADA-022: actual SchedulingChannel::exec(AbortTask), complete TaskInfo and all four TaskListAction alternatives gain a safe Ada path with Enabled-only Scheduling admission and the shared Return future engine. Unique safe Ada operations 57 -> 58. Future results and independent ExecuteTaskAck/TaskExecutingRep reception do not establish physical task abortion. No private AbortTask getter exists; fidelity is verified on TaskInfo before real construction. Mock-provider qualification only; see docs/irmel-ada-022-scheduling-abort-task.md."
+    "IRMEL-ADA-022: actual SchedulingChannel::exec(AbortTask), complete TaskInfo and all four TaskListAction alternatives gain a safe Ada path with Enabled-only Scheduling admission and the shared Return future engine. Unique safe Ada operations 57 -> 58. Future results and independent ExecuteTaskAck/TaskExecutingRep reception do not establish physical task abortion. No private AbortTask getter exists; fidelity is verified on TaskInfo before real construction. Mock-provider qualification only; see docs/irmel-ada-022-scheduling-abort-task.md.",
+    "IRMEL-ADA-024: complete Scheduling exec(IRSTScanTask), reusing existing C2 ScanParam and TaskInfo without duplicate type credit. Unique safe Ada operations 59 -> 60; six Scheduling-specific operations remain missing, SchedulingChannel remains partial. See docs/irmel-ada-024-scheduling-scan-task.md for actual qualification and limitations."
   ]
 }

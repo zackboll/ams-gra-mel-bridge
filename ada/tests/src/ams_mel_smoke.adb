@@ -1,3 +1,4 @@
+with AMS_MEL_IR_Scheduling_Scan_Tests;
 with Ada.Text_IO;
 with AMS_MEL_IR_Scheduling_Abort_Tests;
 with AMS_MEL_IR_Scheduling_Stare_Tests;
@@ -282,6 +283,7 @@ begin
    AMS_MEL_IR_Track_System_Data_Tests.Run (Provider_Path);
    AMS_MEL_IR_Scheduling_Abort_Tests.Run (Provider_Path);
    AMS_MEL_IR_Scheduling_Stare_Tests.Run (Provider_Path);
+   AMS_MEL_IR_Scheduling_Scan_Tests.Run (Provider_Path);
    AMS_MEL_IR_Scheduling_Tests.Run (Provider_Path);
    AMS_MEL_IR_Stacked_Tests.Run (Provider_Path);
    AMS_MEL_IR_Buffer_Tests.Run (Provider_Path);

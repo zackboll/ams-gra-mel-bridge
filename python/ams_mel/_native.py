@@ -1330,6 +1330,11 @@ class IrTaskInfoV1(ctypes.Structure):
                 ("action", ctypes.c_uint32), ("precedence_within_priority", ctypes.c_uint32),
                 ("priority", ctypes.c_uint32)]
 
+class IrScanTaskV1(ctypes.Structure):
+    _fields_ = [("scan_parameters", IrScanParamV1), ("task_info", IrTaskInfoV1),
+                ("command_id", ctypes.c_uint32)]
+
+
 class IrStareTaskV1(ctypes.Structure):
     _fields_ = [("center_azimuth_rad", ctypes.c_double), ("center_elevation_rad", ctypes.c_double),
                 ("duration_ns", ctypes.c_int64), ("elevation_frame", ctypes.c_uint32),
@@ -1348,6 +1353,10 @@ ams_mel_ir_scheduling_enable.restype = ctypes.c_int32
 ams_mel_ir_scheduling_get_capabilities = _LIBRARY.ams_mel_ir_scheduling_get_capabilities
 ams_mel_ir_scheduling_get_capabilities.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrChannelCapabilityHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_scheduling_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_scheduling_exec_scan = _LIBRARY.ams_mel_ir_scheduling_exec_scan
+ams_mel_ir_scheduling_exec_scan.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrScanTaskV1), ctypes.POINTER(IrReturnRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_exec_scan.restype = ctypes.c_int32
+
 ams_mel_ir_scheduling_exec_stare = _LIBRARY.ams_mel_ir_scheduling_exec_stare
 ams_mel_ir_scheduling_exec_stare.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrStareTaskV1), ctypes.POINTER(IrReturnRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_scheduling_exec_stare.restype = ctypes.c_int32
@@ -2654,6 +2663,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_stacked_close",
     "ams_mel_ir_scheduling_exec_abort",
     "ams_mel_ir_scheduling_exec_stare",
+    "ams_mel_ir_scheduling_exec_scan",
     "ams_mel_ir_scheduling_close",
     "ams_mel_ir_track_metadata_open",
     "ams_mel_ir_track_metadata_receive",

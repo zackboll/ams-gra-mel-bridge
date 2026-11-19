@@ -192,6 +192,8 @@ class AbiTests(unittest.TestCase):
             "ams_mel_ir_scheduling_enable": [owner],
             "ams_mel_ir_scheduling_get_capabilities": [owner,
                                                        pointer(_native.IrChannelCapabilityHandle)],
+            "ams_mel_ir_scheduling_exec_scan": [owner, pointer(_native.IrScanTaskV1),
+                                                   pointer(_native.IrReturnRequestHandle)],
             "ams_mel_ir_scheduling_exec_stare": [owner, pointer(_native.IrStareTaskV1),
                                                    pointer(_native.IrReturnRequestHandle)],
             "ams_mel_ir_scheduling_exec_abort": [owner, pointer(_native.IrTaskInfoV1),
@@ -213,6 +215,19 @@ class AbiTests(unittest.TestCase):
                                 ("open", "receive", "get_counters", "close", "event_view", "event_close")))
         import ams_mel
         self.assertFalse([n for n in dir(ams_mel) if "schedul" in n.lower()])
+
+    def test_private_scheduling_scan_layout(self) -> None:
+        """Raw ScanTask ABI only, checked against a strict compiled C11 probe."""
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-pedantic-errors",
+                            "-Wall", "-Wextra", "-Werror", "-I" + str(root / "native/include"),
+                            str(root / "native/tests/scheduling_scan_layout_probe.c"),
+                            "-o", str(executable)], check=True)
+            actual = [int(v) for v in subprocess.check_output([str(executable)], text=True).split()]
+        self.assertEqual(actual, self._layout(_native.IrScanTaskV1,
+                                             "scan_parameters", "task_info", "command_id"))
 
     def test_private_scheduling_stare_layout(self) -> None:
         """Raw StareTask ABI only, checked against a strict compiled C11 probe."""
@@ -1421,6 +1436,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_stacked_close",
                 "ams_mel_ir_scheduling_exec_abort",
                 "ams_mel_ir_scheduling_exec_stare",
+                "ams_mel_ir_scheduling_exec_scan",
                 "ams_mel_ir_scheduling_close",
                 "ams_mel_ir_track_metadata_open",
                 "ams_mel_ir_track_metadata_receive",
@@ -1551,8 +1567,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 333)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 333)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 334)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 334)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1560,7 +1576,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 333)
+        self.assertEqual(len(exported), 334)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

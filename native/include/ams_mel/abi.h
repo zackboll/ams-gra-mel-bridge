@@ -3378,6 +3378,23 @@ typedef struct ams_mel_ir_task_info_v1 {
     uint32_t priority;
 } ams_mel_ir_task_info_v1;
 
+/* Complete owned ScanTask input reusing the frozen C2 ScanParam and TaskInfo.
+ * All double bits and uint32 values are copied without normalization. */
+typedef struct ams_mel_ir_scan_task_v1 {
+    ams_mel_ir_scan_param_v1 scan_parameters;
+    ams_mel_ir_task_info_v1 task_info;
+    uint32_t command_id;
+} ams_mel_ir_scan_task_v1;
+
+/* Submit exactly SchedulingChannel::exec(IRSTScanTask). Same Enabled admission,
+ * ownership, output-slot, exception and Return wait/close contract as exec_abort.
+ * Invalid ScanParam discriminators/action reject before dispatch. No callbacks
+ * are synthesized. Success means scheduling acceptance, not physical scanning. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_exec_scan(
+    ams_mel_ir_scheduling *scheduling, const ams_mel_ir_scan_task_v1 *task,
+    ams_mel_ir_return_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* Owned StareTask input. Angles are IEEE-754 double radians, frame references
  * are independently Inertial=0 or Aircraft=1, duration is signed nanoseconds.
  * No range, time-order, priority or identifier constraints are inferred. */
