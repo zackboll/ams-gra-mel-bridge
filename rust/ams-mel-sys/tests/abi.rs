@@ -1743,8 +1743,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 332);
-    assert_eq!(exported.len(), 332);
+    assert_eq!(declared.len(), 333);
+    assert_eq!(exported.len(), 333);
     assert!(declared.windows(2).all(|pair| pair[0] != pair[1]));
     assert!(exported.windows(2).all(|pair| pair[0] != pair[1]));
     assert_eq!(declared, exported);

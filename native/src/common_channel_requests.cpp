@@ -95,34 +95,41 @@ struct ams_mel_test_common_channel {
 namespace {
 using namespace ams::iface;
 using namespace ams_mel_common;
-enum class CommonFailure { None, Allocation, WorkerLaunch };
-CommonFailure common_failure() noexcept
+enum class CommonFailure { None, Allocation, WorkerLaunch, AfterClaim, Detach };
+CommonFailure common_failure(const char *name) noexcept
 {
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
-    const char *value = std::getenv("AMS_MEL_TEST_COMMON_POST_SEND_FAILURE");
+    const char *value = std::getenv(name);
     if (value && std::strcmp(value, "allocation") == 0) return CommonFailure::Allocation;
     if (value && std::strcmp(value, "worker-launch") == 0) return CommonFailure::WorkerLaunch;
+    if (value && std::strcmp(value, "after-claim") == 0) return CommonFailure::AfterClaim;
+    if (value && std::strcmp(value, "detach") == 0) return CommonFailure::Detach;
+#else
+    (void)name;
 #endif
     return CommonFailure::None;
 }
 
 template<typename Completion, typename Input, typename Owner, typename Send,
-         typename Arm, typename Retain, typename Run>
+         typename Run>
 ams_mel_status_t submit_common(const CommonChannelAccess& access, Owner **output,
-    Send send, Arm arm, Retain retain, Run run,
+    Send send, Run run,
     char *out, std::size_t capacity, std::size_t *required) noexcept
 {
     std::shared_ptr<Completion> completion;
     std::shared_ptr<Input> input;
     std::unique_ptr<Owner> owner;
-    std::unique_ptr<std::thread> worker;
+    const auto failure = common_failure("AMS_MEL_TEST_COMMON_PRE_SEND_FAILURE");
+    const bool publication_failure =
+        common_failure("AMS_MEL_TEST_COMMON_POST_SEND_FAILURE") != CommonFailure::None ||
+        common_failure("AMS_MEL_TEST_C2_POST_SEND_FAILURE") != CommonFailure::None;
     try {
+        if (failure == CommonFailure::Allocation) throw std::bad_alloc{};
         completion = std::make_shared<Completion>();
         input = std::make_shared<Input>();
         input->completion = completion;
         owner = std::make_unique<Owner>();
         owner->state = completion;
-        worker = std::make_unique<std::thread>();
     } catch (...) {
         diagnostic("allocation failed before provider send", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
@@ -142,55 +149,84 @@ ams_mel_status_t submit_common(const CommonChannelAccess& access, Owner **output
             diagnostic("common channel is not available", out, capacity, required);
             return AMS_MEL_PROVIDER_FAILED;
         }
+        if (failure == CommonFailure::AfterClaim) throw std::bad_alloc{};
     } catch (...) {
-        /* An adapter throwing after claim cannot be unwound as a normal
-         * refusal: keep the claim and provider graph forever instead. */
-        if (!completion->claim.empty()) {
-            arm(input);
-            retain(input);
-        }
-        diagnostic("common channel submission lock failed", out, capacity, required);
+        channel.reset();
+        (void)completion->claim.finish();
+        diagnostic("common channel preparation failed before provider send", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
+
+    /* Thread construction AND detach can throw. Both happen before dispatch.
+     * The gate prevents the prepared thread from inspecting the future/claim.
+     * A detach failure leaves a joinable, gated thread: abort it and join while
+     * no provider task exists. No joinable thread object is abandoned. */
+    std::thread worker;
     try {
-        try {
-            input->future = send(*channel);
-            arm(input);
-        } catch (const std::exception& error) {
-            channel.reset();
-            (void)completion->claim.finish();
-            const char *what = error.what();
-            const std::string_view text = what ? std::string_view{what} : std::string_view{};
-            diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
-                       out, capacity, required);
-            return AMS_MEL_PROVIDER_EXCEPTION;
-        } catch (...) {
-            channel.reset();
-            (void)completion->claim.finish();
-            diagnostic("unknown provider send exception", out, capacity, required);
-            return AMS_MEL_PROVIDER_EXCEPTION;
-        }
-        channel.reset();
-        const auto failure = common_failure();
-        if (failure == CommonFailure::Allocation) throw std::bad_alloc{};
         if (failure == CommonFailure::WorkerLaunch)
             throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
-        *worker = std::thread{[input, run] { run(input); }};
-        worker->detach();
-        input->emergency_self.reset();
-        input->launch_state.store(1U, std::memory_order_release);
-        *output = owner.release();
-        return AMS_MEL_OK;
-    } catch (const std::bad_alloc&) {
-        retain(input);
-        diagnostic("facade allocation failed after provider send", out, capacity, required);
+        worker = std::thread{[input, run] { run(input); }};
+        if (failure == CommonFailure::Detach)
+            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
+        worker.detach();
     } catch (...) {
-        retain(input);
-        if (worker && worker->joinable()) (void)worker.release();
         input->launch_state.store(2U, std::memory_order_release);
-        diagnostic("facade worker launch failed", out, capacity, required);
+        input->launch_state.notify_one();
+        if (worker.joinable()) worker.join();
+        channel.reset();
+        (void)completion->claim.finish();
+        diagnostic("worker establishment failed before provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
     }
-    return AMS_MEL_INTERNAL_ERROR;
+
+    /* RequestFor is std::future: move assignment, valid(), atomic store/notify,
+     * shared_ptr reset and unique_ptr release are noexcept. The destination
+     * future is empty. No bridge allocation or worker establishment remains
+     * after send returns. Family lifecycle locks were released by claim(). */
+    static_assert(std::is_nothrow_move_assignable_v<decltype(input->future)>);
+    static_assert(noexcept(input->future.valid()));
+    try {
+        input->future = send(*channel);
+    } catch (const std::exception& error) {
+        input->launch_state.store(2U, std::memory_order_release);
+        input->launch_state.notify_one();
+        channel.reset();
+        (void)completion->claim.finish();
+        input->admission = CompletionPermit{};
+        const char *what = error.what();
+        const std::string_view text = what ? std::string_view{what} : std::string_view{};
+        diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
+                   out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    } catch (...) {
+        input->launch_state.store(2U, std::memory_order_release);
+        input->launch_state.notify_one();
+        channel.reset();
+        (void)completion->claim.finish();
+        input->admission = CompletionPermit{};
+        diagnostic("unknown provider send exception", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+    channel.reset();
+    if (!input->future.valid()) {
+        input->launch_state.store(2U, std::memory_order_release);
+        input->launch_state.notify_one();
+        (void)completion->claim.finish();
+        input->admission = CompletionPermit{};
+        diagnostic("provider returned an invalid common request future", out, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
+    input->launch_state.store(1U, std::memory_order_release);
+    input->launch_state.notify_one();
+    /* Historical post-send injection now models a failed public publication,
+     * NOT a worker/allocation failure: the valid future already has its worker.
+     * Keep these negative controls to prove retirement without a public owner. */
+    if (publication_failure) {
+        diagnostic("injected publication failure; completion worker owns future", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    *output = owner.release();
+    return AMS_MEL_OK;
 }
 } // namespace
 
@@ -204,7 +240,7 @@ ams_mel_status_t submit_return(const CommonChannelAccess& access, ReturnSend sen
     if (!send || !request || *request || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
     return submit_common<ReturnCompletion, ReturnWorkerInput>(access, request,
         [send, context](irmel::Channel& channel) { return send(channel, context); },
-        arm_return_worker, retain_return_worker, run_return_worker, out, capacity, required);
+        run_return_worker, out, capacity, required);
 }
 
 ams_mel_status_t submit_common_keepalive(const CommonChannelAccess& access,
@@ -215,7 +251,7 @@ ams_mel_status_t submit_common_keepalive(const CommonChannelAccess& access,
     if (!request || *request || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
     return submit_common<ReturnCompletion, ReturnWorkerInput>(access, request,
         [](irmel::Channel& channel) { return channel.sendKeepAliveRep(); },
-        arm_return_worker, retain_return_worker, run_return_worker, out, capacity, required);
+        run_return_worker, out, capacity, required);
 }
 
 ams_mel_status_t submit_common_comms(const CommonChannelAccess& access,
@@ -233,7 +269,7 @@ ams_mel_status_t submit_common_comms(const CommonChannelAccess& access,
         return submit_common<CommsCompletion, CommsWorkerInput>(access, request,
             [value = std::move(upstream)](irmel::Channel& channel) mutable {
                 return channel.send(std::move(value));
-            }, arm_comms_worker, retain_comms_worker, run_comms_worker, out, capacity, required);
+            }, run_comms_worker, out, capacity, required);
     } catch (...) {
         diagnostic("CommsTest command preparation failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
@@ -573,9 +609,9 @@ void complete_return(const std::shared_ptr<ReturnCompletion>& state,
         auto outcome = AMS_MEL_PROBE_GET(Return, future.get());
         if (outcome) {
             const auto& value = outcome.get();
-            if (!value) {
+            if (!value || value.use_count() == 0) {
                 kind = CompletionKind::ProviderFailure;
-                message = "provider returned null successful Return result";
+                message = "provider returned null or unowned successful Return result";
             } else if (!map_return(*value, result.value)) {
                 kind = CompletionKind::ProviderFailure;
                 message = "provider returned unknown IR Return value";
@@ -628,8 +664,10 @@ void complete_return(const std::shared_ptr<ReturnCompletion>& state,
 
 void run_return_worker(const std::shared_ptr<ReturnWorkerInput>& input) noexcept
 {
-    while (input->launch_state.load(std::memory_order_acquire) == 0U)
-        std::this_thread::yield();
+    unsigned launch;
+    while ((launch = input->launch_state.load(std::memory_order_acquire)) == 0U)
+        input->launch_state.wait(0U, std::memory_order_acquire);
+    if (launch == 2U) return; // pre-send abort; never inspect an invalid future
     AMS_MEL_PROBE_WORKER(Return);
     try {
         complete_return(input->completion, input->future); AMS_MEL_PROBE_RETURN(Return);
@@ -713,8 +751,10 @@ void complete_comms(const std::shared_ptr<CommsCompletion>& state,
 }
 void run_comms_worker(const std::shared_ptr<CommsWorkerInput>& input) noexcept
 {
-    while (input->launch_state.load(std::memory_order_acquire) == 0U)
-        std::this_thread::yield();
+    unsigned launch;
+    while ((launch = input->launch_state.load(std::memory_order_acquire)) == 0U)
+        input->launch_state.wait(0U, std::memory_order_acquire);
+    if (launch == 2U) return; // pre-send abort; never inspect an invalid future
     AMS_MEL_PROBE_WORKER(Comms);
     try { complete_comms(input->completion, input->future); AMS_MEL_PROBE_RETURN(Comms); }
     catch (...) { arm_comms_worker(input); retain_comms_worker(input); }

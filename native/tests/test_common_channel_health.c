@@ -12,6 +12,7 @@
 extern int ams_mel_test_completion_wait(unsigned, unsigned, uint64_t);
 extern int ams_mel_test_completion_snapshot(unsigned, uint64_t *);
 extern int ams_mel_test_completion_owner(unsigned, uint64_t, uint64_t *);
+extern int ams_mel_test_completion_owner_notify(unsigned, unsigned, uint64_t, uint64_t *);
 typedef int (*gate_fn)(unsigned, uint64_t, uint64_t *, uint64_t *);
 typedef int (*release_fn)(unsigned, unsigned);
 typedef int (*send_barrier_fn)(unsigned, unsigned, unsigned);
@@ -292,13 +293,12 @@ int main(int argc, char **argv)
             CHECK(ams_mel_test_common_send_keepalive(common, &ret, NULL, 0, NULL) ==
                   AMS_MEL_RESOURCE_EXHAUSTED && !ret);
             CHECK(count(path, "keepalive_sent\n") == (comms ? 0U : 1U));
-            CHECK(ams_mel_test_completion_snapshot(family, counters));
-            CHECK(counters[0] == 0U && counters[3] == 0U &&
-                  counters[4] == 0U && counters[5] == 0U);
             CHECK(count(path, "control_destroyed\n") == 0U &&
                   count(path, "manager_destroyed\n") == 0U);
         } else {
-            CHECK(ams_mel_test_completion_wait(family, 1, 1U));
+            /* get-entry follows all Worker startup accounting. Observing only
+             * active can race the subsequent peak update in start(). */
+            CHECK(ams_mel_test_completion_wait(family, 4, 1U));
             CHECK(ams_mel_test_completion_snapshot(family, counters) && counters[2] == 1U);
         }
     }
@@ -334,8 +334,10 @@ int main(int argc, char **argv)
             CHECK(ams_mel_test_health_callbacks(metadata, &callbacks) && callbacks == 1U);
         }
     }
-    if (!weak && !first && !throws && !post) {
-        if (parent) {
+    if (!weak && !first && !throws) {
+        if (post) {
+            CHECK(release_family(family, 1));
+        } else if (parent) {
             CHECK(ams_mel_ir_return_request_close(&ret, NULL, 0, NULL) == AMS_MEL_OK);
             CHECK(release_family(1, 1));
         } else {
@@ -363,13 +365,16 @@ int main(int argc, char **argv)
         CHECK(ams_mel_test_completion_wait(family, 3, 1U));
         uint64_t observed = 0;
         CHECK(ams_mel_test_completion_owner(family, 1U, &observed));
+        /* The post-publication Return case also creates an admission-refused
+         * Return input. Its destruction alone cannot prove worker retirement. */
+        if (post) CHECK(ams_mel_test_completion_owner_notify(family, 0, 0, &observed));
         if (health) {
             size_t requests = 99;
             CHECK(ams_mel_test_health_requests(health, &requests) && requests == 0U);
         }
     }
     CHECK(ams_mel_test_admission(NULL, 1, &token, &active, &maximum));
-    CHECK(active == (post ? 1U : 0U));
+    CHECK(active == 0U);
     CHECK(ams_mel_test_admission(NULL, 2, &token, NULL, NULL));
     if (inflight) {
         ordered(path, "health_callback_entered\n",
@@ -405,8 +410,8 @@ int main(int argc, char **argv)
     }
     CHECK(dlclose(library) == 0);
     ams_mel_test_common_close(&common);
-    if (weak || parent || inflight) CHECK(count(path, "library_unloaded\n") == 1U);
-    if (finish || detach || post) {
+    if (weak || parent || inflight || post) CHECK(count(path, "library_unloaded\n") == 1U);
+    if (finish || detach) {
         CHECK(count(path, "health_channel_destroyed\n") == 0U);
         CHECK(count(path, "control_destroyed\n") == 0U);
         CHECK(count(path, "manager_destroyed\n") == 0U);

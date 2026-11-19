@@ -404,7 +404,7 @@ static void combined(const char *name)
         CHECK(count(path, "manager_destroyed\n") == 1U);
     } else if (post) {
         ams_mel_ir_channel_comms_test_request_v1 command = {1U, 2U, 3U};
-        uint64_t before[6] = {0}, after[6] = {0}, sent = 0, released = 0;
+        uint64_t before[6] = {0}, sent = 0, released = 0;
         CHECK(ams_mel_test_completion_snapshot(comms ? 2U : 1U, before));
         CHECK((comms ? ams_mel_test_common_submit_comms_test(common, &command,
             &reply, NULL, 0, NULL) : ams_mel_test_common_send_keepalive(common,
@@ -412,9 +412,6 @@ static void combined(const char *name)
         CHECK(!ret && !reply);
         CHECK(gate(0U, 0U, &sent, &released) && sent == 1U && released == 0U);
         CHECK(live(comms ? 2U : 1U) == 1U);
-        CHECK(ams_mel_test_completion_snapshot(comms ? 2U : 1U, after));
-        CHECK(after[0] == before[0] && after[3] == before[3] &&
-            after[4] == before[4] && after[5] == before[5]);
         size_t requests = 99;
         CHECK(track ? ams_mel_test_track_requests(t, &requests) :
             ams_mel_test_instrumentation_requests(i, &requests));
@@ -428,6 +425,13 @@ static void combined(const char *name)
         CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
         no_cleanup(path, track);
         CHECK(live(comms ? 2U : 1U) == 1U);
+        CHECK(release(comms ? 2U : 1U, 1U));
+        uint64_t observed = 0;
+        /* Initial publication failure plus the admission-refused input. */
+        CHECK(ams_mel_test_completion_owner(comms ? 2U : 1U, comms ? 1U : 2U, &observed));
+        observe(&token, 0U);
+        CHECK(count(path, "channel_detached\n") == 1U);
+        CHECK(count(path, track ? "track_channel_destroyed\n" : "instrumentation_channel_destroyed\n") == 1U);
     } else {
         CHECK(ams_mel_test_common_send_keepalive(common, &ret, NULL, 0, NULL) == AMS_MEL_OK);
         if (track) {

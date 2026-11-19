@@ -1,5 +1,6 @@
 AMS_MEL_0.1 {
     global:
+        ams_mel_ir_scheduling_exec_stare;
         ams_mel_ir_scheduling_exec_abort;
         ams_mel_ir_image_checkout_open;
         ams_mel_ir_image_checkout_receive;

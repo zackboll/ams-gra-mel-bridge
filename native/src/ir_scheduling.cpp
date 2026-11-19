@@ -11,7 +11,8 @@
  * (ir_scheduling_task_executing.cpp). Nothing in this file registers any
  * Scheduling callback.
  * IRMEL-ADA-022 adds exec(AbortTask) through the shared Return engine.
- * NOT implemented: the three other SchedulingChannel::exec overloads,
+ * IRMEL-ADA-023 adds exec(IRSTStareTask) through that same engine.
+ * NOT implemented: the two other SchedulingChannel::exec overloads,
  * send(PrioritizedTrackListCmd) and the four other Scheduling
  * registerMetadataCallback overloads (SchedCreatedRep,
  * UpdateTrackListResponse, TaskEvents, ScanPerformanceReport). No translation
@@ -23,6 +24,7 @@
 #include "internal/ir_scheduling_execute_task_ack.hpp"
 #include "internal/ir_scheduling_task_executing.hpp"
 #include "internal/ir_task_info.hpp"
+#include "internal/ir_stare_task.hpp"
 
 #include <irmel/library/scheduling/SchedulingChannel.h>
 
@@ -333,6 +335,32 @@ extern "C" ams_mel_status_t ams_mel_ir_scheduling_exec_abort(
             return dynamic_cast<irmel::SchedulingChannel&>(channel).exec(
                 *static_cast<const irmel::AbortTask *>(context));
         }, &command, request, out, capacity, required);
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_scheduling_exec_stare(
+    ams_mel_ir_scheduling *owner, const ams_mel_ir_stare_task_v1 *task,
+    ams_mel_ir_return_request **request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!owner || !owner->state || !task || !request || *request || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        irmel::IRSTStareTask command;
+        if (!ams_mel::internal::convert_stare(*task, command)) {
+            diagnostic("invalid Scheduling StareTask", out, capacity, required);
+            return AMS_MEL_INVALID_ARGUMENT;
+        }
+        return ams_mel_common::submit_return(
+            ams_mel_common::scheduling_access<true>(owner),
+            [](irmel::Channel& channel, const void *context) {
+                return dynamic_cast<irmel::SchedulingChannel&>(channel).exec(
+                    *static_cast<const irmel::IRSTStareTask *>(context));
+            }, &command, request, out, capacity, required);
+    } catch (...) {
+        diagnostic("StareTask construction failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
 }
 
 namespace ams_mel::internal {

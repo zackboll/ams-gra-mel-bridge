@@ -1054,6 +1054,26 @@ static int run_failure(unsigned type, const char *kind)
     if (permanent) {
         FAILURE_CHECK(log_count(&f, send_events[type]) == 1);
         FAILURE_CHECK(no_requests(&f));
+        if (type == 0 || type == 2) {
+            FAILURE_CHECK(unsetenv(failpoints[type]) == 0);
+            FAILURE_CHECK(ams_mel_test_completion_boundary(family, 0, 0, NULL));
+            FAILURE_CHECK(f.gate(2, 1, NULL, NULL));
+            FAILURE_CHECK(ams_mel_test_completion_boundary(family, 1, 1, NULL));
+            FAILURE_CHECK(admission_is(token, 1));
+            FAILURE_CHECK(ams_mel_test_completion_boundary(family, 2, 0, NULL));
+            FAILURE_CHECK(ams_mel_test_completion_owner(family, 1, &observed));
+            FAILURE_CHECK(admission_is(token, 0));
+            failure_counts(&f, family, 0);
+            FAILURE_CHECK(submit_one(&f, type) == AMS_MEL_OK);
+            FAILURE_CHECK(f.gate(2, 1, NULL, NULL));
+            FAILURE_CHECK(ams_mel_test_completion_owner(family, 2, &observed));
+            close_requests(&f);
+            FAILURE_CHECK(ams_mel_test_admission(NULL, 2, &token, NULL, NULL));
+            cleanup(&f);
+            FAILURE_CHECK(dlclose(library) == 0);
+            printf("type=%u %s: publication refused; future retired; Session reused\n", type, kind);
+            return 1;
+        }
         FAILURE_CHECK(ams_mel_test_completion_snapshot(family, values));
         FAILURE_CHECK(values[0] == 0 && values[1] == 0 && values[4] == 0 && values[5] == 0);
         FAILURE_CHECK(ams_mel_test_completion_owner(family, 0, &observed) && observed == 0);

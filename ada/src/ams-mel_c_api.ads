@@ -2479,6 +2479,21 @@ private package AMS.MEL_C_API is
       Request_ID, Action, Precedence_Within_Priority, Priority : Interfaces.Unsigned_32;
    end record
    with Convention => C;
+   type IR_Stare_Task_V1 is record
+      Center_Azimuth_Rad, Center_Elevation_Rad   : Interfaces.C.double;
+      Duration_NS                                : Interfaces.Integer_64;
+      Elevation_Frame, Azimuth_Frame, Command_ID : Interfaces.Unsigned_32;
+      Info                                       : IR_Task_Info_V1;
+   end record
+   with Convention => C;
+   function IR_Scheduling_Exec_Stare
+     (Handle              : Scheduling_Handle;
+      Value               : access constant IR_Stare_Task_V1;
+      Output              : access Return_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_exec_stare";
    function IR_Scheduling_Exec_Abort
      (Handle              : Scheduling_Handle;
       Info                : access constant IR_Task_Info_V1;
