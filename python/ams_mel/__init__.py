@@ -89,6 +89,10 @@ from .ir import (
     PositionSolutionState,
     PositionVelocityCovariance,
     CameraProtectStatus,
+    CameraProtectCommand,
+    CameraProtectCompleted,
+    CameraProtectRejected,
+    CameraProtectRequest,
     CameraProtectResponse,
     CameraProtectResponseOpenError,
     CameraProtectResponseStream,
@@ -244,6 +248,10 @@ from . import _native
 # Keep public introspection and pickle paths independent of implementation files.
 for _public_symbol in (
     CameraProtectStatus,
+    CameraProtectCommand,
+    CameraProtectCompleted,
+    CameraProtectRejected,
+    CameraProtectRequest,
     CameraProtectResponse,
     CameraProtectResponseOpenError,
     CameraProtectResponseStream,
@@ -419,6 +427,10 @@ del _public_symbol
 
 
 __all__ = [
+    "CameraProtectCommand",
+    "CameraProtectCompleted",
+    "CameraProtectRejected",
+    "CameraProtectRequest",
     "CameraProtectStatus",
     "CameraProtectResponse",
     "CameraProtectResponseOpenError",

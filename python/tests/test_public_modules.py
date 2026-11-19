@@ -42,6 +42,8 @@ class PublicModuleTests(unittest.TestCase):
         for name in ('Session', 'ChannelView', 'CommandReturn', 'MelErrorCode',
                      'ImageStream', 'HealthStatusChannel', 'ControlChannel',
                      'CameraProtectStatus', 'CameraProtectResponse',
+                     'CameraProtectCommand', 'CameraProtectCompleted',
+                     'CameraProtectRejected', 'CameraProtectRequest',
                      'CameraProtectResponseOpenError', 'CameraProtectResponseStream',
                      'Quaternion', 'LineOfSightQuaternion',
                      'LineOfSightQuaternionOpenError', 'LineOfSightQuaternionStream'):
@@ -63,6 +65,9 @@ class PublicModuleTests(unittest.TestCase):
             ir.CommsCompleted(ir.CommsTestReport(1, 2)),
             ir.SensorType(0xFFFFFFFF),
             ir.CameraProtectResponse(0xFFFFFFFF, -(1 << 63), ir.CameraProtectStatus.UNAVAILABLE),
+            ir.CameraProtectCommand(0xFFFFFFFF, -(1 << 63), True),
+            ir.CameraProtectCompleted(ir.CameraProtectResponse(0, -1, ir.CameraProtectStatus.UNSUPPORTED)),
+            ir.CameraProtectRejected(ir.MelErrorCode(99), 'complete UTF-8 €'),
             ir.Quaternion(1.0, -0.0, 2.0, -3.0),
             ir.LineOfSightQuaternion(
                 -(1 << 63), ir.Quaternion(1.0, -0.0, 2.0, -3.0),

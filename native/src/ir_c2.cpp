@@ -39,16 +39,6 @@
 namespace {
 using namespace ams::iface;
 using ams_mel_common::CommonRequestClaim;
-using ams_mel_common::ReturnCompletion;
-using ams_mel_common::ReturnWorkerInput;
-using ams_mel_common::CommsCompletion;
-using ams_mel_common::CommsWorkerInput;
-using ams_mel_common::arm_return_worker;
-using ams_mel_common::retain_return_worker;
-using ams_mel_common::run_return_worker;
-using ams_mel_common::arm_comms_worker;
-using ams_mel_common::retain_comms_worker;
-using ams_mel_common::run_comms_worker;
 
 bool valid_utf8(std::string_view value) noexcept
 {
@@ -749,7 +739,8 @@ bool reconcile_application_buffer(ams_mel_ir_buffer& buffer) noexcept
 
 namespace ams_mel_common {
 using namespace ams::iface;
-CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *owner)
+template<bool EnabledOnly>
+CommonChannelAccess c2_common_access(const ams_mel_ir_c2 *owner)
 {
     return {owner->state,
         [](const std::shared_ptr<void>& erased) noexcept {
@@ -759,6 +750,9 @@ CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *owner)
            CommonRequestClaim& claim) {
             const auto state = std::static_pointer_cast<ChannelState>(erased);
             std::lock_guard lock{state->mutex};
+            if constexpr (EnabledOnly) {
+                if (state->lifecycle != C2Lifecycle::Enabled) return false;
+            }
             if ((state->lifecycle != C2Lifecycle::Attached &&
                  state->lifecycle != C2Lifecycle::Enabled) || !state->c2) return false;
             channel = state->c2;
@@ -790,6 +784,8 @@ CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *owner)
                 buffer, removing, result, reconcile_application_buffer, [] { return true; });
         }};
 }
+CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *owner)
+{ return c2_common_access<false>(owner); }
 } // namespace ams_mel_common
 struct ams_mel_ir_mode_request { std::shared_ptr<Completion> state; };
 struct ams_mel_ir_c2_metadata {
@@ -920,80 +916,13 @@ ams_mel_status_t submit_return_operation(
     ams_mel_ir_return_request **out_request, char *out, std::size_t capacity,
     std::size_t *required) noexcept
 {
-    const auto state = c2->state;
-    std::shared_ptr<ReturnCompletion> completion;
-    std::shared_ptr<ReturnWorkerInput> input;
-    std::unique_ptr<ams_mel_ir_return_request> owner;
-    std::unique_ptr<std::thread> worker;
-    try {
-        completion = std::make_shared<ReturnCompletion>();
-        input = std::make_shared<ReturnWorkerInput>();
-        input->completion = completion;
-        owner = std::make_unique<ams_mel_ir_return_request>();
-        owner->state = completion;
-        worker = std::make_unique<std::thread>();
-    } catch (...) {
-        diagnostic("allocation failed before provider send", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
-    std::shared_ptr<irmel::C2Channel> channel;
-    try {
-        if (!acquire_completion_permit(state->session->admission, input->admission)) {
-            diagnostic("async request limit reached", out, capacity, required);
-            return AMS_MEL_RESOURCE_EXHAUSTED;
-        }
-        if (!claim_c2_submission(state, require_enabled ? SubmissionRequirement::Enabled : SubmissionRequirement::AttachedOrEnabled, channel)) {
-            diagnostic(require_enabled ? "C2 channel is not enabled" : "C2 channel is not available", out, capacity, required);
-            return AMS_MEL_PROVIDER_FAILED;
-        }
-    } catch (...) {
-        diagnostic("C2 submission lock failed", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
-    completion->claim = CommonRequestClaim{state, finish_c2_request,
-                                           "deferred C2 cleanup failed"};
-    try {
-        try {
-            input->future = send(*channel);
-            arm_return_worker(input);
-        } catch (const std::exception& error) {
-            channel.reset();
-            (void)completion->claim.finish();
-            const char *what = error.what();
-            const std::string_view text = what ? std::string_view{what} : std::string_view{};
-            diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception", out, capacity, required);
-            return AMS_MEL_PROVIDER_EXCEPTION;
-        } catch (...) {
-            channel.reset();
-            (void)completion->claim.finish();
-            diagnostic("unknown provider send exception", out, capacity, required);
-            return AMS_MEL_PROVIDER_EXCEPTION;
-        }
-        /* Only the accounted graph may own the channel when cleanup runs. */
-        channel.reset();
-#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
-        const SubmitFailpoint failpoint = submit_failpoint();
-        if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};
-        if (failpoint == SubmitFailpoint::WorkerLaunch)
-            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
-#endif
-        *worker = std::thread{[input] { run_return_worker(input); }};
-        worker->detach();
-        input->emergency_self.reset();
-        input->launch_state.store(1U, std::memory_order_release);
-        *out_request = owner.release();
-        return AMS_MEL_OK;
-    } catch (const std::bad_alloc&) {
-        retain_return_worker(input);
-        diagnostic("facade allocation failed after provider send", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    } catch (...) {
-        retain_return_worker(input);
-        if (worker && worker->joinable()) (void)worker.release();
-        input->launch_state.store(2U, std::memory_order_release);
-        diagnostic("facade worker launch failed", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
+    const auto access = require_enabled ? ams_mel_common::c2_common_access<true>(c2) :
+        ams_mel_common::common_from_c2(c2);
+    return ams_mel_common::submit_return(access,
+        [](irmel::Channel& channel, const void *context) {
+            return (*static_cast<Send *>(const_cast<void *>(context)))(
+                dynamic_cast<irmel::C2Channel&>(channel));
+        }, &send, out_request, out, capacity, required);
 }
 
 template<typename Command>
@@ -1013,76 +942,10 @@ ams_mel_status_t submit_comms_operation(
     ams_mel_ir_channel_comms_request **out_request, char *out,
     std::size_t capacity, std::size_t *required) noexcept
 {
-    const auto state = c2->state;
-    std::shared_ptr<CommsCompletion> completion;
-    std::shared_ptr<CommsWorkerInput> input;
-    std::unique_ptr<ams_mel_ir_channel_comms_request> owner;
-    std::unique_ptr<std::thread> worker;
-    try {
-        completion = std::make_shared<CommsCompletion>();
-        input = std::make_shared<CommsWorkerInput>(); input->completion = completion;
-        owner = std::make_unique<ams_mel_ir_channel_comms_request>(); owner->state = completion;
-        worker = std::make_unique<std::thread>();
-    } catch (...) {
-        diagnostic("allocation failed before provider send", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
-    std::shared_ptr<irmel::C2Channel> channel;
-    try {
-        if (!acquire_completion_permit(state->session->admission, input->admission)) {
-            diagnostic("async request limit reached", out, capacity, required);
-            return AMS_MEL_RESOURCE_EXHAUSTED;
-        }
-        if (!claim_c2_submission(state, SubmissionRequirement::AttachedOrEnabled, channel)) {
-            diagnostic("C2 channel is not available", out, capacity, required);
-            return AMS_MEL_PROVIDER_FAILED;
-        }
-    } catch (...) {
-        diagnostic("C2 submission lock failed", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
-    completion->claim = CommonRequestClaim{state, finish_c2_request,
-                                           "deferred C2 cleanup failed"};
-    try {
-        try {
-            input->future = channel->send(std::move(command));
-            arm_comms_worker(input);
-        } catch (const std::exception& error) {
-            channel.reset();
-            (void)completion->claim.finish();
-            const char *what = error.what();
-            const std::string_view text = what ? std::string_view{what} : std::string_view{};
-            diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
-                       out, capacity, required);
-            return AMS_MEL_PROVIDER_EXCEPTION;
-        } catch (...) {
-            channel.reset();
-            (void)completion->claim.finish();
-            diagnostic("unknown provider send exception", out, capacity, required);
-            return AMS_MEL_PROVIDER_EXCEPTION;
-        }
-        /* Only the accounted graph may own the channel when cleanup runs. */
-        channel.reset();
-#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
-        const SubmitFailpoint failpoint = submit_failpoint();
-        if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};
-        if (failpoint == SubmitFailpoint::WorkerLaunch)
-            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
-#endif
-        *worker = std::thread{[input] { run_comms_worker(input); }}; worker->detach();
-        input->emergency_self.reset(); input->launch_state.store(1U, std::memory_order_release);
-        *out_request = owner.release(); return AMS_MEL_OK;
-    } catch (const std::bad_alloc&) {
-        retain_comms_worker(input);
-        diagnostic("facade allocation failed after provider send", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    } catch (...) {
-        retain_comms_worker(input);
-        if (worker && worker->joinable()) (void)worker.release();
-        input->launch_state.store(2U, std::memory_order_release);
-        diagnostic("facade worker launch failed", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
+    const ams_mel_ir_channel_comms_test_request_v1 input{
+        command.getCommandID(), command.getChannelID(), command.getRequestID()};
+    return ams_mel_common::submit_common_comms(ams_mel_common::common_from_c2(c2),
+        &input, out_request, out, capacity, required);
 }
 } // namespace
 

@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 #include <ams_mel/abi.h>
 
+extern int ams_mel_test_completion_owner_notify(unsigned, unsigned, uint64_t, uint64_t *);
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1301,14 +1303,14 @@ static int test_bit_post_send_failure(const char *failpoint)
     CHECK(request == NULL);
     CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
-    /* Same bounded-deadline wait as the mode variant above, for the same
-       pre-existing load-sensitivity reason. */
-    CHECK(wait_for_marker(path, "bit_completed", log, sizeof log) ==
-          EXIT_SUCCESS);
+    uint64_t observed = 0;
+    CHECK(ams_mel_test_completion_owner_notify(1, 0, 0, &observed));
+    CHECK(wait_for_marker(path, "c2_channel_destroyed", log, sizeof log) == EXIT_SUCCESS);
     CHECK(strstr(log, "bit_sent") != NULL);
     CHECK(strstr(log, "bit_completed") != NULL);
-    CHECK(strstr(log, "c2_channel_destroyed") == NULL);
-    CHECK(strstr(log, "library_unloaded") == NULL);
+    CHECK(strstr(log, "c2_channel_destroyed") != NULL);
+    /* Earlier Mode failure cases deliberately pin this DSO in this process.
+     * Isolated shared-engine tests prove actual unload without those owners. */
     CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
     CHECK(unlink(path) == 0);
     return EXIT_SUCCESS;

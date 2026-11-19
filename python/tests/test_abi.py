@@ -17,9 +17,17 @@ class AbiTests(unittest.TestCase):
         from ams_mel import ir, _camera_protect_response
         self.assertIs(ams_mel.CameraProtectResponse, ir.CameraProtectResponse)
         self.assertIs(_camera_protect_response.C2MetadataCounters, ir.C2MetadataCounters)
-        self.assertFalse(hasattr(ams_mel.ControlChannel, "submit_camera_protect"))
+        self.assertTrue(callable(ams_mel.ControlChannel.submit_camera_protect))
         pointer = ctypes.POINTER
         signatures = {
+            "ams_mel_ir_c2_submit_camera_protect": [
+                _native.IrC2Handle, pointer(_native.IrCameraProtectCommandV1),
+                pointer(_native.IrCameraProtectRequestHandle)],
+            "ams_mel_ir_camera_protect_request_wait": [
+                _native.IrCameraProtectRequestHandle, ctypes.c_uint32,
+                pointer(_native.IrCameraProtectResultV1)],
+            "ams_mel_ir_camera_protect_request_close": [
+                pointer(_native.IrCameraProtectRequestHandle)],
             "ams_mel_ir_c2_camera_protect_open": [
                 _native.IrC2Handle, ctypes.c_size_t,
                 pointer(_native.IrCameraProtectMetadataHandle), pointer(ctypes.c_uint32)],
@@ -184,6 +192,8 @@ class AbiTests(unittest.TestCase):
             "ams_mel_ir_scheduling_enable": [owner],
             "ams_mel_ir_scheduling_get_capabilities": [owner,
                                                        pointer(_native.IrChannelCapabilityHandle)],
+            "ams_mel_ir_scheduling_exec_stare": [owner, pointer(_native.IrStareTaskV1),
+                                                   pointer(_native.IrReturnRequestHandle)],
             "ams_mel_ir_scheduling_exec_abort": [owner, pointer(_native.IrTaskInfoV1),
                                                    pointer(_native.IrReturnRequestHandle)],
             "ams_mel_ir_scheduling_close": [pointer(owner)],
@@ -203,6 +213,20 @@ class AbiTests(unittest.TestCase):
                                 ("open", "receive", "get_counters", "close", "event_view", "event_close")))
         import ams_mel
         self.assertFalse([n for n in dir(ams_mel) if "schedul" in n.lower()])
+
+    def test_private_scheduling_stare_layout(self) -> None:
+        """Raw StareTask ABI only, checked against a strict compiled C11 probe."""
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-pedantic-errors",
+                            "-Wall", "-Wextra", "-Werror", "-I" + str(root / "native/include"),
+                            str(root / "native/tests/scheduling_stare_layout_probe.c"),
+                            "-o", str(executable)], check=True)
+            actual = [int(v) for v in subprocess.check_output([str(executable)], text=True).split()]
+        self.assertEqual(actual, self._layout(_native.IrStareTaskV1,
+                                             "center_azimuth_rad", "center_elevation_rad", "duration_ns",
+                                             "elevation_frame", "azimuth_frame", "command_id", "task_info"))
 
     def test_private_scheduling_abort_layout(self) -> None:
         """Raw AbortTask ABI only, checked against a strict compiled C11 probe."""
@@ -1396,6 +1420,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_scheduling_get_capabilities",
                 "ams_mel_ir_stacked_close",
                 "ams_mel_ir_scheduling_exec_abort",
+                "ams_mel_ir_scheduling_exec_stare",
                 "ams_mel_ir_scheduling_close",
                 "ams_mel_ir_track_metadata_open",
                 "ams_mel_ir_track_metadata_receive",
@@ -1526,8 +1551,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 332)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 332)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 333)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 333)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1535,7 +1560,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 332)
+        self.assertEqual(len(exported), 333)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

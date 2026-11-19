@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes as _ctypes
 
 from . import _native
+from ._camera_protect_command import CameraProtectCommand, CameraProtectRequest, _submit_camera_protect
 from ._c2_metadata import C2MetadataStream
 from ._camera_protect_response import CameraProtectResponseStream, _open_camera_protect_response
 from ._errors import (
@@ -94,6 +95,15 @@ class ControlChannel:
             metadata.__del__()
             raise
         return metadata
+
+    def submit_camera_protect(self, command: CameraProtectCommand) -> CameraProtectRequest:
+        """Submit once on an explicitly Enabled C2 channel; never register metadata.
+
+        The native owner enforces Enabled admission. The returned observer retains
+        no Python parent, and neither its Close nor timeout cancels provider work.
+        Externally serialize submission with other operations on this channel.
+        """
+        return _submit_camera_protect(self, command)
 
     def open_camera_protect_response(self, queue_capacity: int = 16) -> CameraProtectResponseStream:
         """Opt into CameraProtectCmdResp once while Attached or Enabled.

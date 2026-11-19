@@ -128,15 +128,27 @@ static void run(unsigned family, int throws, int close_during, const char *failu
     if (failure) {
         CHECK(s.status == AMS_MEL_INTERNAL_ERROR && !s.mode && !s.ret && !s.comms);
         CHECK(ams_mel_test_c2_submission(NULL, 1, &token, &requests) && requests == 1);
-        CHECK(ams_mel_test_completion_snapshot(family, after));
-        CHECK(after[0] == before[0] && after[4] == before[4]);
+        if (family == 0) {
+            CHECK(ams_mel_test_completion_snapshot(family, after));
+            CHECK(after[0] == before[0] && after[4] == before[4]);
+            CHECK(ams_mel_test_c2_submission(NULL, 2, &token, NULL));
+            CHECK(dlclose(library) == 0);
+            CHECK(occurrences(path, "library_unloaded\n") == 0);
+            CHECK(unlink(path) == 0);
+            return; /* Mode engine is outside this Return/Comms correction. */
+        }
+        CHECK(gate(2, 1, NULL, NULL));
+        CHECK(ams_mel_test_completion_owner(family, owners + 1, &observed));
+        CHECK(ams_mel_test_c2_submission(NULL, 1, &token, &requests) && requests == 0);
         CHECK(ams_mel_test_c2_submission(NULL, 2, &token, NULL));
+        if (!close_during) {
+            CHECK(ams_mel_ir_c2_close(&s.channel, NULL, 0, NULL) == AMS_MEL_OK);
+            CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+        }
         CHECK(dlclose(library) == 0);
-        CHECK(occurrences(path, "c2_channel_destroyed\n") == 0);
-        CHECK(occurrences(path, "control_destroyed\n") == 0);
-        CHECK(occurrences(path, "library_unloaded\n") == 0);
+        CHECK(occurrences(path, "library_unloaded\n") == 1);
         CHECK(unlink(path) == 0);
-        return; /* isolated process: intentionally retained future is never consumed */
+        return;
     }
     if (throws) {
         CHECK(s.status == AMS_MEL_PROVIDER_EXCEPTION && !s.mode && !s.ret && !s.comms);

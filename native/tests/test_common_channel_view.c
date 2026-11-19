@@ -9,6 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 
+extern int ams_mel_test_completion_boundary(unsigned, unsigned, uint64_t, uint64_t *);
 extern int ams_mel_test_completion_wait(unsigned, unsigned, uint64_t);
 extern int ams_mel_test_completion_snapshot(unsigned, uint64_t *);
 extern int ams_mel_test_completion_owner(unsigned, uint64_t, uint64_t *);
@@ -255,8 +256,18 @@ int main(int argc, char **argv)
         CHECK(ams_mel_test_admission(NULL, 1, &token, &active, &maximum) && active == 1U);
     }
     if (failure) {
+        CHECK(ams_mel_test_completion_boundary(comms ? 2U : 1U, 0, 0, NULL));
         CHECK(dlclose(library) == 0);
         CHECK(count(path, image ? "channel_destroyed\n" : "c2_channel_destroyed\n") == 0U);
+        CHECK(gate(2, 1, &sent, &released));
+        uint64_t observed = 0;
+        CHECK(ams_mel_test_completion_boundary(comms ? 2U : 1U, 1, 1, NULL));
+        CHECK(ams_mel_test_completion_boundary(comms ? 2U : 1U, 2, 0, NULL));
+        CHECK(ams_mel_test_completion_owner(comms ? 2U : 1U, comms ? 1U : 2U, &observed));
+        CHECK(ams_mel_test_admission(NULL, 1, &token, &active, &maximum) && active == 0U);
+        CHECK(ams_mel_test_admission(NULL, 2, &token, NULL, NULL));
+        CHECK(count(path, "library_unloaded\n") == 1U);
+        CHECK(count(path, "channel_detached\n") == 1U);
         ams_mel_test_common_close(&common);
         CHECK(unlink(path) == 0);
         return 0;
