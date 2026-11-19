@@ -44,6 +44,67 @@ package body AMS.MEL.IR.Scheduling.Commands is
       return (if Value'Length = 0 then "native common Channel operation failed" else Value);
    end Failure_Message;
 
+   function Exec_Track (Channel : Scheduling_Channel; Value : Track_Task) return Track_Request is
+      Raw : aliased C.IR_Track_Task_V1 :=
+        (Track_Parameters =>
+           (Duration_NS => Value.Parameters.Duration_NS,
+            Count       => Value.Parameters.Count,
+            Targets     => [others => (0, 0.0, 0.0, 0.0, 0.0)]),
+         Command_ID       => Value.Command_ID,
+         Info             =>
+           (Value.Info.System_Time_NS,
+            Value.Info.Request_ID,
+            Task_List_Action'Pos (Value.Info.Action),
+            Value.Info.Precedence_Within_Priority,
+            Value.Info.Priority));
+      D   : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      for Index in Value.Parameters.Targets'Range loop
+         declare
+            Target : Track_Target renames Value.Parameters.Targets (Index);
+         begin
+            Raw.Track_Parameters.Targets (Index - 1) :=
+              (Target.Target_ID,
+               Interfaces.C.double (Target.Location_Azimuth_Rad),
+               Interfaces.C.double (Target.Location_Elevation_Rad),
+               Interfaces.C.double (Target.Rate_Azimuth_Rad_Per_Second),
+               Interfaces.C.double (Target.Rate_Elevation_Rad_Per_Second));
+         end;
+      end loop;
+      return Result : Track_Request do
+         Check_Submission
+           (C.IR_Scheduling_Exec_Track
+              (Channel.Handle,
+               Raw'Access,
+               Result.Owner.Handle'Access,
+               D'Address,
+               D'Length,
+               R'Access),
+            Failure_Message (D));
+      end return;
+   end Exec_Track;
+
+   function Wait (Request : Track_Request; Timeout_Milliseconds : Natural) return Track_Result
+   is (Owner => Wait (Request.Owner, Timeout_Milliseconds));
+
+   function Status (Result : Track_Result) return Outcome
+   is (Status (Result.Owner));
+
+   function Value (Result : Track_Result) return Command_Return
+   is (Value (Result.Owner));
+
+   function Rejection_Code (Result : Track_Result) return Error_Code
+   is (Rejection_Code (Result.Owner));
+
+   function Description (Result : Track_Result) return String
+   is (Description (Result.Owner));
+
+   procedure Close (Request : in out Track_Request) is
+   begin
+      Close (Request.Owner);
+   end Close;
+
    function Exec_Scan (Channel : Scheduling_Channel; Value : Scan_Task) return Scan_Request is
       Raw : aliased C.IR_Scan_Task_V1 :=
         (Scan_Parameters => AMS.MEL.IR.Scan_Conversion.To_Raw (Value.Parameters),

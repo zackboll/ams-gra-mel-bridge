@@ -3378,6 +3378,39 @@ typedef struct ams_mel_ir_task_info_v1 {
     uint32_t priority;
 } ams_mel_ir_task_info_v1;
 
+/* Complete owned TrackTask input. All 255 entries are meaningful stored values,
+ * including those beyond count. Count > 255 rejects before provider admission.
+ * No normalization, association, frame conversion or deduplication is applied. */
+#define AMS_MEL_IR_TRACK_TASK_CAPACITY 255U
+typedef struct ams_mel_ir_track_task_data_v1 {
+    int32_t target_id;
+    double location_azimuth_rad;
+    double location_elevation_rad;
+    double rate_azimuth_rad_per_second;
+    double rate_elevation_rad_per_second;
+} ams_mel_ir_track_task_data_v1;
+
+typedef struct ams_mel_ir_track_task_param_v1 {
+    int64_t duration_ns;
+    uint32_t count;
+    ams_mel_ir_track_task_data_v1 targets[AMS_MEL_IR_TRACK_TASK_CAPACITY];
+} ams_mel_ir_track_task_param_v1;
+
+typedef struct ams_mel_ir_track_task_v1 {
+    ams_mel_ir_track_task_param_v1 track_parameters;
+    ams_mel_ir_task_info_v1 task_info;
+    uint32_t command_id;
+} ams_mel_ir_track_task_v1;
+
+/* Exactly SchedulingChannel::exec(IRSTTrackTask), using the same Enabled-only
+ * admission, Return observer, output-slot and lifetime contract as exec_abort.
+ * All signed duration/ID and binary64 component bits are preserved. Success is
+ * scheduling acceptance, not physical tracking. No metadata is synthesized. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_exec_track(
+    ams_mel_ir_scheduling *scheduling, const ams_mel_ir_track_task_v1 *task,
+    ams_mel_ir_return_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* Complete owned ScanTask input reusing the frozen C2 ScanParam and TaskInfo.
  * All double bits and uint32 values are copied without normalization. */
 typedef struct ams_mel_ir_scan_task_v1 {
