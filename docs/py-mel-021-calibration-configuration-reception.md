@@ -263,3 +263,64 @@ GitHub REST initially hit its authenticated rate limit; GraphQL remained availab
 and independently confirmed #243 merged, no overlapping open PR, repository
 auto-merge disabled, and main conversation/review requirements. Final commit/tree,
 hosted runs, mergeability and independent-review status are recorded on the PR.
+
+
+### Completed combined-source local qualification
+
+Ordinary conflict-free merge of main #244 produced implementation commit
+`c65f70910b19c72caf0d0693425d011a69fbc88f`, tree
+`b05d02686baabe487fdbf30f3ef902a1d4145741`. No Python implementation/test bytes
+changed during or after the combined-source runs; recorded SHA-256s were checked.
+
+All required commands have now passed on this combined source:
+
+- `make native`; `make test-native`: PASS, 878 CTest cases.
+- `make test-python`: PASS, 775 tests with warnings as errors.
+- `make test-rust`: PASS, 640 passed / 15 intentionally ignored across 53 groups.
+- `make test-policy`: PASS, 332 tests in 14 suites.
+- `make test-docs-ci`: PASS, 128 tests in nine suites.
+- `make check-ir-api-coverage`: PASS, inventory and 75 controls.
+- `make check`: PASS, including production/test-tree isolation, native tests,
+  pinned Ada formatting, coverage, GPR smoke suite, 14 negative controls and
+  scheduling example. PATH supplies already installed GNAT 16.1.0 and GPRbuild
+  26.0.1; no toolchain install or Ada source change. Existing GPR notices about
+  the imported C project having no C sources are not hidden as source warnings.
+- `python3 scripts/check_doc_source_integrity.py`: PASS, 825 vendor files and
+  seven workflows after main reconciliation.
+- `python3 scripts/check_final_newlines.py`: PASS.
+- `python3 -W error -m compileall -q python/ams_mel python/tests`: PASS.
+- `git diff --check`: PASS.
+- Focused command above: PASS, 243 tests on combined source.
+- Source-only generation to `combined-reference` and
+  `python3 scripts/qualify_python_reference.py --inventory
+  /home/zboll/py-mel-021-evidence/combined-reference/python-reference.json`: PASS.
+
+Freshly fetched main `72492c53b0dd4a71d322bcb4b0f45a18b602ca9e` was archived
+and built separately with `make native`; the sorted `nm -D --defined-only`
+production exports match byte-for-byte: 334 entries (333 versioned functions and
+one version node). Both inventories have SHA-256
+`4ae158889e4369ad85e90295d797e3a3105193c938784a6c525b41bb23737abd`.
+The feature delta against that main is exactly the eight intended Python/test/
+task-document files; no native, ctypes, Ada, Rust, vendor or workflow changes.
+
+### Hosted evidence and independent review gate
+
+Open non-draft PR: <https://github.com/zackboll/ams-gra-mel-bridge/pull/245>.
+Implementation-head API Documentation completed **success**:
+<https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44438413255>
+(source `c65f70910b19c72caf0d0693425d011a69fbc88f`; deployment jobs skipped).
+Implementation-head Bootstrap:
+<https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44438413208>.
+At this evidence update eight jobs have passed; GCC Debug is still pending its
+final conclusion. No pending job is claimed passed. Main-added source-browser
+run <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44438413205>
+is also in progress. Exact evidence-only final HEAD/tree and its new hosted
+conclusions will be recorded in the PR ledger, avoiding a recursive self-hash.
+
+Local/remote/PR implementation identities were verified identical; GitHub reports
+MERGEABLE, OPEN, non-draft, `autoMergeRequest == null`, and repository auto-merge
+is disabled. These are not review approval. Independent final-HEAD ChatGPT review
+is outstanding and must examine nested coverage, validation, borrowing, event
+cleanup/uncertain ownership, one-shot registration, provider lifetime, compiled
+regressions, namespaces and any subsequent main changes. No self-approval, merge
+or `READY_FOR_USER_MERGE` claim is made.
