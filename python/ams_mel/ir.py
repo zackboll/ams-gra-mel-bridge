@@ -63,6 +63,9 @@ from ._navigation_types import (
     PositionVelocityCovariance,
 )
 
+from ._camera_protect_command import (
+    CameraProtectCommand, CameraProtectCompleted, CameraProtectRejected, CameraProtectRequest,
+)
 from ._camera_protect_response import (
     CameraProtectStatus,
     CameraProtectResponse,
@@ -244,6 +247,10 @@ from ._session import (
 
 
 __all__ = [
+    "CameraProtectCommand",
+    "CameraProtectCompleted",
+    "CameraProtectRejected",
+    "CameraProtectRequest",
     "CameraProtectStatus",
     "CameraProtectResponse",
     "CameraProtectResponseOpenError",

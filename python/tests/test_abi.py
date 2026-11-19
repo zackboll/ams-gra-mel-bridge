@@ -17,9 +17,17 @@ class AbiTests(unittest.TestCase):
         from ams_mel import ir, _camera_protect_response
         self.assertIs(ams_mel.CameraProtectResponse, ir.CameraProtectResponse)
         self.assertIs(_camera_protect_response.C2MetadataCounters, ir.C2MetadataCounters)
-        self.assertFalse(hasattr(ams_mel.ControlChannel, "submit_camera_protect"))
+        self.assertTrue(callable(ams_mel.ControlChannel.submit_camera_protect))
         pointer = ctypes.POINTER
         signatures = {
+            "ams_mel_ir_c2_submit_camera_protect": [
+                _native.IrC2Handle, pointer(_native.IrCameraProtectCommandV1),
+                pointer(_native.IrCameraProtectRequestHandle)],
+            "ams_mel_ir_camera_protect_request_wait": [
+                _native.IrCameraProtectRequestHandle, ctypes.c_uint32,
+                pointer(_native.IrCameraProtectResultV1)],
+            "ams_mel_ir_camera_protect_request_close": [
+                pointer(_native.IrCameraProtectRequestHandle)],
             "ams_mel_ir_c2_camera_protect_open": [
                 _native.IrC2Handle, ctypes.c_size_t,
                 pointer(_native.IrCameraProtectMetadataHandle), pointer(ctypes.c_uint32)],
