@@ -69,7 +69,7 @@ def build(root, directory, prefix):
     require(not directory.exists() and not any(p.is_symlink() for p in (directory, *directory.parents)),
             'output must be fresh with no symlink ancestors')
     directory.mkdir(parents=True)
-    epoch.toolchain(prefix)
+    prefix = epoch.toolchain(prefix)
     with tempfile.TemporaryDirectory(prefix='docs-current-') as temp:
         exported = Path(temp) / 'source'
         site, report, references = epoch.generate(root, context['commit'], exported, prefix,
@@ -198,7 +198,16 @@ def live(directory, base, evidence):
     base = base_url(base)
     files = presentation.files(directory / 'published')
     # Run the unchanged active-content/anchor policy on the isolated Ada bytes.
-    graph(presentation.files(directory / 'ada-qualified'))
+    import source_view_audit
+    ada_files = presentation.files(directory / 'ada-qualified')
+    if any(n.startswith('api/source/') for n in ada_files):
+        context = identity(ROOT)
+        with tempfile.TemporaryDirectory(prefix='docs-live-source-') as temp:
+            exported = Path(temp) / 'source'
+            epoch.export(ROOT, context['commit'], exported)
+            graph(ada_files, source_pages=source_view_audit.source_pages(exported))
+    else:
+        graph(ada_files)
     rustdoc.validate({n.removeprefix('rust/'): d for n, d in files.items() if n.startswith('rust/')})
     pythondoc.validate({n.removeprefix('python/'): d for n, d in files.items() if n.startswith('python/')})
     attempts = []

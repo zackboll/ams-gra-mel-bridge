@@ -27,6 +27,14 @@ theme = true
 syntax_highlighting = true
 type_links = true
 
+[source_view]
+schema_version = 1
+mode = "public-specifications"
+native_manifest = "docs/gnatdoc-source-native.json"
+# Source-owned opt-in only: disposable Git exports bind current source/native bytes
+# before configuration loading. Never a committed or output-authorized ledger.
+native_manifest_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
 [guides]
 mode = "authored-html"
 manifest = "docs/gnatdoc-authored.json"

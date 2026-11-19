@@ -36,7 +36,8 @@ class ResizePublicationTests(unittest.TestCase):
         original = (self.site / 'api/index.html').read_bytes()
         self.assertEqual(p.restore_document(text, original.decode(), 'api/index.html',
                                             self.authority).encode(), original)
-        self.assertTrue(graph(self.actual))
+        import source_view_audit
+        self.assertTrue(graph(self.actual, source_pages=source_view_audit.source_pages(ROOT)))
 
     def test_resealed_shell_mutations_rejected(self):
         original = self.actual['api/index.html'].decode()
