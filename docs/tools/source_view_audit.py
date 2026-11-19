@@ -144,7 +144,9 @@ def reconstruct(root, site, authority):
 
 def restore(text, original, record):
     package, source, entries = record
-    p.require(text.count(HEAD) == 1, 'missing/duplicate source stylesheet')
+    p.require(text.count(HEAD) == 1 and
+              text.count('<link rel="stylesheet" href="gnatdoc-theme.css">' + HEAD + '</head>') == 1,
+              'missing/duplicate/misplaced source stylesheet')
     text = text.replace(HEAD, '', 1)
     for entry in entries:
         if entry['anchor'] is None:

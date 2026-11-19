@@ -157,6 +157,7 @@ class SourcePublicationTests(unittest.TestCase):
                      original.replace('class="view-source"', 'class="view-source" onclick="alert(1)"', 1),
                      original.replace(source.HEAD, source.HEAD + '<script>alert(1)</script>', 1),
                      original.replace(source.HEAD, source.HEAD + source.HEAD, 1),
+                     original.replace(source.HEAD, '', 1) + source.HEAD,
                      original.replace('href="source/', 'href="https://evil.invalid/source/', 1),
                      original.replace('href="source/', 'href="source/../', 1),
                      original.replace('href="source/', 'href="source/%2e%2e/', 1)):
