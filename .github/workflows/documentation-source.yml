@@ -1,0 +1,83 @@
+name: Documentation source-view qualification (non-deploying)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: documentation-source-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOC_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  ALIRE_SETTINGS_DIR: ${{ github.workspace }}/.doc-tools/settings
+
+jobs:
+  source-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.DOC_SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install official pinned documentation tools
+        run: sh docs/tools/install_docs_toolchain.sh
+      - name: Install isolated official previous-release compatibility control
+        run: |
+          python3 -m venv .doc-tools/enhancer-016
+          .doc-tools/enhancer-016/bin/pip install --no-deps --only-binary=:all: --require-hashes \
+            -r docs/tools/enhancer-016-requirements.txt
+      - name: Reconstruct complete publication twice and qualify source-native controls
+        run: |
+          alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
+            cd ../..
+            .doc-tools/enhancer/bin/python docs/tools/docs_ci.py build \
+              --directory .doc-tools/source-qualified --gnatdoc-prefix .doc-tools/gnatdoc-26.0.0 &&
+            .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify \
+              --directory .doc-tools/source-repeated --gnatdoc-prefix .doc-tools/gnatdoc-26.0.0 &&
+            .doc-tools/enhancer/bin/python docs/tools/source_view_parity.py \
+              --candidate .doc-tools/source-qualified \
+              --manifest-sha "$(sha256sum .doc-tools/source-qualified/manifest.json | cut -d " " -f 1)" \
+              --previous-python "$PWD/.doc-tools/enhancer-016/bin/python" \
+              --output .doc-tools/source-parity.json &&
+            .doc-tools/enhancer/bin/python -W error -m unittest discover \
+              -s docs/tests -p test_source_view_publication.py -v &&
+            MEL_SEARCH_QUALIFICATION="$PWD/.doc-tools/source-qualified" \
+              .doc-tools/enhancer/bin/python -W error -m unittest discover \
+              -s docs/tests -p test_search_publication.py -v &&
+            MEL_RESIZE_QUALIFICATION="$PWD/.doc-tools/source-repeated" \
+              .doc-tools/enhancer/bin/python -W error -m unittest discover \
+              -s docs/tests -p test_resize_publication.py -v &&
+            GNATDOC_PREFIX="$PWD/.doc-tools/gnatdoc-26.0.0" make test-documentation-source'
+      - name: Install isolated Chromium qualification tools
+        run: |
+          python3 -m venv .doc-tools/browser
+          .doc-tools/browser/bin/pip install playwright==1.64.0
+          .doc-tools/browser/bin/playwright install --with-deps chromium
+      - name: Complete source-view and exhaustive search browser campaigns
+        run: |
+          .doc-tools/browser/bin/python docs/tools/source_view_browser.py \
+            --site .doc-tools/source-qualified/published --output .doc-tools/source-browser.json
+          .doc-tools/browser/bin/python docs/tools/search_browser.py \
+            --site .doc-tools/source-qualified/published --output .doc-tools/source-search-browser.json
+      - name: Retain non-authorizing diagnostics
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: source-qualification-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
+          path: |
+            .doc-tools/source-qualified/
+            .doc-tools/source-repeated/
+            .doc-tools/source-repeated-generation.log
+            .doc-tools/source-parity.json
+            .doc-tools/source-browser.json
+            .doc-tools/source-search-browser.json
+          if-no-files-found: warn

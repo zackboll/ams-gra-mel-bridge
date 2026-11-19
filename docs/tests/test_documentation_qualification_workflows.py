@@ -98,7 +98,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn('--baseline ', text)
         for name in ('resize-baseline', 'resize-current', 'resize-repeated'):
             self.assertIn('sha256sum .doc-tools/' + name + '/manifest.json', text)
-        self.assertIn('GITHUB_ACTIONS=false .doc-tools/enhancer/bin/python docs/tools/resize_parity.py', text)
+        self.assertIn('sh .doc-tools/resize-baseline-source/docs/tools/install_enhancer.sh .doc-tools/resize-baseline-enhancer', text)
+        self.assertIn('GITHUB_ACTIONS=false .doc-tools/resize-baseline-enhancer/bin/python .doc-tools/resize-baseline-source/docs/tools/resize_parity.py', text)
         self.assertIn('.doc-tools/resize-source.json', text)
         for command in ('docs/tools/docs_ci.py qualify', 'test_resize_publication.py',
                         'test_enhancer_release.py', 'test_resize_parity.py', 'docs/tools/resize_browser.py',

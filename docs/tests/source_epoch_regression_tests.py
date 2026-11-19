@@ -233,6 +233,11 @@ class GeneratedSourceTests(unittest.TestCase):
     def test_normal_verifier_rejects_removed_subtype_link_with_resealed_manifest(self):
         from check_doc_coverage import measure
         from local_type_audit import LINK, SECTION
+        # Source links are authorized siblings between the heading and snippet;
+        # retain the exact native anchor and code capture for type-link mutation.
+        source_section = re.compile(SECTION.pattern.replace(
+            '</h4><pre', '</h4>(?:<a class="view-source" target="_top" '
+            'href="source/[A-Za-z0-9_./-]+\\.html#L[0-9]+">View source</a>)?<pre'), re.S)
         with tempfile.TemporaryDirectory(dir=self.directory) as temp:
             directory = Path(temp) / 'normal'
             self.assembled_fixture(directory)
@@ -240,7 +245,7 @@ class GeneratedSourceTests(unittest.TestCase):
                           if r['containing']['name'] == 'Operational_Task_Kind')
             path = directory / 'published/api' / record['containing']['page']
             original = path.read_text()
-            section = next(m for m in SECTION.finditer(original)
+            section = next(m for m in source_section.finditer(original)
                            if m[2] == record['containing']['anchor'])
             wrapper = next(m[0] for m in LINK.finditer(section[3]))
             for replacement in ('Task_Kind', wrapper * 2,

@@ -189,8 +189,12 @@ class GraphPage(HTMLParser):
     handle_startendtag = handle_starttag
 
 
-def graph(files):
+def graph(files, *, source_pages=None):
     """Inspect served bytes, not manifest counts or data-type claims."""
+    observed_sources = {n: d for n, d in files.items() if n.startswith('api/source/')}
+    if observed_sources:
+        require(source_pages is not None and observed_sources == source_pages,
+                'source graph requires exact independently reconstructed source pages')
     import resize_audit
     if (resize_audit.EXTRAS & files.keys() or
             any(token in files.get('api/index.html', b'').lower() for token in
@@ -236,7 +240,8 @@ def verify(site, pristine, base, commit, attempts=1, interval=15, loopback=False
     files, authority = qualified(site, pristine)
     catalog = api_catalog.verify(files["guides/api-map.html"].decode("utf-8"),
                                  publication.ROOT, References(publication.ROOT, Path(pristine)))
-    expected_graph = graph(files)
+    import source_view_audit
+    expected_graph = graph(files, source_pages=source_view_audit.source_pages(publication.ROOT))
     evidence = {"schema_version": 1, "expected_deployed_commit": commit,
                 "commit_authority": "caller-supplied deployment workflow/metadata, not HTTP content",
                 "base_url": base, "authority": authority, "publication_sha256": publication.hashes(files),
@@ -258,7 +263,8 @@ def verify(site, pristine, base, commit, attempts=1, interval=15, loopback=False
         observation["root_normalization"] = root
         evidence["attempts"].append(observation)
         if len(served) == len(files) and body is not None:
-            require(graph(served) == expected_graph, "served link graph differs from qualified graph")
+            require(graph(served, source_pages=source_view_audit.source_pages(publication.ROOT)) == expected_graph,
+                    "served link graph differs from qualified graph")
             evidence["internal_references"] = expected_graph
             native = publication.Authority(publication.ROOT, Path(pristine))
             additions = native.required_additions()

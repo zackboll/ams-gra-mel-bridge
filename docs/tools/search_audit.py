@@ -43,7 +43,9 @@ def qualify(root, site, report, authority, actual):
         configuration = 'docs/gnatdoc-enhance.toml'
         (temporary / configuration).write_bytes((root / configuration).read_bytes())
         (temporary / 'docs/gnatdoc-authored.json').write_bytes(epoch.canonical(contract))
-        config = replace(load(temporary, configuration),
+        import source_view_audit
+        effective = source_view_audit.prepare(temporary, site)
+        config = replace(load(temporary, effective),
                          guide_sha256=p.sha(epoch.canonical(contract)))
         p.require(config.search, 'documentation search must be enabled')
         native = snapshot(config, site)
