@@ -57,7 +57,7 @@ def run(root, site, output):
                 expect(link).to_have_count(1)
                 link.click()
                 frame = page.frame_locator('iframe[name="document-content"]')
-                heading = frame.locator('h4').filter(has_text=name.rsplit('.', 1)[1])
+                heading = frame.get_by_role('heading', name=name.rsplit('.', 1)[1], exact=True)
                 expect(heading).to_have_count(1)
                 source = heading.locator('xpath=following-sibling::a[1]')
                 expected = 'source/ada/src/ams-mel-ir-image.ads.html#L' + str(line)

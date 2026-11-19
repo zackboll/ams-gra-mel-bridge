@@ -112,7 +112,7 @@ class SourcePublicationTests(unittest.TestCase):
             elif case == 'hash':
                 files[0]['sha256'] = '0' * 64
             elif case == 'line':
-                files[0]['declarations'][0]['line'] = 1
+                files[0]['declarations'][0]['line'] += 1
             else:
                 files[0]['source'] = {'private': 'ada/src/ams-mel_c_api.ads',
                                      'traversal': 'ada/src/../../secret.ads',
