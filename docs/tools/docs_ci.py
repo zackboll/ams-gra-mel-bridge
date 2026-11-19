@@ -69,7 +69,7 @@ def build(root, directory, prefix):
     require(not directory.exists() and not any(p.is_symlink() for p in (directory, *directory.parents)),
             'output must be fresh with no symlink ancestors')
     directory.mkdir(parents=True)
-    epoch.toolchain(prefix)
+    prefix = epoch.toolchain(prefix)
     with tempfile.TemporaryDirectory(prefix='docs-current-') as temp:
         exported = Path(temp) / 'source'
         site, report, references = epoch.generate(root, context['commit'], exported, prefix,
