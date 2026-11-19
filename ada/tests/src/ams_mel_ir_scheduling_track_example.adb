@@ -56,5 +56,5 @@ begin
    Sch.Close (Channel);
    AMS.MEL.Close (Parent);
    Ada.Text_IO.Put_Line
-     ("Mock Return::Success observed; no physical trackning or acquisition is claimed.");
+     ("Mock Return::Success observed; no physical tracking or acquisition is claimed.");
 end AMS_MEL_IR_Scheduling_Track_Example;

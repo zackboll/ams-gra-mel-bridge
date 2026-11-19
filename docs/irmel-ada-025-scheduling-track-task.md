@@ -126,7 +126,13 @@ Observed checkpoints (not a substitute for final-commit hosted CI):
 |---|---:|---|
 | make format-ada | 0 | GNATformat applied before build/test |
 | make test-native, private /tmp | 0 | 952/952 |
+| final make test-native, private /tmp | 0 | 953/953, including explicit admission exhaustion |
+| final make test-ada, installed Alire toolchains on PATH | 0 | full smoke, negative controls and standalone examples |
+| final make test-python, private /tmp | 0 | 777 tests and compileall |
 | make test-rust, private /tmp | 0 | workspace tests and raw C11 mirror |
+| final make test-rust, private /tmp | 0 | full workspace and raw C11 mirror |
+| alr -n -C ada build | 0 | explicit Alire build |
+| alr -n -C ada/tests run | 0 | full smoke, including safe TrackTask |
 | Python unittest discovery, private /tmp | 0 | 777 tests |
 | make check-ir-api-coverage | 0 | 79 regression tests; 61 safe operations |
 | make check-ada-format | 0 | first-party sources formatted |
@@ -140,7 +146,34 @@ A stress attempt overlapped a native relink and reported transient "file too
 short" loader errors; that campaign failed and must be rerun without builds.
 Initial make test-ada without GNAT/GPRbuild on PATH failed and is not a pass.
 
-Final integrated qualification, export comparison, deterministic stress and
-Alire outcomes will be recorded after completion. Hosted CI and independent
-technical review remain mandatory separate gates. No hardware, real provider,
-physical tracking, image acquisition or normative compliance is qualified.
+The actual production DSO was compared directly with exports.map: exactly 335
+exports, all versioned AMS_MEL_0.1, no test exports and no existing export removed.
+GCC and Clang standalone conversion matrices also passed with C++20,
+`-Wall -Wextra -Wpedantic -Werror`. Native tests exercise all 255 getter values,
+counts 0/1/254/255, invalid bounds, signed boundaries, duplicate IDs, and all
+four floating components independently; the converter negative controls also
+exercise infinities, subnormals and NaN payload bits. Native/Ada tests explicitly
+exercise completion admission exhaustion without a second provider dispatch.
+
+PR: <https://github.com/zackboll/ams-gra-mel-bridge/pull/248>, non-draft, open,
+auto-merge disabled. Independent technical review is requested for exact array
+fidelity, numeric preservation, bounds, ABI, dispatch/lifetime, concurrent
+cleanup/unload and regression isolation. The collaborator API lists only the
+author, so no self-review is assigned. Independent review remains unresolved.
+
+Implementation-checkpoint hosted evidence (not final-head substitutions):
+
+- Bootstrap: <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44447080150>.
+- API documentation: <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44447079838>,
+  build passed on `1178561ab928880a302a075f7497f766c2ae3fbe`; deploy/live jobs
+  intentionally skipped for a PR and not counted as qualification passes.
+- Source browser: <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/44447079831>.
+
+Final integrated `make check`, post-build deterministic native/Ada stress and
+exact-final-commit hosted evidence are recorded as commit-specific PR evidence
+after completion, rather than claiming pending work passed here or embedding a
+self-referential commit identity. At this documentation checkpoint those gates
+are still in progress. Only a fully passing local qualification permits the
+READY_FOR_INDEPENDENT_REVIEW disposition; hosted CI and independent review
+remain mandatory separate gates. No hardware, real provider, physical tracking,
+image acquisition or normative compliance is qualified.
