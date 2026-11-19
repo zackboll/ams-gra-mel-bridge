@@ -71,6 +71,11 @@ from .common import (
 )
 
 from .ir import (
+    CalibrationControlInterface,
+    SubsystemCalibration,
+    CalibrationConfiguration,
+    CalibrationConfigurationOpenError,
+    CalibrationConfigurationStream,
     Quaternion,
     LineOfSightQuaternion,
     LineOfSightQuaternionOpenError,
@@ -247,6 +252,11 @@ from . import _native
 
 # Keep public introspection and pickle paths independent of implementation files.
 for _public_symbol in (
+    CalibrationControlInterface,
+    SubsystemCalibration,
+    CalibrationConfiguration,
+    CalibrationConfigurationOpenError,
+    CalibrationConfigurationStream,
     CameraProtectStatus,
     CameraProtectCommand,
     CameraProtectCompleted,
@@ -427,6 +437,11 @@ del _public_symbol
 
 
 __all__ = [
+    "CalibrationControlInterface",
+    "SubsystemCalibration",
+    "CalibrationConfiguration",
+    "CalibrationConfigurationOpenError",
+    "CalibrationConfigurationStream",
     "CameraProtectCommand",
     "CameraProtectCompleted",
     "CameraProtectRejected",

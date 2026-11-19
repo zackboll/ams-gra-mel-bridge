@@ -8,6 +8,7 @@ from . import _native
 from ._camera_protect_command import CameraProtectCommand, CameraProtectRequest, _submit_camera_protect
 from ._c2_metadata import C2MetadataStream
 from ._camera_protect_response import CameraProtectResponseStream, _open_camera_protect_response
+from ._calibration_configuration import CalibrationConfigurationStream, _open_calibration_configuration
 from ._errors import (
     ErrorKind,
     _call_with_diagnostic,
@@ -69,6 +70,15 @@ class ControlChannel:
                 _ctypes.byref(required),
             )
         )
+
+    def open_calibration_configuration(self, queue_capacity: int = 16) -> CalibrationConfigurationStream:
+        """Register complete calibration metadata once while Attached or Enabled.
+
+        Never implicitly enables C2, submits a command or registers ordinary
+        metadata. Serialize registration against parent operations externally.
+        A native attempt consumes this independent one-shot even on failure.
+        """
+        return _open_calibration_configuration(self, queue_capacity)
 
     def open_metadata(self, queue_capacity: int = 16) -> C2MetadataStream:
         """Register BIT configuration, CommandStatus, BIT status once in order.

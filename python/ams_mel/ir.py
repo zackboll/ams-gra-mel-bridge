@@ -63,6 +63,14 @@ from ._navigation_types import (
     PositionVelocityCovariance,
 )
 
+from ._calibration_configuration import (
+    CalibrationControlInterface,
+    SubsystemCalibration,
+    CalibrationConfiguration,
+    CalibrationConfigurationOpenError,
+    CalibrationConfigurationStream,
+)
+
 from ._camera_protect_command import (
     CameraProtectCommand, CameraProtectCompleted, CameraProtectRejected, CameraProtectRequest,
 )
@@ -247,6 +255,11 @@ from ._session import (
 
 
 __all__ = [
+    "CalibrationControlInterface",
+    "SubsystemCalibration",
+    "CalibrationConfiguration",
+    "CalibrationConfigurationOpenError",
+    "CalibrationConfigurationStream",
     "CameraProtectCommand",
     "CameraProtectCompleted",
     "CameraProtectRejected",
