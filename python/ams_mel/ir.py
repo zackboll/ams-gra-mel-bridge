@@ -71,6 +71,12 @@ from ._calibration_configuration import (
     CalibrationConfigurationStream,
 )
 
+from ._calibration_configuration_command import (
+    CalibrationConfigurationCommand,
+    CalibrationConfigurationCompleted,
+    CalibrationConfigurationRejected,
+    CalibrationConfigurationRequest,
+)
 from ._camera_protect_command import (
     CameraProtectCommand, CameraProtectCompleted, CameraProtectRejected, CameraProtectRequest,
 )
@@ -260,6 +266,10 @@ __all__ = [
     "CalibrationConfiguration",
     "CalibrationConfigurationOpenError",
     "CalibrationConfigurationStream",
+    "CalibrationConfigurationCommand",
+    "CalibrationConfigurationCompleted",
+    "CalibrationConfigurationRejected",
+    "CalibrationConfigurationRequest",
     "CameraProtectCommand",
     "CameraProtectCompleted",
     "CameraProtectRejected",
