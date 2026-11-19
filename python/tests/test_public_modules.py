@@ -40,6 +40,8 @@ class PublicModuleTests(unittest.TestCase):
         self.assertIn('RFAdmin', rf.__all__)
         self.assertNotIn('Session', rf.__all__)
         for name in ('Session', 'ChannelView', 'CommandReturn', 'MelErrorCode',
+                     'CalibrationControlInterface', 'SubsystemCalibration', 'CalibrationConfiguration',
+                     'CalibrationConfigurationOpenError', 'CalibrationConfigurationStream',
                      'ImageStream', 'HealthStatusChannel', 'ControlChannel',
                      'CameraProtectStatus', 'CameraProtectResponse',
                      'CameraProtectCommand', 'CameraProtectCompleted',
@@ -60,6 +62,10 @@ class PublicModuleTests(unittest.TestCase):
 
     def test_domain_values_keep_legacy_pickle_paths(self):
         values = (
+            ir.CalibrationConfiguration((ir.SubsystemCalibration(
+                common.UciId(bytes(range(16)), 'calibration µ'),
+                ir.CalibrationControlInterface.CALIBRATION_STATE_COMMAND,
+                ('', '校正'), (), (common.UciId(bytes(16), ''),)),)),
             common.AbiVersion(0, 1), common.UciId(bytes(16), 'label µ'),
             common.MFAState.STANDBY, common.ErrorKind.TIMEOUT,
             ir.CommsCompleted(ir.CommsTestReport(1, 2)),
@@ -96,6 +102,11 @@ assert ams_mel.CameraProtectResponse is ir.CameraProtectResponse
 assert ams_mel.CameraProtectStatus is ir.CameraProtectStatus
 assert ams_mel.CameraProtectResponseStream is ir.CameraProtectResponseStream
 assert ams_mel.CameraProtectResponseOpenError is ir.CameraProtectResponseOpenError
+assert ams_mel.CalibrationConfiguration is ir.CalibrationConfiguration
+assert ams_mel.SubsystemCalibration is ir.SubsystemCalibration
+assert ams_mel.CalibrationControlInterface is ir.CalibrationControlInterface
+assert ams_mel.CalibrationConfigurationStream is ir.CalibrationConfigurationStream
+assert ams_mel.CalibrationConfigurationOpenError is ir.CalibrationConfigurationOpenError
 assert ams_mel.LineOfSightQuaternion is ir.LineOfSightQuaternion
 assert ir.ForwardRightDown is ams_mel.ForwardRightDown
 assert all(getattr(ams_mel, name).__module__ == 'ams_mel'

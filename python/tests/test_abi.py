@@ -12,6 +12,33 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_calibration_configuration_reuses_six_existing_operations(self) -> None:
+        import ams_mel
+        from ams_mel import ir, _calibration_configuration
+        self.assertIs(ams_mel.CalibrationConfiguration, ir.CalibrationConfiguration)
+        self.assertIs(_calibration_configuration.C2MetadataCounters, ir.C2MetadataCounters)
+        self.assertFalse(hasattr(ams_mel.ControlChannel, "submit_calibration_configuration"))
+        pointer = ctypes.POINTER
+        owner = _native.IrCalibrationConfigurationMetadataHandle
+        event = _native.IrCalibrationConfigurationEventHandle
+        signatures = {
+            "ams_mel_ir_c2_calibration_configuration_open": [
+                _native.IrC2Handle, ctypes.c_size_t, pointer(owner), pointer(ctypes.c_uint32)],
+            "ams_mel_ir_calibration_configuration_receive": [owner, ctypes.c_uint32, pointer(event)],
+            "ams_mel_ir_calibration_configuration_get_counters": [owner, pointer(_native.IrC2MetadataCountersV1)],
+            "ams_mel_ir_calibration_configuration_close": [pointer(owner)],
+            "ams_mel_ir_calibration_configuration_event_view": [
+                event, pointer(pointer(_native.IrCalibrationConfigurationV1))],
+            "ams_mel_ir_calibration_configuration_event_close": [pointer(event)],
+        }
+        for name, arguments in signatures.items():
+            function = getattr(_native, name)
+            self.assertEqual(function.argtypes, arguments + [
+                _native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+            self.assertIs(function.restype, ctypes.c_int32)
+            self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertFalse(hasattr(ams_mel, name))
+
     def test_camera_protect_response_reuses_private_abi(self) -> None:
         import ams_mel
         from ams_mel import ir, _camera_protect_response
