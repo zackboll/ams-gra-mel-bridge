@@ -62,7 +62,8 @@ def bind(root, site, report):
     path = root / 'docs/gnatdoc-authored.json'
     presentation.require(not path.exists() and not path.is_symlink(), 'authored manifest must be fresh')
     path.write_bytes(payload)
-    config = load(root, 'docs/gnatdoc-enhance.toml')
+    import source_view_audit
+    config = load(root, source_view_audit.prepare(root, site))
     presentation.require(config.guides == 'authored-html' and
                          config.guide_manifest == 'docs/gnatdoc-authored.json' and
                          config.guide_sha256 == '0' * 64,

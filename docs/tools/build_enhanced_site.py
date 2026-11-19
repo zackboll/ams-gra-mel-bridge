@@ -24,12 +24,13 @@ from example_sources import References, occurrence_ledger
 import symbol_audit
 import api_catalog
 
-VERSION = "0.1.6"
-REVISION = "8661855bfc245c3389e2ef30a423c100776ff525"
-WHEEL_NAME = "ada_gnatdoc_enhancer-0.1.6-py3-none-any.whl"
-WHEEL_URL = "https://github.com/zackboll/ada-gnatdoc-enhancer/releases/download/v0.1.6/" + WHEEL_NAME
-WHEEL_SHA256 = "adfec71188a868e3fb70a6da71a124c937f9e63e26a2f2e31af45364f49ffb27"
-PACKAGE_SHA256 = "ec58fd6e393bf2f88fdeddccb590d7c9e95319e3440d132ffd19b5b64e0a8377"
+VERSION = "0.1.7"
+REVISION = "5efaea9ac018101f33ac5b68b1b98ab4b3e170f6"
+RELEASE_TREE = "733c472ab4c3a570f2156487c3cde7b6fd0c187a"
+WHEEL_NAME = "ada_gnatdoc_enhancer-0.1.7-py3-none-any.whl"
+WHEEL_URL = "https://github.com/zackboll/ada-gnatdoc-enhancer/releases/download/v0.1.7/" + WHEEL_NAME
+WHEEL_SHA256 = "957c65797b03b5c6b3779e2a1918730a2e44749670e37535d2c8ff3e109f3ba4"
+PACKAGE_SHA256 = "f6c8557c71092a2ef741f1d534a5948cdcef3805244306fb0b8424f51011ff04"
 JAVASCRIPT_SHA256 = "233cf43211a711d0d64dfba2815bc2d9cc887720faed0ca38f464bc6d29e145f"
 SOURCE_SHA256 = "467cd45ef85888bb22ccee2d9e325b6b55e985dadac66c317dbbc653193114c8"
 ANCHORS_SHA256 = "06b602439be15557118790a2827bb8bacc45c1b02d055fa3e9502204857f5aed"

@@ -154,7 +154,8 @@ def enhance(site, root, report, references, output, *, deep=True):
             from dataclasses import replace
             from ada_gnatdoc_enhancer.config import load
             from ada_gnatdoc_enhancer.pipeline import enhance as renderer, verify
-            config = replace(load(root, 'docs/gnatdoc-enhance.toml'),
+            import source_view_audit
+            config = replace(load(root, source_view_audit.prepare(root, site)),
                              guide_sha256=sha(canonical(authored_html.contract(root, site, report))))
             before = p.files(output)
             renderer(config, output)
@@ -207,10 +208,13 @@ def verify_presentation(site, root, report, references, output, *, deep=False):
     import search_audit
     import resize_audit
     import tomllib
+    import source_view_audit
+    source_pages, source_insertions, source_manifest = source_view_audit.qualify(root, site, authority, actual)
+    source_extras = set(source_pages) | ({source_view_audit.CSS} if source_manifest else set())
     resizing = tomllib.loads((root / 'docs/gnatdoc-enhance.toml').read_text())['navigation'].get(
         'resizable_sidebar', False)
     require(set(actual) == set(raw) | p.EXTRAS | portal_names | search_audit.EXTRAS |
-            (resize_audit.EXTRAS if resizing else set()),
+            (resize_audit.EXTRAS if resizing else set()) | source_extras,
             "unexpected/missing publication files")
     # Reverse feature order: resize, full search, symbols/navigation, native.
     index = resize_audit.qualify(actual) if resizing else actual['api/index.html'].decode()
@@ -220,7 +224,9 @@ def verify_presentation(site, root, report, references, output, *, deep=False):
         if name.startswith("api/") and name.endswith(".html"):
             text = actual[name].decode()
             safe = (p.restore_navigation(search_audit.restore(index, search_insertion), symbols)
-                    if name == "api/index.html" else text)
+                    if name == "api/index.html" else
+                    source_view_audit.restore(text, data.decode(), source_insertions[name])
+                    if source_manifest else text)
             require(not p.Page(safe).issues, "unsafe publication HTML")
             restored = p.restore_document(safe, data.decode(), name, authority)
             restored, occurrences = restore_page(Path(name).name, restored, authority)
@@ -255,6 +261,10 @@ def verify_presentation(site, root, report, references, output, *, deep=False):
     manifest['authored_source_blocks'] = {
         'manifest': 'docs/gnatdoc-authored.json', 'sha256': sha(canonical(authored)),
         'profile': 'executable-ada-catalog-v1', 'inputs': authored['inputs']}
+    if source_manifest:
+        manifest['source_view'] = source_manifest
+        manifest['counts'].update(source_pages=len(source_pages),
+                                  source_links=sum(len(r[2]) for r in source_insertions.values()))
     # Native-only input during generate still requires complete authored audits.
     from portal_audit import verify_portal
     from build_docs_portal import package_map
