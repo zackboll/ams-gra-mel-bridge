@@ -138,7 +138,13 @@ fn independent_owners_and_provider_code_residency() {
 
 #[test]
 fn uncertain_releases_consume_the_public_owner_without_destruction_or_retry() {
-    for case in ["fail", "throw", "drop-failure", "drain-provider-fail"] {
+    for case in [
+        "fail",
+        "throw",
+        "not-supported",
+        "drop-failure",
+        "drain-provider-fail",
+    ] {
         run(case);
     }
 }
@@ -156,7 +162,9 @@ fn mock_child() {
         "enable-callback" => fifo(),
         "receiver-last" => receiver_last(),
         "receiver-first" | "image-first" | "session-first" => closure_order(&case),
-        "fail" | "throw" | "drop-failure" | "drain-provider-fail" => uncertain(&case),
+        "fail" | "throw" | "not-supported" | "drop-failure" | "drain-provider-fail" => {
+            uncertain(&case)
+        }
         "reentry" => reentry(),
         _ => panic!("unknown mock case {case}"),
     }
@@ -397,19 +405,24 @@ fn uncertain(case: &str) {
     if case == "drop-failure" {
         assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(lease))).is_ok());
     } else {
+        assert_eq!(count("checkout_released_1"), 0);
         let error = lease.close().unwrap_err();
-        let (kind, status, returned) = if case == "throw" {
-            (
+        let (kind, status, returned) = match case {
+            "throw" => (
                 ErrorKind::ProviderException,
                 sys::AMS_MEL_PROVIDER_EXCEPTION,
                 None,
-            )
-        } else {
-            (
+            ),
+            "not-supported" => (
+                ErrorKind::ProviderFailed,
+                sys::AMS_MEL_PROVIDER_FAILED,
+                Some(sys::AMS_MEL_IR_RETURN_NOT_SUPPORTED),
+            ),
+            _ => (
                 ErrorKind::ProviderFailed,
                 sys::AMS_MEL_PROVIDER_FAILED,
                 Some(sys::AMS_MEL_IR_RETURN_FAIL),
-            )
+            ),
         };
         assert_eq!(error.error.kind(), &kind);
         assert!(error
@@ -419,6 +432,7 @@ fn uncertain(case: &str) {
         assert_eq!(error.native_status, Some(status));
         assert_eq!(error.provider_return, returned);
         assert!(!lease.is_open());
+        assert_eq!(count("checkout_released_1"), 1);
         lease.close().unwrap();
         drop(lease);
     }
@@ -443,6 +457,7 @@ fn uncertain(case: &str) {
         if case == "drain-provider-fail" { 3 } else { 1 }
     );
     for forbidden in [
+        "application_unregister_entered",
         "application_checkout_destroyed",
         "foundation_buffer_destroyed_with_storage",
         "library_unloaded",

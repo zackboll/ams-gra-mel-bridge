@@ -45,6 +45,40 @@ static void blocked(void)
     CHECK(ams_mel_ir_stream_close(&image, ARGS) == AMS_MEL_PROVIDER_FAILED && image);
     CHECK(ams_mel_ir_stream_stop(image, ARGS) == AMS_MEL_PROVIDER_FAILED);
 }
+static void not_supported(void *pin)
+{
+    ams_mel_ir_image_checkout_lease *lease = NULL;
+    ams_mel_ir_image_checkout_counters_v1 counters;
+    CALL(ams_mel_ir_image_checkout_open, image, 1, 1, &receiver);
+    CALL(ams_mel_ir_buffer_open, session, 16, -20, &buffer, &result);
+    CALL(ams_mel_ir_channel_register_buffer, view, buffer, &result);
+    CALL(ams_mel_ir_stream_start, image);
+    deliver(1, 0);
+    CHECK(!dlclose(pin)); /* No test pin can keep the provider mapped below. */
+    CALL(ams_mel_ir_image_checkout_receive, receiver, 0, &lease);
+    CHECK(lease && !events("application_checkout_released\n"));
+    CALL(ams_mel_ir_channel_disable, view, &result);
+    blocked();
+
+    CHECK(ams_mel_ir_image_checkout_lease_close(&lease, &result, ARGS) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(result == AMS_MEL_IR_RETURN_NOT_SUPPORTED && !lease);
+    CHECK(events("checkout_released_1\n") == 1);
+    CALL(ams_mel_ir_image_checkout_lease_close, &lease, &result);
+    CHECK(result == UINT32_MAX && !lease);
+    CALL(ams_mel_ir_image_checkout_get_counters, receiver, &counters);
+    CHECK(counters.callbacks_received == 1 && counters.checkouts_accepted == 1);
+    CHECK(counters.releases_succeeded == 0 && counters.releases_uncertain == 1);
+
+    CALL(ams_mel_ir_image_checkout_close, &receiver);
+    CALL(ams_mel_session_close, &session);
+    blocked(); /* Neither receiver nor session Close retires the obligation. */
+    CALL(ams_mel_ir_channel_close, &view);
+    CHECK(events("application_checkout_released\n") == 1);
+    CHECK(!events("application_unregister_entered\n"));
+    CHECK(!events("application_checkout_destroyed\n"));
+    CHECK(!events("foundation_buffer_destroyed_with_storage\n"));
+    CHECK(!events("library_unloaded\n"));
+}
 static void reenter(void)
 {
     blocked();
@@ -102,6 +136,10 @@ int main(int argc, char **argv)
     }
     CALL(ams_mel_ir_image_control_open, session, &config, &image);
     CALL(ams_mel_ir_channel_from_stream, image, &view);
+    if (!strcmp(which, "not-supported")) {
+        not_supported(pin);
+        CHECK(!unlink(log_path)); return 0;
+    }
     CHECK(ams_mel_ir_image_checkout_open(image, 0, 2, &receiver, ARGS) == AMS_MEL_INVALID_ARGUMENT && !receiver);
     if (!strcmp(which, "no-receiver") || !strcmp(which, "no-registration")) {
         if (!strcmp(which, "no-registration")) CALL(ams_mel_ir_image_checkout_open, image, 2, 3, &receiver);

@@ -1226,7 +1226,7 @@ if(AMS_MEL_BUILD_TESTS)
     add_dependencies(test_image_checkout mock_ir_provider)
     ams_mel_warnings(test_image_checkout)
     foreach(case IN ITEMS normal overflow reentry reentry-bound registration-reentry concurrent-release
-            wait-close enable-callback admission-failure fail throw no-registration no-receiver
+            wait-close enable-callback admission-failure fail throw not-supported no-registration no-receiver
             full-acquisition drain-fail drain-provider-fail hold-exhaustion unregister-reentry
             disable-reentry destruction-reentry close-reentry)
         add_test(NAME image_checkout_${case} COMMAND test_image_checkout ${case})

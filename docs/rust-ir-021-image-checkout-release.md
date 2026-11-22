@@ -6,8 +6,9 @@
 `ImageCheckoutLease` bind the existing five checkout operations. `ams-mel-ir`
 and `ams-mel` export identical concrete owners, counters, and release errors.
 This is control-only IR Image callback/release parity, not full Image API
-parity. The native ABI, provider, Mono8 Frame path, and Ada/Python coverage
-inventories are unchanged. No pixels, layout, address, or header are exposed.
+parity. The native ABI, production providers, Mono8 Frame path, and Ada/Python
+coverage inventories are unchanged. No pixels, layout, address, or header are
+exposed.
 
 Install once, while Attached and before the first Start. The native bounded,
 preallocated FIFO uses `queue_capacity` for queued callbacks and
@@ -61,10 +62,30 @@ development (`cargo test --locked -p ams-mel-ir --lib ir_image_checkout` and
 `cargo test --locked -p ams-mel-ir --test image_checkout`, with the test facade
 and provider paths). The mock's ordered wrapper-ID and DSO logs distinguish
 FIFO delivery, exact release, reentrant/deferred release, and permanent uncertain
-retention. The existing mock checkout wrapper implements Success, Fail, and
-throw, not NotSupported. The numeric NotSupported case is tested at the private
-binding seam alongside inconsistent handles, malformed diagnostics, and unknown
-numeric values; it is not claimed as a provider-originated integration result.
+retention. Success, Fail, and a provider exception are exercised by the
+compiled-mock tests. The private binding seam continues to cover inconsistent
+handles, malformed diagnostics, and exact numeric values.
+
+### RUST-IR-021-R1 — Provider-originated NotSupported
+
+The original restriction on provider changes is relaxed **only for the test
+fixture**, not for production providers. The opt-in `checkout021-not-supported`
+scenario uses the existing `ApplicationCheckout` wrapper and makes its actual
+`release()` return `irmel::Return::NotSupported` when it owns the original
+application Buffer. Existing release-attempt and destruction guards still apply.
+No production bridge, C ABI, or safe Rust implementation changes.
+
+The C11 `image_checkout_not-supported` CTest checks the ABI directly:
+`AMS_MEL_PROVIDER_FAILED`, exact `AMS_MEL_IR_RETURN_NOT_SUPPORTED`, a cleared
+lease slot, and no second provider call on repeated Close. The compiled Rust
+`uncertain_releases_consume_the_public_owner_without_destruction_or_retry`
+regression drives the same real callback through the public safe API and checks
+the exact `CheckoutReleaseError` status and provider value, consumed ownership,
+and exactly one release after repeated Close and Drop. Both tests check that
+unregister and Buffer/Image Close remain blocked. The existing mock logs check
+that neither the wrapper nor the original storage-owning Buffer is destroyed
+and that the provider DSO is not unloaded after the test releases its own loader
+reference. The Rust case checks again after dropping the public owners.
 
 Final exact-source commands, outcomes, and hosted workflow identities are kept
 in the delivery PR to avoid self-referential commit identifiers. No real camera,

@@ -2234,12 +2234,13 @@ public:
  * Queries are forbidden: control-only callbacks have no acquisition layout. */
 class ApplicationCheckout final : public irmel::Buffer {
     std::shared_ptr<irmel::Buffer> original_;
-    bool fail_, released_{}, throws_{};
+    Return release_result_;
+    bool released_{}, throws_{};
     unsigned identity_{};
 public:
-    ApplicationCheckout(std::shared_ptr<irmel::Buffer> original, bool fail, bool throws = false,
-                        unsigned identity = 0)
-        : original_{std::move(original)}, fail_{fail}, throws_{throws}, identity_{identity} {}
+    ApplicationCheckout(std::shared_ptr<irmel::Buffer> original, Return release_result = Return::Success,
+                        bool throws = false, unsigned identity = 0)
+        : original_{std::move(original)}, release_result_{release_result}, throws_{throws}, identity_{identity} {}
     ~ApplicationCheckout() override
     {
         if (identity_ && !released_) std::abort();
@@ -2263,7 +2264,7 @@ public:
         auto hook = std::exchange(checkout_release_hook, nullptr);
         if (hook) hook();
         if (throws_ && original_) throw std::runtime_error("application checkout release exception");
-        return fail_ && original_ ? Return::Fail : Return::Success;
+        return original_ ? release_result_ : Return::Success;
     }
 };
 
@@ -2275,13 +2276,17 @@ public:
           barrier_{callback_barrier}
     {
         if (scenario_.starts_with("checkout021-")) {
-            checkout_delivery = [this](unsigned count, bool null_buffer) {
+            auto release_result = Return::Success;
+            if (scenario_ == "checkout021-fail" || scenario_ == "checkout021-drain-provider-fail")
+                release_result = Return::Fail;
+            else if (scenario_ == "checkout021-not-supported")
+                release_result = Return::NotSupported;
+            checkout_delivery = [this, release_result](unsigned count, bool null_buffer) {
                 for (unsigned i = 0; i < count; ++i) {
                     irmel::FrameHeader header; // deliberately unconfigured; never inspected
                     std::shared_ptr<irmel::Buffer> checkout;
                     if (!null_buffer) checkout = std::make_shared<ApplicationCheckout>(
-                        application_registration_.original(), scenario_ == "checkout021-fail" ||
-                        scenario_ == "checkout021-drain-provider-fail",
+                        application_registration_.original(), release_result,
                         scenario_ == "checkout021-throw", ++checkout_identity_);
                     record("application_checkout_delivered");
                     listener_->onImage(*this, header, std::move(checkout));
@@ -2478,7 +2483,8 @@ public:
             if (scenario_ == "registration020-callback" || scenario_ == "registration020-callback-fail") {
                 irmel::FrameHeader header;
                 listener_->onImage(*this, header,
-                    std::make_shared<ApplicationCheckout>(buffer, scenario_ == "registration020-callback-fail"));
+                    std::make_shared<ApplicationCheckout>(buffer,
+                        scenario_ == "registration020-callback-fail" ? Return::Fail : Return::Success));
                 record("application_checkout_returned");
             }
             return result;
@@ -2512,7 +2518,7 @@ public:
             const auto result = application_registration_.call(scenario_, buffer, true);
             if (scenario_ == "registration020-unregister-callback") {
                 irmel::FrameHeader header;
-                listener_->onImage(*this, header, std::make_shared<ApplicationCheckout>(buffer, false));
+                listener_->onImage(*this, header, std::make_shared<ApplicationCheckout>(buffer));
                 record("application_checkout_returned");
             }
             return result;
