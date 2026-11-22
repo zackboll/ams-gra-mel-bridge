@@ -1,3 +1,4 @@
+#include <ams_mel/abi.h> // Test-only getter oracle; no facade linkage.
 #include <irmel/library/image/ImageChannel.h>
 #include "lifecycle_timeline.hpp"
 #include <irmel/library/c2/C2Channel.h>
@@ -6108,17 +6109,107 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_scheduling_abort
 extern "C" __attribute__((visibility("default"))) void mock_scheduling_abort_reentry(void (*callback)())
 { scheduling_abort_reentry = callback; }
 
+using ScheduleCreatedCallback = std::function<void(irmel::Channel&, const irmel::SchedCreatedRep*)>;
+std::mutex created_registry_mutex;
+ScheduleCreatedCallback active_created;
+irmel::Channel *active_created_channel{};
+void (*created_reentry)(){};
+
+extern "C" __attribute__((visibility("default"))) void
+mock_scheduling_created_reentry(void (*callback)())
+{ created_reentry = callback; }
+
+irmel::SchedCreatedRep build_created(unsigned fixture)
+{
+    irmel::SchedCreatedRep value;
+    value.setCommandID(fixture == 0U ? 0U : fixture == 1U ? 0x80000001U : UINT32_MAX);
+    value.setScanId(fixture == 0U ? UINT32_MAX : fixture == 1U ? 0U : 0x80000002U);
+    value.setEstDuration(std::chrono::nanoseconds{fixture == 0U ? INT64_MAX :
+                                                fixture == 1U ? -1 : INT64_MIN});
+    value.setActivityCount(fixture == 0U ? UINT32_MAX : fixture == 1U ? 7U : 0U);
+    constexpr std::uint64_t bits[] = {0x8000000000000000ULL, 0x7ff0000000000000ULL,
+        0xfff0000000000000ULL, 0x7ff8000000000abcULL, 0x7ff0000000000defULL,
+        0x0000000000000001ULL, 0x3ff0000000000001ULL, 0x0000000000000000ULL};
+    const unsigned length = fixture == 0U ? 0U : fixture == 1U ? 1U : 300U;
+    for (unsigned i = 0; i < length; ++i) {
+        const auto task = i == length - 1U && fixture >= 3U
+            ? (fixture == 3U ? 17U : UINT32_MAX) : i % 17U;
+        const RangeAzEl pos{std::bit_cast<double>(bits[i % 8U]),
+            std::bit_cast<double>(bits[(i + 1U) % 8U]),
+            std::bit_cast<double>(bits[(i + 2U) % 8U]),
+            std::bit_cast<double>(bits[(i + 3U) % 8U])};
+        value.addActivityRecord({i % 3U == 0U ? UINT32_MAX : i % 3U == 1U ? 0U : 0x80000004U,
+            static_cast<irmel::Task>(task), i % 2U == 0U ? INT32_MIN : INT32_MAX, pos,
+            std::chrono::nanoseconds{i % 2U == 0U ? INT64_MIN : INT64_MAX}});
+    }
+    return value;
+}
+
+extern "C" __attribute__((visibility("default"))) int mock_scheduling_created_deliver(unsigned fixture)
+{
+    ScheduleCreatedCallback callback;
+    irmel::Channel *channel;
+    {
+        std::lock_guard lock{created_registry_mutex};
+        callback = active_created;
+        channel = active_created_channel;
+    }
+    if (!callback || !channel) return 0;
+    auto value = build_created(fixture);
+    callback(*channel, fixture == 5U ? nullptr : &value);
+    // Provider-owned vector and payload cease to exist before returning.
+    return 1;
+}
+
+/* Independent oracle for the C consumer: compare to the actual pinned getters,
+ * not to a second invocation of the production conversion. */
+extern "C" __attribute__((visibility("default"))) int mock_scheduling_created_matches(
+    unsigned fixture, const ams_mel_ir_sched_created_rep_v1 *view)
+{
+    const auto source = build_created(fixture);
+    const auto& activities = source.getActivity();
+    if (!view || view->command_id != source.getCommandID() || view->scan_id != source.getScanId() ||
+        view->estimated_duration_ns != source.getEstDuration().count() ||
+        view->activity_count != source.getActivityCount() || view->activities.size != activities.size() ||
+        (view->activities.data == nullptr) != activities.empty()) return 0;
+    for (std::size_t n = 0; n < activities.size(); ++n) {
+        const auto& a = activities[n];
+        const auto& b = view->activities.data[n];
+        const auto pos = a.getPosition();
+        const auto bits = [](const double& v) { return std::bit_cast<std::uint64_t>(v); };
+        if (a.getActivityId() != b.activity_id || static_cast<unsigned>(a.getTaskId()) != b.task_id ||
+            a.getTrackId() != b.track_id || a.getDuration().count() != b.duration_ns ||
+            bits(pos.range) != bits(b.position.range_m) || bits(pos.az) != bits(b.position.azimuth_rad) ||
+            bits(pos.el) != bits(b.position.elevation_rad) || bits(pos.rangerate) != bits(b.position.range_rate_mps))
+            return 0;
+    }
+    return 1;
+}
+
 class MockSchedulingChannel final : public irmel::SchedulingChannel {
 public:
     explicit MockSchedulingChannel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockSchedulingChannel() override
     {
+        if (created_producer_.joinable()) created_producer_.join();
         /* IRMEL-ADA-012: deactivate the hook and, for the late-callback
          * scenarios, invoke the retained ExecuteTaskAck callback during
          * channel destruction (after the bridge closed its owners). */
         execute_task_ack_.finish(*this, scenario_);
         /* IRMEL-ADA-013: likewise, independently, for TaskExecutingRep. */
         task_executing_.finish(*this, scenario_);
+        {
+            std::lock_guard lock{created_registry_mutex};
+            if (active_created_channel == this) {
+                active_created = nullptr;
+                active_created_channel = nullptr;
+            }
+        }
+        if (created_) {
+            record("late_created_callback_invoked");
+            const auto value = build_created(1U);
+            created_(*this, &value);
+        }
         record("scheduling_channel_destroyed");
     }
     mel::RequestFor<Return> sendKeepAliveRep() override
@@ -6261,8 +6352,48 @@ public:
     }
     /* ---- Remaining Scheduling-specific metadata: explicitly unsupported. ---- */
     Return registerMetadataCallback(
-        std::function<void(irmel::Channel&, const irmel::SchedCreatedRep *const)>) override
-    { return unsupported_registration("scheduling_sched_created_registered"); }
+        ScheduleCreatedCallback callback) override
+    {
+        if (scenario_.rfind("sched-created-", 0U) != 0U && scenario_ != "sched-both-sync")
+            return unsupported_registration("scheduling_sched_created_registered");
+        record("scheduling_sched_created_registered");
+        created_ = std::move(callback);
+        if (created_reentry) created_reentry();
+        if (scenario_ == "sched-created-throw") throw std::runtime_error("mock created registration");
+        if (scenario_ == "sched-created-unknown") return static_cast<Return>(77U);
+        if (scenario_ == "sched-created-not-supported") return Return::NotSupported;
+        if (scenario_ == "sched-created-not-implemented") return Return::NotImplemented;
+        if (scenario_ == "sched-created-bad-pointer") return Return::BadPointer;
+        if (scenario_ == "sched-created-fail") {
+            const auto value = build_created(2U);
+            created_(*this, &value);
+            return Return::Fail;
+        }
+        if (scenario_ == "sched-created-sync" || scenario_ == "sched-both-sync" ||
+            scenario_ == "sched-created-detach-fail") {
+            for (unsigned i = 0; i < 3U; ++i) {
+                const auto value = build_created(i);
+                created_(*this, &value);
+            }
+        }
+        if (scenario_ == "sched-created-unpin") {
+            created_producer_ = std::thread{[this, producer = created_] {
+                const auto value = build_created(2U);
+                producer(*this, &value);
+                record("created_producer_returned");
+            }};
+        }
+        if (scenario_ == "sched-created-malformed") {
+            for (unsigned i = 1; i <= 5U; ++i) {
+                const auto value = build_created(i);
+                created_(*this, i == 5U ? nullptr : &value);
+            }
+        }
+        std::lock_guard lock{created_registry_mutex};
+        active_created = created_;
+        active_created_channel = this;
+        return Return::Success;
+    }
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&, const irmel::UpdateTrackListResponse *const)>) override
     { return unsupported_registration("scheduling_update_track_list_registered"); }
@@ -6505,6 +6636,8 @@ private:
     std::string scenario_;
     MockExecuteTaskAck execute_task_ack_;
     MockTaskExecuting task_executing_;
+    ScheduleCreatedCallback created_;
+    std::thread created_producer_;
 };
 
 /* Test-only negative-control probe: the number of calls to the NINE remaining
@@ -6990,7 +7123,8 @@ public:
                 under a failed detach. */
              instance_ == "sched-rep-detach-fail" ||
              instance_ == "sched-rep-deferred-detach-fail" ||
-             instance_ == "sched-both-detach-fail") && !detach_failed_) {
+             instance_ == "sched-both-detach-fail" ||
+             instance_ == "sched-created-detach-fail") && !detach_failed_) {
             detach_failed_ = true;
             record("channel_detach_failed");
             return Return::Fail;

@@ -2595,12 +2595,37 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::SchedulingChannel::registerMetadataCallback(std::function<void(Channel&,const SchedCreatedRep*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_schedule_created.cpp",
+          "symbol": "ams_mel_ir_scheduling_schedule_created_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Open_Schedule_Created"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Receive_Schedule_Created"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_schedule_created.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_created_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-027: independent Attached/Enabled opt-in, one-shot registration and bounded drop-incoming queue, delivering immutable native snapshots and Ada-owned reports.",
+      "limitations": [
+        "Mock-provider qualification only; no unregister or task execution, completion, feasibility, imagery or request correlation inferred."
+      ],
       "representation": []
     },
     {
@@ -7028,37 +7053,83 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::ActivityRecord",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_schedule_created.cpp",
+          "symbol": "ams_mel_ir_scheduling_schedule_created_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Activity_Record"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_schedule_created.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_created_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-027: complete owned payload via every pinned getter.",
+      "limitations": [
+        "Invalid Task (sentinel or unknown) rejects the whole event; reserved values are non-operational. All four binary64 position fields are bit-preserved."
+      ],
       "representation": [
         {
           "upstream": "getActivityId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Activity_Record"
+            }
+          ]
         },
         {
           "upstream": "getTaskId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Task_Kind"
+            }
+          ]
         },
         {
           "upstream": "getTrackId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Activity_Record"
+            }
+          ]
         },
         {
           "upstream": "getPosition",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getDuration",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Activity_Record"
+            }
+          ]
         }
       ]
     },
@@ -12482,37 +12553,83 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::SchedCreatedRep",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_schedule_created.cpp",
+          "symbol": "ams_mel_ir_scheduling_schedule_created_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Schedule_Created_Report"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_schedule_created.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_created_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-027: complete owned payload via every pinned getter.",
+      "limitations": [
+        "ActivityCount is preserved independently of the ordered, uncapped upstream vector length."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Schedule_Created_Report"
+            }
+          ]
         },
         {
           "upstream": "getScanId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Schedule_Created_Report"
+            }
+          ]
         },
         {
           "upstream": "getEstDuration",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Schedule_Created_Report"
+            }
+          ]
         },
         {
           "upstream": "getActivityCount",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Schedule_Created_Report"
+            }
+          ]
         },
         {
           "upstream": "getActivity",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Activity_Collection"
+            }
+          ]
         }
       ]
     },
@@ -12524,7 +12641,7 @@
       "tests": [],
       "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks. IRMEL-ADA-023 adds actual exec(IRSTStareTask) with complete owned parameters and the existing TaskInfo; metadata remains independent. IRMEL-ADA-024 adds actual exec(IRSTScanTask) reusing complete C2 ScanParam and TaskInfo; metadata remains independent. IRMEL-ADA-025 adds actual exec(IRSTTrackTask), preserving all 255 stored targets, signed IDs/duration and independent binary64 location/rate values; metadata remains independent. IRMEL-ADA-026 adds send(PrioritizedTrackListCmd) with a distinct typed receipt and no metadata correlation.",
       "limitations": [
-        "Four Scheduling-specific metadata registrations remain missing, including UpdateTrackListResponse. No physical execution or metadata delivery is inferred from a command future.",
+        "IRMEL-ADA-027 adds independent SchedCreatedRep reception with complete owned activities. Three Scheduling-specific metadata registrations remain missing, including UpdateTrackListResponse. No physical execution or metadata delivery is inferred from a command future.",
         "Disable is performed only inside Close; there is no standalone Disable.",
         "Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.",
         "Positive evidence is mock-provider only; no real provider or hardware tasking ran."
