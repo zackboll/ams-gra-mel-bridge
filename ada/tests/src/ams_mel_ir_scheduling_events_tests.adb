@@ -7,6 +7,7 @@ package body AMS_MEL_IR_Scheduling_Events_Tests is
    package IR renames AMS.MEL.IR;
    package Sch renames IR.Scheduling;
    package M renames Sch.Metadata;
+   use type Interfaces.Integer_64;
    use type M.Metadata_Counters;
    use type M.Task_Event_Type;
 
