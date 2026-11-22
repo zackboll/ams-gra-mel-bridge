@@ -10,6 +10,7 @@ from ._calibration_configuration_command import (
     _submit_calibration_configuration,
 )
 from ._camera_protect_command import CameraProtectCommand, CameraProtectRequest, _submit_camera_protect
+from ._erase_command import EraseCommand, EraseRequest, _submit_erase
 from ._c2_metadata import C2MetadataStream
 from ._camera_protect_response import CameraProtectResponseStream, _open_camera_protect_response
 from ._calibration_configuration import CalibrationConfigurationStream, _open_calibration_configuration
@@ -104,6 +105,15 @@ class ControlChannel:
         Does not enable C2, register a callback, or retry a failed submission.
         """
         return _submit_calibration_status(self, command)
+
+    def submit_erase(self, command: EraseCommand) -> EraseRequest:
+        """Explicitly submit a potentially irreversible command on Enabled C2.
+
+        Does not enable the channel or retry submission. A submission failure
+        may occur after the provider has started work; Close does not cancel it.
+        Externally serialize submission against other parent C2 operations.
+        """
+        return _submit_erase(self, command)
 
     def open_calibration_status(self, queue_capacity: int = 16) -> CalibrationStatusStream:
         """Register CalibrationStatus metadata once while Attached or Enabled.

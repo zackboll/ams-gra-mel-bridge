@@ -615,6 +615,9 @@ class AbiTests(unittest.TestCase):
             self.assertIs(function.restype, ctypes.c_int32)
 
     def test_private_erase_abi(self) -> None:
+        import ams_mel
+        from ams_mel import _erase_command
+
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as temp:
             executable = Path(temp) / "layout"
@@ -625,10 +628,15 @@ class AbiTests(unittest.TestCase):
         expected = self._layout(_native.IrEraseCommandV1, "command_id", "erase_type")
         expected += self._layout(_native.IrEraseResultV1, "erase_type", "error_code")
         self.assertEqual(actual, expected)
-        self.assertEqual([_native.AMS_MEL_IR_ERASE_ZEROIZE,
-                          _native.AMS_MEL_IR_ERASE_CLASSIFIED_DATA_ERASE,
-                          _native.AMS_MEL_IR_ERASE_DISABLE,
-                          _native.AMS_MEL_IR_ERASE_CDE_AND_ZEROIZE], list(range(4)))
+        alternatives = {
+            "ZEROIZE": _native.AMS_MEL_IR_ERASE_ZEROIZE,
+            "CLASSIFIED_DATA_ERASE": _native.AMS_MEL_IR_ERASE_CLASSIFIED_DATA_ERASE,
+            "DISABLE": _native.AMS_MEL_IR_ERASE_DISABLE,
+            "CDE_AND_ZEROIZE": _native.AMS_MEL_IR_ERASE_CDE_AND_ZEROIZE,
+        }
+        self.assertEqual(list(alternatives.values()), list(range(4)))
+        self.assertEqual(dict(ams_mel.EraseCommandType.__members__), alternatives)
+        self.assertIs(_erase_command._native, _native)
         pointer = ctypes.POINTER
         request = _native.IrEraseRequestHandle
         signatures = {
@@ -639,6 +647,8 @@ class AbiTests(unittest.TestCase):
         for name, arguments in signatures.items():
             function = getattr(_native, name)
             self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertFalse(hasattr(ams_mel, name))
+            self.assertFalse(hasattr(ams_mel.ir, name))
             self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
             self.assertIs(function.restype, ctypes.c_int32)
 
