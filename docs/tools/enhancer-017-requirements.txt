@@ -1,0 +1,2 @@
+# Isolated previous-release compatibility control, never used for production.
+ada-gnatdoc-enhancer @ https://github.com/zackboll/ada-gnatdoc-enhancer/releases/download/v0.1.7/ada_gnatdoc_enhancer-0.1.7-py3-none-any.whl --hash=sha256:957c65797b03b5c6b3779e2a1918730a2e44749670e37535d2c8ff3e109f3ba4

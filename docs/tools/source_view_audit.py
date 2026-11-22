@@ -11,6 +11,7 @@ import re
 import tomllib
 
 import build_enhanced_site as p
+from ada_examples import tokenize
 from gnatdoc_inventory import specifications, HEADER
 from compare_gnatdoc_warnings import code_tokens
 from gnatdoc_coverage_model import specification
@@ -20,8 +21,11 @@ import source_epoch as epoch
 CONFIG = 'docs/gnatdoc-enhance.toml'
 EVIDENCE = 'docs/gnatdoc-source-native.json'
 CSS = 'api/gnatdoc-source.css'
-CSS_SHA256 = '5b1716ddec6cb9afc3576a1628ba5e14002700575542c9afbe831d99a25a8260'
+# SHA-256 of assets/gnatdoc-source.css extracted from the verified official wheel.
+CSS_SHA256 = '2e4eb69bd23e1ea97e3877383dc7e75d701429006c25581a0e16a75041823fdc'
 HEAD = '<link rel="stylesheet" href="gnatdoc-source.css">'
+TOKEN_CLASSES = ('keyword', 'comment', 'string', 'character', 'number', 'attribute', 'operator')
+TOKEN_SPAN = re.compile(rb'<span class="ada-(?:' + '|'.join(TOKEN_CLASSES).encode() + rb')">([^<\n]+)</span>')
 
 
 def sources(root):
@@ -76,16 +80,29 @@ def prepare(root, site):
     return result
 
 
-def page(name, raw):
+def page(name, raw, *, highlighted=True):
     """Independent serialization of the official schema-1 source page contract."""
     text = raw.decode('utf-8')
     p.require('\x00' not in text and '\r' not in text.replace('\r\n', ''), 'unsupported source text')
-    parts = text.split('\n')
-    lines = [part + '\n' for part in parts[:-1]] + ([parts[-1]] if parts[-1] else [])
     def escape(value):
         return html.escape(value).replace('\r', '&#13;').replace('{', '&#123;').replace('}', '&#125;')
+    if highlighted:
+        # Use the existing MEL display lexer on the whole source (tick context
+        # can cross a line). It cannot introduce links or choose source bytes.
+        pieces = []
+        for token in tokenize(text):
+            escaped = escape(token.text)
+            if token.kind in TOKEN_CLASSES:
+                p.require('\n' not in token.text, 'multiline Ada display token')
+                escaped = f'<span class="ada-{token.kind}">{escaped}</span>'
+            pieces.append(escaped)
+        display = ''.join(pieces)
+    else:
+        display = escape(text)
+    parts = display.split('\n')
+    lines = [part + '\n' for part in parts[:-1]] + ([parts[-1]] if parts[-1] else [])
     code = ''.join(f'<span class="source-line" id="L{i}"><a class="source-line-number" '
-                   f'href="#L{i}" aria-label="Line {i}"></a>{escape(line)}</span>'
+                   f'href="#L{i}" aria-label="Line {i}"></a>{line}</span>'
                    for i, line in enumerate(lines, 1))
     css = posixpath.relpath(CSS, posixpath.dirname('api/source/' + name + '.html'))
     value = ('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">'
@@ -97,9 +114,9 @@ def page(name, raw):
     return value.encode(), len(lines)
 
 
-def source_pages(root):
+def source_pages(root, *, highlighted=True):
     return {'api/source/' + path.relative_to(root).as_posix() + '.html':
-            page(path.relative_to(root).as_posix(), path.read_bytes())[0]
+            page(path.relative_to(root).as_posix(), path.read_bytes(), highlighted=highlighted)[0]
             for path in sources(root).values()}
 
 
@@ -173,8 +190,8 @@ def qualify(root, site, authority, actual):
     p.require({n for n in actual if n.startswith('api/source/')} == set(pages),
               'source-page inventory mismatch')
     for name, expected in pages.items():
-        # Exact bytes admit escaped malicious-looking source text, never an HTML
-        # policy exemption. This also proves text, ordered anchors and resources.
-        p.require(actual[name] == expected, 'source page differs from approved source: ' + name)
+        # Exact equality checks the token classes and boundaries as well as the
+        # escaped text, complete ordered anchors, and absence of active markup.
+        p.require(actual[name] == expected, 'source page differs from approved text/markup: ' + name)
     p.require(CSS in actual and p.sha(actual[CSS]) == CSS_SHA256, 'source stylesheet identity mismatch')
     return pages, insertions, manifest

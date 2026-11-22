@@ -2,7 +2,10 @@
 
 ## Dependency and scope
 
-The documentation-only installer uses the official GNATdoc Enhancer **0.1.7**
+This record describes the schema-1 rollout. For the active dependency and
+highlighting campaign, see [MEL-GNATDOC-018-001](mel-gnatdoc-018-001.md).
+
+The documentation-only installer for this rollout used the official GNATdoc Enhancer **0.1.7**
 wheel, never an editable/development installation. Release commit:
 `5efaea9ac018101f33ac5b68b1b98ab4b3e170f6`; tree:
 `733c472ab4c3a570f2156487c3cde7b6fd0c187a`.

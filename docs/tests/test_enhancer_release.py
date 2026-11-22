@@ -33,15 +33,24 @@ class ReleaseTests(unittest.TestCase):
                 presentation.tool()
 
     def test_changed_package_or_assets_rejected(self):
-        with mock.patch.object(presentation, 'PACKAGE_SHA256', '0' * 64):
+        original = presentation.files
+
+        def changed_asset(path):
+            content = original(path)
+            content['assets/gnatdoc-source.css'] += b'\n/* changed */\n'
+            return content
+
+        with mock.patch.object(presentation, 'files', side_effect=changed_asset):
             with self.assertRaisesRegex(ValueError, 'implementation/assets mismatch'):
                 presentation.tool()
 
     def test_missing_local_or_wrong_digest_origin_rejected(self):
         distribution = importlib.metadata.distribution('ada-gnatdoc-enhancer')
-        for origin in ({}, {'url': 'file:///tmp/' + presentation.WHEEL_NAME},
-                       {'url': presentation.WHEEL_URL,
-                        'archive_info': {'hashes': {'sha256': '0' * 64}}}):
+        archive = {'hashes': {'sha256': presentation.WHEEL_SHA256}}
+        for origin in ({}, {'url': 'file:///tmp/' + presentation.WHEEL_NAME, 'archive_info': archive},
+                       {'url': presentation.WHEEL_URL.replace('/v0.1.8/', '/v0.1.7/'), 'archive_info': archive},
+                       {'url': presentation.WHEEL_URL, 'archive_info': {'hashes': {'sha256': '0' * 64}}},
+                       {'url': presentation.WHEEL_URL, 'archive_info': archive, 'dir_info': {'editable': True}}):
             with self.subTest(origin=origin):
                 altered = mock.Mock(wraps=distribution)
                 altered.version = distribution.version

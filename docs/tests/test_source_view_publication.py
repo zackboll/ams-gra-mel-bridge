@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import sys
 import tempfile
 import unittest
@@ -14,6 +15,7 @@ sys.path[:0] = [str(ROOT / 'docs/tools'), str(ROOT / 'scripts')]
 import build_enhanced_site as p
 import source_view_audit as source
 import source_epoch as epoch
+from source_view_parity import compare_releases
 from local_type_audit import Authority
 from check_doc_coverage import measure
 
@@ -32,14 +34,15 @@ class SourcePublicationTests(unittest.TestCase):
         pages, insertions, manifest = source.qualify(ROOT, self.site, self.authority, actual)
         for name, record in insertions.items():
             source.restore(actual[name].decode(), (self.site / name).read_text(), record)
-        self.assertEqual(json.loads(actual['api/presentation.json'])['source_view'], manifest)
+        p.require(json.loads(actual['api/presentation.json'])['source_view'] == manifest,
+                  'source-view manifest differs from independently reconstructed evidence')
         return pages
 
     def reseal(self, actual):
         manifest = json.loads(actual['api/presentation.json'])
-        manifest['output_sha256'].update(p.hashes({n: b for n, b in actual.items()
-                                                  if n != 'api/presentation.json'}))
-        actual['api/presentation.json'] = json.dumps(manifest).encode()
+        manifest['output_sha256'] = p.hashes({n: b for n, b in actual.items()
+                                             if n not in {'api/presentation.json', 'api/gnatdoc.css'}})
+        actual['api/presentation.json'] = (json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False) + '\n').encode()
         return actual
 
     def test_complete_source_and_destination_contract(self):
@@ -56,29 +59,52 @@ class SourcePublicationTests(unittest.TestCase):
                     actual[first.replace('.ads.html', '.adb.html' if case == 'extra' else '-copy.ads.html')] = actual[first]
                 else:
                     actual[first], actual[second] = actual[second], actual[first]
-                with self.assertRaises(ValueError):
+                with self.assertRaisesRegex(ValueError, 'approved text/markup' if case == 'swap' else 'inventory mismatch'):
                     self.qualify(self.reseal(actual))
 
     def test_line_anchor_and_text_mutations_even_with_recomputed_hashes(self):
         name = next(iter(self.pages))
         original = self.pages[name]
+        lines = list(re.finditer(rb'<span class="source-line".*?(?=<span class="source-line"|</code>)', original, re.S))
+        first, second = lines[:2]
         for replacement in (original.replace(b'id="L1"', b'id="missing"', 1),
                             original.replace(b'id="L2"', b'id="L1"', 1),
                             original.replace(b'id="L2"', b'id="L3"', 1),
-                            original.replace(b'package ', b'forged ', 1),
+                            original[:first.start()] + original[first.end():],
+                            original[:first.start()] + second[0] + first[0] + original[second.end():],
+                            original.replace(b'ada-keyword">package', b'ada-keyword">forged', 1),
                             original.replace(b'</code>', b'<script>alert(1)</script></code>', 1),
                             original.replace(b'<body ', b'<body onload="alert(1)" ', 1),
                             original.replace(b'<body ', b'<body data-forged="1" ', 1),
                             original.replace(b'href="../../../gnatdoc-source.css"', b'href="https://evil.invalid/x"')):
-            if replacement == original:
-                continue
+            self.assertNotEqual(replacement, original)
             for reseal in (False, True):
                 with self.subTest(reseal=reseal, mutation=p.sha(replacement)):
                     actual = dict(self.actual, **{name: replacement})
                     if reseal:
                         self.reseal(actual)
-                    with self.assertRaises(ValueError):
+                    with self.assertRaisesRegex(ValueError, 'approved text/markup'):
                         self.qualify(actual)
+
+    def test_token_mutations_and_stylesheet_even_with_recomputed_hashes(self):
+        name, original = next(iter(self.pages.items()))
+        token = source.TOKEN_SPAN.search(original)[0]
+        cases = {'wrong-class': token.replace(b'ada-', b'unapproved-'),
+                 'wrong-approved-class': re.sub(rb'ada-\w+', b'ada-string', token, count=1),
+                 'active-attribute': token.replace(b'<span ', b'<span onclick="alert(1)" '),
+                 'arbitrary-attribute': token.replace(b'<span ', b'<span data-added="1" '),
+                 'unbalanced': token.removesuffix(b'</span>'),
+                 'missing-wrapper': source.TOKEN_SPAN.sub(rb'\1', token),
+                 'nested-wrapper': token.replace(b'</span>', b'<span class="ada-comment"></span></span>'),
+                 'nested-resource': token.replace(b'</span>', b'<img src="https://example.invalid/x"></span>')}
+        for case, changed in cases.items():
+            self.assertNotEqual(changed, token)
+            actual = dict(self.actual, **{name: original.replace(token, changed, 1)})
+            with self.subTest(case=case), self.assertRaisesRegex(ValueError, 'approved text/markup'):
+                self.qualify(self.reseal(actual))
+        actual = dict(self.actual, **{source.CSS: self.actual[source.CSS] + b'\n/* changed */\n'})
+        with self.assertRaisesRegex(ValueError, 'stylesheet identity mismatch'):
+            self.qualify(self.reseal(actual))
 
     def test_wrong_existing_line_and_overload_swaps(self):
         for name, record in self.insertions.items():
@@ -95,7 +121,8 @@ class SourcePublicationTests(unittest.TestCase):
         wrong = original.replace(a, '.html#L1"', 1)
         swapped = original.replace(a, 'SWAP', 1).replace(b, a, 1).replace('SWAP', b, 1)
         for text in (wrong, swapped):
-            with self.assertRaises(ValueError):
+            self.assertNotEqual(text, original)
+            with self.assertRaisesRegex(ValueError, 'declaration source destination'):
                 self.qualify(self.reseal(dict(self.actual, **{name: text.encode()})))
 
     def test_forged_ownership_order_hash_and_manifest_destinations(self):
@@ -118,8 +145,40 @@ class SourcePublicationTests(unittest.TestCase):
                                      'traversal': 'ada/src/../../secret.ads',
                                      'encoded': 'ada/src/%2e%2e/secret.ads'}[case]
             actual['api/presentation.json'] = json.dumps(manifest).encode()
-            with self.subTest(case=case), self.assertRaises((ValueError, AssertionError)):
+            with self.subTest(case=case), self.assertRaisesRegex(ValueError, 'source-view manifest differs'):
                 self.qualify(actual)
+
+    def test_placeholder_and_forged_native_evidence_cannot_authorize_publication(self):
+        from ada_gnatdoc_enhancer.source_view import native_evidence
+        from ada_gnatdoc_enhancer.errors import EnhancementError
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            shutil.copytree(ROOT / 'ada/src', root / 'ada/src')
+            (root / 'docs').mkdir()
+            shutil.copyfile(ROOT / source.CONFIG, root / source.CONFIG)
+            expected = source.evidence(root, self.site)
+            configured = source.options(root, self.site)
+            path = root / source.EVIDENCE
+            path.write_bytes(epoch.canonical(expected))
+            with self.assertRaisesRegex(EnhancementError, 'evidence hash mismatch'):
+                native_evidence(root, dict(configured, native_manifest_sha256='0' * 64))
+            self.assertEqual(source.prepare(root, self.site), 'docs/gnatdoc-effective.toml')
+            self.assertEqual(native_evidence(root, configured), expected)
+            for key in ('files', 'sources'):
+                forged = copy.deepcopy(expected)
+                forged[key][next(iter(forged[key]))] = 'a' * 64
+                path.write_bytes(epoch.canonical(forged))
+                # Reseal the output-side evidence claim as well. Neither claim
+                # alters the consumer's reconstruction from source and native.
+                with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'source/native evidence changed'):
+                    source.prepare(root, self.site)
+                actual = dict(self.actual)
+                manifest = json.loads(actual['api/presentation.json'])
+                manifest['source_view']['native_evidence']['native_manifest_sha256'] = p.sha(path.read_bytes())
+                actual['api/presentation.json'] = json.dumps(manifest).encode()
+                with self.assertRaisesRegex(ValueError, 'source-view manifest differs'):
+                    self.qualify(self.reseal(actual))
 
     def test_source_input_symlinks_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -170,10 +229,40 @@ class SourcePublicationTests(unittest.TestCase):
         rendered, lines = source.page('ada/src/safe.ads', raw)
         self.assertEqual(lines, 3)
         self.assertNotIn(b'<script>', rendered)
-        self.assertIn(b'&lt;script&gt;', rendered)
+        self.assertIn(b'<span class="ada-comment">-- &lt;script&gt;', rendered)
         self.assertIn(b'&#123;&#123;', rendered)
         self.assertFalse(p.Page(rendered.decode()).issues)
         GraphPage(rendered.decode(), 'api/source/ada/src/safe.ads.html')
+
+    def test_highlighting_preserves_exact_line_format_and_every_token_kind(self):
+        raw = (b'package Safe is\r\n   C : Character := Character\'(\'A\');\r\n'
+               b'   S : String := "quoted ""text""";\n   N : Integer := 16#FF#; -- < >\n'
+               b"   B : Boolean := N = Integer'Last;\nend Safe;")
+        name = 'ada/src/safe.ads'
+        highlighted, count = source.page(name, raw)
+        plain, _ = source.page(name, raw, highlighted=False)
+        self.assertEqual(count, 6)
+        self.assertEqual(source.TOKEN_SPAN.sub(rb'\1', highlighted), plain)
+        self.assertEqual(set(re.findall(rb'class="ada-(\w+)"', highlighted)),
+                         {kind.encode() for kind in source.TOKEN_CLASSES})
+        from html import unescape
+        code = re.search(rb'<code>(.*?)</code>', highlighted, re.S)[1]
+        self.assertEqual(unescape(re.sub(rb'<[^>]+>', b'', code).decode()).encode(), raw)
+
+
+class CompatibilityMutationTests(unittest.TestCase):
+    def test_disabled_delta_allows_only_the_exact_serialized_version(self):
+        name = 'api/presentation.json'
+        old = {name: b'{\n  "enhancer_version": "0.1.7"\n}\n', 'rust/index.html': b'unchanged'}
+        new = dict(old, **{name: old[name].replace(b'0.1.7', b'0.1.8')})
+        self.assertEqual(compare_releases(old, new)['delta'], [name])
+        cases = [('noncanonical serialized', dict(new, **{name: new[name].rstrip()})),
+                 ('unrelated release presentation metadata',
+                  dict(new, **{name: b'{\n  "counts": {},\n  "enhancer_version": "0.1.8"\n}\n'})),
+                 ('exceeds approved files', dict(new, **{'rust/index.html': b'changed'}))]
+        for reason, mutant in cases:
+            with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, reason):
+                compare_releases(old, mutant)
 
 
 if __name__ == '__main__':

@@ -30,9 +30,9 @@ jobs:
         run: sh docs/tools/install_docs_toolchain.sh
       - name: Install isolated official previous-release compatibility control
         run: |
-          python3 -m venv .doc-tools/enhancer-016
-          .doc-tools/enhancer-016/bin/pip install --no-deps --only-binary=:all: --require-hashes \
-            -r docs/tools/enhancer-016-requirements.txt
+          python3 -m venv .doc-tools/enhancer-017
+          .doc-tools/enhancer-017/bin/python -m pip install --no-deps --only-binary=:all: --require-hashes \
+            -r docs/tools/enhancer-017-requirements.txt
       - name: Reconstruct complete publication twice and qualify source-native controls
         run: |
           alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
@@ -44,8 +44,10 @@ jobs:
             .doc-tools/enhancer/bin/python docs/tools/source_view_parity.py \
               --candidate .doc-tools/source-qualified \
               --manifest-sha "$(sha256sum .doc-tools/source-qualified/manifest.json | cut -d " " -f 1)" \
-              --previous-python "$PWD/.doc-tools/enhancer-016/bin/python" \
+              --previous-python "$PWD/.doc-tools/enhancer-017/bin/python" \
               --output .doc-tools/source-parity.json &&
+            .doc-tools/enhancer/bin/python -W error -m unittest discover \
+              -s docs/tests -p test_enhancer_release.py -v &&
             .doc-tools/enhancer/bin/python -W error -m unittest discover \
               -s docs/tests -p test_source_view_publication.py -v &&
             MEL_SEARCH_QUALIFICATION="$PWD/.doc-tools/source-qualified" \

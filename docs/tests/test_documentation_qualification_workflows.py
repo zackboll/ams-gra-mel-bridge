@@ -99,7 +99,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('    timeout-minutes: 180\n', text)
         for command in (
             'docs/tools/install_docs_toolchain.sh',
-            'enhancer-016-requirements.txt',
+            'enhancer-017-requirements.txt',
+            'test_enhancer_release.py',
             'docs/tools/docs_ci.py build',
             'docs/tools/docs_ci.py qualify',
             'docs/tools/source_view_parity.py',

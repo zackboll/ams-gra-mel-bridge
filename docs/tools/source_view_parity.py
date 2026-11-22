@@ -1,4 +1,4 @@
-"""Complete assembled same-source v0.1.7 disabled/enabled publication delta."""
+"""Complete assembled v0.1.7/v0.1.8 compatibility and source-toggle checks."""
 
 import argparse
 import json
@@ -13,6 +13,7 @@ import python_publication as python
 import rustdoc_publication as rust
 import source_epoch as epoch
 import source_view_audit as source
+import source_view_previous as previous_release
 from check_doc_coverage import measure
 from example_sources import References
 from local_type_audit import Authority
@@ -46,6 +47,36 @@ def compare(root, site, before, after, authority):
                 disabled=p.hashes(before), enabled=p.hashes(after))
 
 
+def compare_releases(before, after, *, plain_pages=None):
+    """Compare entire publications; only exact, audited replacements are allowed."""
+    metadata = 'api/presentation.json'
+    allowed = {metadata}
+    epoch.require(set(before) == set(after), 'previous publication inventory differs')
+    old, new = (json.loads(tree[metadata]) for tree in (before, after))
+    for tree, manifest, version in ((before, old, previous_release.VERSION), (after, new, p.VERSION)):
+        serialized = json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False) + '\n'
+        epoch.require(manifest['enhancer_version'] == version and tree[metadata] == serialized.encode(),
+                      'wrong or noncanonical serialized enhancer metadata')
+    if plain_pages is not None:
+        epoch.require(p.sha(before[source.CSS]) == previous_release.CSS_SHA256 and
+                      p.sha(after[source.CSS]) == source.CSS_SHA256, 'release source stylesheet differs')
+        for name, expected in plain_pages.items():
+            epoch.require(before[name] == expected, 'previous plain source page differs: ' + name)
+            epoch.require(source.TOKEN_SPAN.sub(rb'\1', after[name]) == expected,
+                          'highlighting did not restore previous source page: ' + name)
+        allowed.update(plain_pages)
+        allowed.add(source.CSS)
+        for name in allowed - {metadata}:
+            epoch.require(old['output_sha256'][name] == p.sha(before[name]) and
+                          new['output_sha256'][name] == p.sha(after[name]), 'release source output hash differs')
+            new['output_sha256'][name] = old['output_sha256'][name]
+    new['enhancer_version'] = old['enhancer_version']
+    epoch.require(old == new, 'unrelated release presentation metadata changed')
+    delta = {n for n in before if before[n] != after[n]}
+    epoch.require(metadata in delta and delta <= allowed, 'previous compatibility delta exceeds approved files')
+    return dict(passed=True, files=p.hashes(before), delta=sorted(delta))
+
+
 def qualify(root, candidate, manifest_sha, output, previous_python):
     seal = docs_ci.verify(root, candidate, manifest_sha)
     context = seal['identity']
@@ -64,30 +95,30 @@ def qualify(root, candidate, manifest_sha, output, previous_python):
         report = measure(site, exported)
         epoch.enhance(site, exported, report, References(exported, site, ledger=report['native']), control)
         disabled = p.files(control)
-        legacy = Path(temp) / 'previous'
         report_path = Path(temp) / 'report.json'
         # Authored schema-3 inputs hash the inherited native-ledger JSON bytes;
         # retain the measured mapping's insertion order across this process hop.
         report_path.write_text(json.dumps(report))
-        subprocess.run([str(previous_python), str(Path(__file__).with_name('source_view_previous.py')),
-                        '--root', str(exported), '--site', str(site), '--report', str(report_path),
-                        '--output', str(legacy)], check=True)
-        previous = p.files(legacy)
-        epoch.require(set(previous) == set(disabled), 'previous publication inventory differs')
-        epoch.require({n for n in previous if previous[n] != disabled[n]} == {'api/presentation.json'},
-                      'previous compatibility delta exceeds enhancer metadata')
-        old_manifest = json.loads(previous['api/presentation.json'])
-        new_manifest = json.loads(disabled['api/presentation.json'])
-        epoch.require(old_manifest.pop('enhancer_version') == '0.1.6' and
-                      new_manifest.pop('enhancer_version') == '0.1.7' and old_manifest == new_manifest,
-                      'previous compatibility metadata differs')
         rust_files = {n.removeprefix('rust/'): d for n, d in after.items() if n.startswith('rust/')}
         python_files = {n.removeprefix('python/'): d for n, d in after.items() if n.startswith('python/')}
-        before = python.assembled(rust.assembled(disabled, rust_files), python_files)
+
+        def assembled(ada):
+            return python.assembled(rust.assembled(ada, rust_files), python_files)
+
+        def previous(mode):
+            legacy = Path(temp) / ('previous-' + mode)
+            subprocess.run([str(previous_python), '-I', str(Path(__file__).with_name('source_view_previous.py')),
+                            '--root', str(exported), '--site', str(site), '--report', str(report_path),
+                            '--output', str(legacy)], check=True)
+            return assembled(p.files(legacy))
+
+        before = assembled(disabled)
+        previous_disabled = compare_releases(previous('disabled'), before)
         config_path.write_bytes(original)
         result = compare(exported, site, before, after, authority)
-        result['previous_release'] = dict(passed=True, files=p.hashes(previous),
-                                         delta=['api/presentation.json:enhancer_version'])
+        result['previous_release'] = dict(version=previous_release.VERSION, disabled=previous_disabled,
+                                         schema1=compare_releases(previous('schema1'), after,
+                                                                  plain_pages=source.source_pages(exported, highlighted=False)))
         portal = authored_html.manifest(exported)
         names = [portal['home'], portal['stylesheet'], *(g['path'] for g in portal['guides'])]
         result['authored'] = {n: p.sha(after[n]) for n in names}
@@ -98,7 +129,7 @@ def qualify(root, candidate, manifest_sha, output, previous_python):
     del payload['manifest.json']
     epoch.require(p.hashes(payload) == seal['payload'], 'candidate changed during comparison')
     result.update(passed=True, identity=context, manifest_sha256=manifest_sha,
-                  comparison='same-source-v0.1.7-source-toggle')
+                  comparison='same-source-v0.1.7-v0.1.8-and-source-toggle')
     output.write_bytes(epoch.canonical(result))
     return result
 

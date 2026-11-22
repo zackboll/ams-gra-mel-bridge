@@ -1,8 +1,8 @@
-"""Reconstruct the official v0.1.6 compatibility control, never a deployment.
+"""Reconstruct the official v0.1.7 compatibility control, never a deployment.
 
 Invoked exclusively with the separately installed hash-required previous wheel.
-The source/native/guide inputs are the same disposable inputs as the v0.1.7
-disabled control. A version label alone is not an installation identity.
+The source/native/guide inputs are the same disposable inputs as v0.1.8, with
+or without the reviewed opt-in. A version label alone is not an installation identity.
 """
 
 import argparse
@@ -19,30 +19,34 @@ sys.path[:0] = [str(ROOT / 'docs/tools'), str(ROOT / 'scripts')]
 import build_enhanced_site as p
 import authored_html
 import source_epoch as epoch
+import source_view_audit as source
+
+VERSION = '0.1.7'
+WHEEL_URL = ('https://github.com/zackboll/ada-gnatdoc-enhancer/releases/download/v0.1.7/'
+             'ada_gnatdoc_enhancer-0.1.7-py3-none-any.whl')
+WHEEL_SHA256 = '957c65797b03b5c6b3779e2a1918730a2e44749670e37535d2c8ff3e109f3ba4'
+PACKAGE_SHA256 = 'f6c8557c71092a2ef741f1d534a5948cdcef3805244306fb0b8424f51011ff04'
+CSS_SHA256 = '5b1716ddec6cb9afc3576a1628ba5e14002700575542c9afbe831d99a25a8260'
 
 
 def build(root, site, report, output):
     import ada_gnatdoc_enhancer
-    from ada_gnatdoc_enhancer.config import load
-    from ada_gnatdoc_enhancer.pipeline import enhance, verify
     distribution = importlib.metadata.distribution('ada-gnatdoc-enhancer')
     package = Path(ada_gnatdoc_enhancer.__file__).parent
-    p.require(distribution.version == '0.1.6' and
+    p.require(distribution.version == VERSION and
               subprocess.check_output([str(Path(sys.executable).parent / 'gnatdoc-enhancer'), '--version'],
-                                      text=True).strip() == '0.1.6', 'wrong previous CLI/distribution')
+                                      text=True).strip() == VERSION, 'wrong previous CLI/distribution')
     content = {n: d for n, d in p.files(package).items() if '__pycache__' not in Path(n).parts}
-    p.require(p.fingerprint(p.hashes(content)) ==
-              'ec58fd6e393bf2f88fdeddccb590d7c9e95319e3440d132ffd19b5b64e0a8377',
-              'previous installed package differs')
+    p.require(p.fingerprint(p.hashes(content)) == PACKAGE_SHA256, 'previous installed package differs')
     p.require(package.resolve() == Path(distribution.locate_file('ada_gnatdoc_enhancer')).resolve(),
               'previous import origin differs')
-    origin = json.loads(distribution.read_text('direct_url.json'))
-    p.require(origin['url'] == 'https://github.com/zackboll/ada-gnatdoc-enhancer/releases/download/v0.1.6/'
-              'ada_gnatdoc_enhancer-0.1.6-py3-none-any.whl' and
-              origin['archive_info']['hashes']['sha256'] ==
-              'adfec71188a868e3fb70a6da71a124c937f9e63e26a2f2e31af45364f49ffb27',
+    origin = json.loads(distribution.read_text('direct_url.json') or '{}')
+    p.require(set(origin) == {'url', 'archive_info'} and origin['url'] == WHEEL_URL and
+              origin['archive_info'].get('hashes', {}).get('sha256') == WHEEL_SHA256,
               'previous wheel origin differs')
-    config = replace(load(root, 'docs/gnatdoc-enhance.toml'),
+    from ada_gnatdoc_enhancer.config import load
+    from ada_gnatdoc_enhancer.pipeline import enhance, verify
+    config = replace(load(root, source.prepare(root, site)),
                      guide_sha256=p.sha(epoch.canonical(authored_html.contract(root, site, report))))
     p.require(not output.exists(), 'previous output must be fresh')
     output.mkdir()
