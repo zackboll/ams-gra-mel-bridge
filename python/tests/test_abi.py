@@ -304,7 +304,7 @@ class AbiTests(unittest.TestCase):
                                 if "scheduling" in n and n not in signatures),
                          sorted("ams_mel_ir_scheduling_" + family + "_" + suffix
                                 for family in ("execute_task_ack", "task_executing", "schedule_created",
-                                               "update_track_list") for suffix in
+                                               "update_track_list", "task_events") for suffix in
                                 ("open", "receive", "get_counters", "close", "event_view", "event_close")))
         import ams_mel
         self.assertFalse([n for n in dir(ams_mel) if "schedul" in n.lower()])
