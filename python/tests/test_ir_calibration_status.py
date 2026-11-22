@@ -615,7 +615,7 @@ def probe(library, name, *argtypes):
 
 
 def run_private_request_fixture(test, channel, stream, case):
-    """Drive existing C-test controls only; the public API has no status submit/Wait."""
+    """Drive the metadata fixtures through the existing native C-test controls."""
     channel.enable()
     result_type = n.IrCalibrationStatusResultV1
     submit = n.ams_mel_ir_c2_submit_calibration_status

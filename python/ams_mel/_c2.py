@@ -14,6 +14,9 @@ from ._c2_metadata import C2MetadataStream
 from ._camera_protect_response import CameraProtectResponseStream, _open_camera_protect_response
 from ._calibration_configuration import CalibrationConfigurationStream, _open_calibration_configuration
 from ._calibration_status import CalibrationStatusStream, _open_calibration_status
+from ._calibration_status_command import (
+    CalibrationStatusCommand, CalibrationStatusRequest, _submit_calibration_status,
+)
 from ._errors import (
     ErrorKind,
     _call_with_diagnostic,
@@ -94,6 +97,13 @@ class ControlChannel:
         A native attempt consumes this independent one-shot even on failure.
         """
         return _open_calibration_configuration(self, queue_capacity)
+
+    def submit_calibration_status(self, command: CalibrationStatusCommand) -> CalibrationStatusRequest:
+        """Submit once on an Enabled C2 channel and return its unique request.
+
+        Does not enable C2, register a callback, or retry a failed submission.
+        """
+        return _submit_calibration_status(self, command)
 
     def open_calibration_status(self, queue_capacity: int = 16) -> CalibrationStatusStream:
         """Register CalibrationStatus metadata once while Attached or Enabled.
