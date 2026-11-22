@@ -99,6 +99,10 @@ mod ir_comms_metadata;
 mod ir_discovery;
 mod ir_health;
 mod ir_health_metadata;
+mod ir_image_checkout;
+pub use ir_image_checkout::{
+    CheckoutReleaseError, ImageCheckoutCounters, ImageCheckoutLease, ImageCheckoutReceiver,
+};
 mod ir_image_metadata;
 mod ir_los_quaternion;
 mod ir_navigation;
