@@ -2818,6 +2818,73 @@ private package AMS.MEL_C_API is
      Import,
      Convention    => C,
      External_Name => "ams_mel_ir_scheduling_schedule_created_event_close";
+   type Scheduling_Update_Track_List_Metadata_Handle is new System.Address;
+   Null_Scheduling_Update_Track_List_Metadata :
+     constant Scheduling_Update_Track_List_Metadata_Handle :=
+       Scheduling_Update_Track_List_Metadata_Handle (System.Null_Address);
+   type Scheduling_Update_Track_List_Event_Handle is new System.Address;
+   Null_Scheduling_Update_Track_List_Event    :
+     constant Scheduling_Update_Track_List_Event_Handle :=
+       Scheduling_Update_Track_List_Event_Handle (System.Null_Address);
+
+   type IR_Update_Track_List_Response_V1 is record
+      Command_ID, Response : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+
+   function IR_Scheduling_Update_Track_List_Open
+     (Handle              : Scheduling_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Scheduling_Update_Track_List_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_update_track_list_open";
+   function IR_Scheduling_Update_Track_List_Receive
+     (Handle              : Scheduling_Update_Track_List_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Scheduling_Update_Track_List_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_update_track_list_receive";
+   function IR_Scheduling_Update_Track_List_Get_Counters
+     (Handle              : Scheduling_Update_Track_List_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_scheduling_update_track_list_get_counters";
+   function IR_Scheduling_Update_Track_List_Close
+     (Handle              : access Scheduling_Update_Track_List_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_update_track_list_close";
+   function IR_Scheduling_Update_Track_List_Event_View
+     (Handle              : Scheduling_Update_Track_List_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_scheduling_update_track_list_event_view";
+   function IR_Scheduling_Update_Track_List_Event_Close
+     (Handle              : access Scheduling_Update_Track_List_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_scheduling_update_track_list_event_close";
+
    function IR_Track_Metadata_Open
      (Handle              : Track_Handle;
       Queue_Capacity      : Size_T;

@@ -251,6 +251,10 @@ typedef struct ams_mel_ir_scheduling_schedule_created_metadata
     ams_mel_ir_scheduling_schedule_created_metadata;
 typedef struct ams_mel_ir_scheduling_schedule_created_event
     ams_mel_ir_scheduling_schedule_created_event;
+typedef struct ams_mel_ir_scheduling_update_track_list_metadata
+    ams_mel_ir_scheduling_update_track_list_metadata;
+typedef struct ams_mel_ir_scheduling_update_track_list_event
+    ams_mel_ir_scheduling_update_track_list_event;
 /* Owns public consumption of the retained IRSTTrackReport callback queue. The
  * callback-accessible state itself belongs to the Track channel, not to this
  * wrapper, because upstream provides no unregister operation. */
@@ -3820,6 +3824,54 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_schedule_created_event_view(
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_schedule_created_event_close(
     ams_mel_ir_scheduling_schedule_created_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Complete owned snapshot of the two published UpdateTrackListResponse getters.
+ * All four TrackListResponse values are metadata, including the two rejections.
+ * The identifier is opaque to the bridge; there is no correlation with send
+ * or with a TrackListResponse future. */
+typedef struct ams_mel_ir_update_track_list_response_v1 {
+    uint32_t command_id;
+    ams_mel_ir_track_list_response_t response;
+} ams_mel_ir_update_track_list_response_v1;
+
+/* Opt in to the independent, one-shot UpdateTrackListResponse callback while
+ * Attached or Enabled. Serialize open against Scheduling owner operations.
+ * Invalid local arguments do not consume the attempt; any provider attempt
+ * does. Registration is unlocked and may deliver synchronously. A known
+ * Return is written to out_registration when present; unknown/exception
+ * leaves it unchanged. out_metadata must be non-NULL and initially NULL.
+ * Null, unknown response or snapshot failure rejects the entire event;
+ * a full queue drops valid incoming events without allocating a snapshot. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_update_track_list_open(
+    ams_mel_ir_scheduling *scheduling, size_t queue_capacity,
+    ams_mel_ir_scheduling_update_track_list_metadata **out_metadata,
+    ams_mel_ir_return_t *out_registration, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Dequeue in successful-enqueue order. Zero timeout polls. Scheduling Close
+ * wakes receivers; queued events drain before a terminal stopped/failure
+ * status. out_event must be non-NULL and initially NULL. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_update_track_list_receive(
+    ams_mel_ir_scheduling_update_track_list_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_scheduling_update_track_list_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_update_track_list_get_counters(
+    const ams_mel_ir_scheduling_update_track_list_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Serialize against operations on this stream. Discard queued events and
+ * deactivate consumption, not registration. Does not cancel requests. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_update_track_list_close(
+    ams_mel_ir_scheduling_update_track_list_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* The immutable view borrows only from the event owner and is valid until
+ * event_close, independent of the stream and all provider owners. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_update_track_list_event_view(
+    const ams_mel_ir_scheduling_update_track_list_event *event,
+    const ams_mel_ir_update_track_list_response_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_update_track_list_event_close(
+    ams_mel_ir_scheduling_update_track_list_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Registers the @RequiredIfTrack IRSTTrackReport callback and opens bounded

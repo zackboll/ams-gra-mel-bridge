@@ -485,4 +485,126 @@ package body AMS.MEL.IR.Scheduling.Metadata is
       when others =>
          Stream.Handle := C.Null_Scheduling_Created_Metadata;
    end Finalize;
+   type Update_View_Access is access constant C.IR_Update_Track_List_Response_V1;
+   function To_Update_View is new Ada.Unchecked_Conversion (System.Address, Update_View_Access);
+   use type C.Scheduling_Update_Track_List_Metadata_Handle;
+
+   function Open_Update_Track_List
+     (Channel : Scheduling_Channel; Queue_Capacity : Positive) return Update_Track_List_Stream
+   is
+      D            : aliased Diagnostic := [others => Interfaces.C.nul];
+      R            : aliased C.Size_T := 0;
+      Registration : aliased Interfaces.Unsigned_32 := 16#FFFF_FFFF#;
+   begin
+      return Result : Update_Track_List_Stream do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Scheduling_Update_Track_List_Open
+                (Channel.Handle,
+                 C.Size_T (Queue_Capacity),
+                 Result.Handle'Access,
+                 Registration'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
+         begin
+            if Code = C.Provider_Failed and then Registration = Not_Supported_Return then
+               raise Not_Supported with Message (D);
+            end if;
+            Check (Code, D);
+         end;
+      end return;
+   end Open_Update_Track_List;
+
+   function Receive_Update_Track_List
+     (Stream : Update_Track_List_Stream; Timeout_Milliseconds : Natural := 0)
+      return Update_Track_List_Response
+   is
+      use type System.Address;
+      Event   : aliased C.Scheduling_Update_Track_List_Event_Handle :=
+        C.Null_Scheduling_Update_Track_List_Event;
+      Address : aliased System.Address := System.Null_Address;
+      D       : aliased Diagnostic := [others => Interfaces.C.nul];
+      R       : aliased C.Size_T := 0;
+      Result  : Update_Track_List_Response;
+      procedure Release is
+         Ignored : Interfaces.Integer_32;
+      begin
+         Ignored :=
+           C.IR_Scheduling_Update_Track_List_Event_Close
+             (Event'Access, System.Null_Address, 0, null);
+      end Release;
+   begin
+      if Stream.Handle = C.Null_Scheduling_Update_Track_List_Metadata then
+         raise Provider_Error with "UpdateTrackListResponse metadata owner is closed";
+      end if;
+      Check
+        (C.IR_Scheduling_Update_Track_List_Receive
+           (Stream.Handle,
+            Interfaces.Unsigned_32 (Timeout_Milliseconds),
+            Event'Access,
+            D'Address,
+            D'Length,
+            R'Access),
+         D);
+      Check
+        (C.IR_Scheduling_Update_Track_List_Event_View
+           (Event, Address'Access, D'Address, D'Length, R'Access),
+         D);
+      if Address = System.Null_Address then
+         raise Provider_Error with "null UpdateTrackListResponse view";
+      end if;
+      declare
+         Raw : constant C.IR_Update_Track_List_Response_V1 := To_Update_View (Address).all;
+      begin
+         if Raw.Response > Track_List_Receipt'Enum_Rep (Track_List_Receipt'Last) then
+            raise Provider_Error with "unknown UpdateTrackListResponse receipt";
+         end if;
+         Result := (Raw.Command_ID, Track_List_Receipt'Enum_Val (Raw.Response));
+      end;
+      Release;
+      return Result;
+   exception
+      when others =>
+         Release;
+         raise;
+   end Receive_Update_Track_List;
+
+   function Update_Track_List_Counters (Stream : Update_Track_List_Stream) return Metadata_Counters
+   is
+      Raw : aliased C.Metadata_Counters_V1 := (others => 0);
+      D   : aliased Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      Check
+        (C.IR_Scheduling_Update_Track_List_Get_Counters
+           (Stream.Handle, Raw'Access, D'Address, D'Length, R'Access),
+         D);
+      return
+        (AMS.MEL.IR.Counter (Raw.Events_Received),
+         AMS.MEL.IR.Counter (Raw.Events_Dropped_Queue_Full),
+         AMS.MEL.IR.Counter (Raw.Malformed_Or_Unsupported));
+   end Update_Track_List_Counters;
+
+   procedure Close (Stream : in out Update_Track_List_Stream) is
+      D : aliased Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check
+        (C.IR_Scheduling_Update_Track_List_Close
+           (Stream.Handle'Access, D'Address, D'Length, R'Access),
+         D);
+   end Close;
+
+   overriding
+   procedure Finalize (Stream : in out Update_Track_List_Stream) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored :=
+        C.IR_Scheduling_Update_Track_List_Close
+          (Stream.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Stream.Handle := C.Null_Scheduling_Update_Track_List_Metadata;
+   end Finalize;
 end AMS.MEL.IR.Scheduling.Metadata;
