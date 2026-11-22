@@ -1,8 +1,6 @@
 name: Documentation source-view qualification (non-deploying)
 
 on:
-  pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -11,11 +9,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: documentation-source-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
-  DOC_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  DOC_SOURCE_SHA: ${{ github.sha }}
   ALIRE_SETTINGS_DIR: ${{ github.workspace }}/.doc-tools/settings
 
 jobs:

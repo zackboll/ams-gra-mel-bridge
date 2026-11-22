@@ -16,7 +16,8 @@ sys.path.insert(0, str(ROOT / 'docs/tools'))
 import documentation_qualification_source as source
 import docs_workflow
 
-HEAVY = ('documentation-search.yml', 'documentation-resize.yml', 'mel-authored-html-pilot.yml')
+HEAVY = ('documentation-source.yml', 'documentation-search.yml',
+         'documentation-resize.yml', 'mel-authored-html-pilot.yml')
 
 
 def workflow(name):
@@ -84,6 +85,37 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(triggers(text, 'workflow_dispatch', 'main', []))
         for event in ('pull_request', 'push'):
             self.assertFalse(triggers(text, event, 'main', ['rust/src/lib.rs']))
+
+    def test_source_view_qualification_retained_off_prs(self):
+        text = workflow('documentation-source.yml')
+        for event, branch, expected in (
+            ('pull_request', 'main', False),
+            ('push', 'main', True),
+            ('push', 'feature', False),
+            ('workflow_dispatch', 'feature', True),
+        ):
+            with self.subTest(event=event, branch=branch):
+                self.assertEqual(triggers(text, event, branch, ['python/ams_mel/ir.py']), expected)
+        self.assertIn('    timeout-minutes: 180\n', text)
+        for command in (
+            'docs/tools/install_docs_toolchain.sh',
+            'enhancer-016-requirements.txt',
+            'docs/tools/docs_ci.py build',
+            'docs/tools/docs_ci.py qualify',
+            'docs/tools/source_view_parity.py',
+            'test_source_view_publication.py',
+            'test_search_publication.py',
+            'test_resize_publication.py',
+            'make test-documentation-source',
+            'playwright install --with-deps chromium',
+            'docs/tools/source_view_browser.py',
+            'docs/tools/search_browser.py',
+            'actions/upload-artifact@',
+        ):
+            with self.subTest(command=command):
+                self.assertIn(command, text)
+        self.assertNotIn('github.event.pull_request', text)
+
 
     def test_resize_controls_are_source_local_not_cross_commit_content_equality(self):
         text = workflow('documentation-resize.yml')
