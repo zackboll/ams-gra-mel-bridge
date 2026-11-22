@@ -1,6 +1,7 @@
 //! Compiled-mock contracts. Each scenario isolates logging and retained graphs.
 use ams_mel::*;
 use std::{
+    cell::RefCell,
     env,
     ffi::{c_char, c_void, CString},
     fs,
@@ -21,6 +22,12 @@ unsafe extern "C" {
     fn dlclose(handle: *mut c_void) -> i32;
     fn ams_mel_test_completion_boundary(family: u32, op: u32, target: u64, out: *mut u64) -> i32;
     fn ams_mel_test_completion_owner(family: u32, target: u64, out: *mut u64) -> i32;
+    fn ams_mel_test_completion_owner_notify(
+        family: u32,
+        op: u32,
+        target: u64,
+        out: *mut u64,
+    ) -> i32;
 }
 
 fn provider() -> PathBuf {
@@ -83,6 +90,45 @@ impl Drop for Pin {
     }
 }
 
+fn wait_for_return_cleanup() {
+    let mut observed = 0;
+    // SAFETY: test-only handshake, Return family, drain all owner notifications.
+    assert_eq!(
+        unsafe { ams_mel_test_completion_owner_notify(1, 0, 0, &mut observed) },
+        1
+    );
+}
+
+thread_local! {
+    static REENTRY: RefCell<Option<(ChannelView, bool)>> = const { RefCell::new(None) };
+}
+
+extern "C" fn reenter_capabilities() {
+    // Synchronous on the submitting thread, through an independent safe view.
+    REENTRY.with_borrow_mut(|slot| {
+        if let Some((view, succeeded)) = slot {
+            *succeeded = view.capabilities().is_ok();
+        }
+    });
+}
+
+fn arm_reentry(pin: &Pin, name: &std::ffi::CStr, view: ChannelView) {
+    REENTRY.set(Some((view, false)));
+    // SAFETY: callers name the mock's one-shot reentry setters; the DSO is pinned.
+    unsafe {
+        let symbol = dlsym(pin.0, name.as_ptr());
+        assert!(!symbol.is_null());
+        let set: unsafe extern "C" fn(extern "C" fn()) = std::mem::transmute(symbol);
+        set(reenter_capabilities);
+    }
+}
+
+fn finish_reentry() {
+    let (mut view, succeeded) = REENTRY.take().unwrap();
+    assert!(succeeded);
+    view.close().unwrap();
+}
+
 fn wait_for_completion_owners() {
     for family in [1, 2] {
         let mut counts = [0; 4];
@@ -120,16 +166,16 @@ impl Log {
     }
     fn finish(&self, retained: bool) {
         self.check("library_unloaded", usize::from(!retained));
-        self.no_unexpected_scheduling_operations(false);
+        self.no_unexpected_scheduling_operations(None);
     }
 
-    fn no_unexpected_scheduling_operations(&self, allow_abort: bool) {
+    fn no_unexpected_scheduling_operations(&self, allowed_dispatch: Option<&str>) {
         for line in self
             .text()
             .lines()
             .filter(|line| line.starts_with("scheduling_"))
         {
-            if allow_abort && line == "scheduling_abort_task_exec" {
+            if Some(line) == allowed_dispatch {
                 continue;
             }
             assert!(
@@ -608,6 +654,8 @@ scenarios! {
 
 #[path = "ir_scheduling/abort.rs"]
 mod abort;
+#[path = "ir_scheduling/stare.rs"]
+mod stare;
 
 #[test]
 #[ignore = "subprocess entry; exercised by the compiled-mock scenarios"]
@@ -624,6 +672,7 @@ fn scenario_child() {
             pending(&scenario, &log)
         }
         scenario if scenario.starts_with("abort-") => abort::run(scenario, &log),
+        scenario if scenario.starts_with("stare-") => stare::run(scenario, &log),
         _ => enable_or_close_failure(&scenario, &log),
     }
     println!("SCHEDULING_CHILD_COMPLETE {scenario}");
