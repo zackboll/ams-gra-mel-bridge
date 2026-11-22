@@ -1,6 +1,6 @@
 //! The injected opaque values are never dereferenced or passed to native Close.
 use super::*;
-use std::cell::Cell;
+use std::{cell::Cell, path::PathBuf};
 
 fn config() -> SchedulingConfig {
     SchedulingConfig::new(
@@ -8,6 +8,301 @@ fn config() -> SchedulingConfig {
         UciId::new(std::array::from_fn(|i| 0xf0 + i as u8), "plateforme é").unwrap(),
         ComponentLocation::new(1.25, -2.5, -0.0, "位置", "航機").unwrap(),
     )
+}
+
+const TASK: SchedulingTaskInfo = SchedulingTaskInfo {
+    system_time_ns: i64::MIN,
+    request_id: 0xf123_4567,
+    action: TaskListAction::Normal,
+    precedence_within_priority: u32::MAX,
+    priority: 0x8000_0001,
+};
+
+#[test]
+fn abort_exact_fields_and_null_success() {
+    for (index, (action, time, request_id, precedence, priority)) in [
+        (
+            TaskListAction::Normal,
+            i64::MIN,
+            0xf123_4567,
+            u32::MAX,
+            0x8000_0001,
+        ),
+        (TaskListAction::Next, i64::MAX, u32::MAX, 0x8000_0002, 0),
+        (TaskListAction::Immediate, -42, 0x8000_0000, 37, u32::MAX),
+        (TaskListAction::Abort, 0, 0, 0, 19),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let info = SchedulingTaskInfo {
+            system_time_ns: time,
+            request_id,
+            action,
+            precedence_within_priority: precedence,
+            priority,
+        };
+        let mut calls = 0;
+        let err = submit_abort_with(&info, |raw, out, d, _, r| {
+            calls += 1;
+            assert!(out.is_null());
+            assert_eq!(raw.system_time_ns, time);
+            assert_eq!(raw.request_id, request_id);
+            assert_eq!(raw.action, index as u32);
+            assert_eq!(raw.precedence_within_priority, precedence);
+            assert_eq!(raw.priority, priority);
+            // SAFETY: writable diagnostic buffer and size out slot.
+            unsafe {
+                *d = 0;
+                *r = 1;
+            }
+            sys::AMS_MEL_OK
+        })
+        .unwrap_err();
+        assert_eq!(calls, 1);
+        assert_eq!(err.kind(), &ErrorKind::ProtocolInconsistency);
+        assert_eq!(
+            err.diagnostic(),
+            Some("Scheduling AbortTask succeeded without a request owner")
+        );
+    }
+}
+
+fn mock_provider() -> PathBuf {
+    std::env::var_os("AMS_MEL_TEST_PROVIDER_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../native/build-tests/test-providers")
+        })
+        .join("libmock_ir_provider.so")
+}
+
+#[test]
+fn abort_contradictory_owner_and_diagnostics() {
+    let session = Session::open(mock_provider(), "sched-abort-success", "").unwrap();
+    let mut channel = session.open_scheduling_channel(&config()).unwrap();
+    channel.enable().unwrap();
+    for (status, bytes, size, kind) in [
+        (
+            sys::AMS_MEL_PROVIDER_EXCEPTION,
+            b"exec threw\0".as_slice(),
+            11,
+            ErrorKind::ProviderException,
+        ),
+        (
+            sys::AMS_MEL_OK,
+            b"unexpected\0".as_slice(),
+            11,
+            ErrorKind::ProtocolInconsistency,
+        ),
+        (
+            sys::AMS_MEL_OK,
+            b"".as_slice(),
+            0,
+            ErrorKind::ProtocolInconsistency,
+        ),
+        (
+            sys::AMS_MEL_OK,
+            b"".as_slice(),
+            DIAGNOSTIC_CAPACITY + 1,
+            ErrorKind::ProtocolInconsistency,
+        ),
+        (
+            sys::AMS_MEL_PROVIDER_FAILED,
+            b"unterminated".as_slice(),
+            12,
+            ErrorKind::ProtocolInconsistency,
+        ),
+        (
+            sys::AMS_MEL_PROVIDER_FAILED,
+            b"a\0b\0".as_slice(),
+            4,
+            ErrorKind::ProtocolInconsistency,
+        ),
+        (
+            sys::AMS_MEL_PROVIDER_FAILED,
+            b"\xff\0".as_slice(),
+            2,
+            ErrorKind::InvalidUtf8,
+        ),
+    ] {
+        let mut real = channel.exec_abort(&TASK).unwrap();
+        assert_eq!(
+            real.wait(5_000).unwrap(),
+            ReturnResult::Completed {
+                value: CommandReturn::Success
+            }
+        );
+        let mut calls = 0;
+        let err = submit_abort_with(&TASK, |_, out, d, c, r| {
+            calls += 1;
+            assert!(out.is_null());
+            // Transfer a real unique handle to exercise ReturnRequest Drop;
+            // never send an invented or already released pointer to native Close.
+            *out = mem::replace(&mut real.raw, ptr::null_mut());
+            assert!(bytes.len() <= c);
+            // SAFETY: writable diagnostic storage for this call.
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr(), d.cast(), bytes.len());
+                *r = size;
+            }
+            status
+        })
+        .unwrap_err();
+        assert_eq!(calls, 1);
+        assert_eq!(err.kind(), &kind);
+        if kind == ErrorKind::ProviderException {
+            assert_eq!(err.diagnostic(), Some("exec threw"));
+        }
+    }
+    channel.close().unwrap();
+    session.close().unwrap();
+}
+
+#[test]
+fn abort_reuses_return_boundary_for_bad_pointer_and_unknown_rejection() {
+    // The existing Scheduling mock does not return BadPointer, and the native
+    // facade diagnoses unknown upstream MEL codes before they reach this ABI.
+    for (status, value, code, message, expected) in [
+        (
+            sys::AMS_MEL_OK,
+            sys::AMS_MEL_IR_RETURN_BAD_POINTER,
+            sys::AMS_MEL_ERROR_NONE,
+            "".to_owned(),
+            ReturnResult::Completed {
+                value: CommandReturn::BadPointer,
+            },
+        ),
+        (
+            sys::AMS_MEL_COMMAND_REJECTED,
+            0,
+            u32::MAX,
+            "rejected: é🛰".repeat(150),
+            ReturnResult::Rejected {
+                code: MelErrorCode::Unknown(u32::MAX),
+                description: "rejected: é🛰".repeat(150),
+            },
+        ),
+    ] {
+        let calls = Cell::new(0);
+        let result = wait_for_return_with(100, |timeout, result, d, capacity, required| {
+            assert_eq!(timeout, if calls.get() == 0 { 100 } else { 0 });
+            calls.set(calls.get() + 1);
+            *result = sys::AmsMelIrReturnResultV1 {
+                value,
+                error_code: code,
+            };
+            *required = message.len() + 1;
+            if *required <= capacity {
+                // SAFETY: the complete message and terminator fit.
+                unsafe {
+                    ptr::copy_nonoverlapping(message.as_ptr(), d.cast(), message.len());
+                    *d.add(message.len()) = 0;
+                }
+            }
+            status
+        })
+        .unwrap();
+        assert_eq!(result, expected);
+        assert_eq!(calls.get(), if message.is_empty() { 1 } else { 2 });
+    }
+}
+
+#[test]
+fn abort_is_independent_of_actual_ack_delivery() {
+    use std::ffi::{c_void, CString};
+
+    unsafe extern "C" {
+        fn dlopen(path: *const c_char, flags: i32) -> *mut c_void;
+        fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
+        fn dlclose(handle: *mut c_void) -> i32;
+    }
+    struct Pin(*mut c_void);
+    impl Drop for Pin {
+        fn drop(&mut self) {
+            // SAFETY: releases one test-only loader reference.
+            unsafe { dlclose(self.0) };
+        }
+    }
+
+    let provider = mock_provider();
+    let session = Session::open(&provider, "sched-abort-delayed", "").unwrap();
+    let mut channel = session.open_scheduling_channel(&config()).unwrap();
+    channel.enable().unwrap();
+    let mut request = channel.exec_abort(&TASK).unwrap();
+    assert_eq!(request.wait(0).unwrap_err().kind(), &ErrorKind::Timeout);
+    let path = CString::new(provider.as_os_str().as_encoded_bytes()).unwrap();
+    let mut ack = ptr::null_mut();
+    let mut event = ptr::null_mut();
+    // SAFETY: all raw owners and inputs are live and used serially. ACK is
+    // registered deliberately, for this test only, on the same channel; the
+    // fixture retains the provider through delivery and release calls.
+    unsafe {
+        let pin = Pin(dlopen(path.as_ptr(), 2 | 4)); // RTLD_NOW | RTLD_NOLOAD
+        assert!(!pin.0.is_null());
+        let deliver = dlsym(pin.0, c"mock_scheduling_ack_deliver".as_ptr());
+        let release = dlsym(pin.0, c"mock_completion_release_family".as_ptr());
+        assert!(!deliver.is_null() && !release.is_null());
+        let deliver: unsafe extern "C" fn(u32, u32, u32) -> i32 = mem::transmute(deliver);
+        let release: unsafe extern "C" fn(u32, u32) -> i32 = mem::transmute(release);
+        let d = ptr::null_mut();
+        let r = ptr::null_mut();
+        assert_eq!(
+            deliver(17, TASK.request_id, 0),
+            0,
+            "no implicit ACK registration"
+        );
+        assert_eq!(
+            sys::ams_mel_ir_scheduling_execute_task_ack_open(
+                channel.raw,
+                2,
+                &mut ack,
+                ptr::null_mut(),
+                d,
+                0,
+                r
+            ),
+            sys::AMS_MEL_OK
+        );
+        assert_eq!(
+            sys::ams_mel_ir_scheduling_execute_task_ack_receive(ack, 0, &mut event, d, 0, r),
+            sys::AMS_MEL_TIMEOUT
+        );
+        assert_eq!(deliver(17, TASK.request_id, 0), 1);
+        assert_eq!(request.wait(0).unwrap_err().kind(), &ErrorKind::Timeout);
+        assert_eq!(
+            sys::ams_mel_ir_scheduling_execute_task_ack_receive(ack, 0, &mut event, d, 0, r),
+            sys::AMS_MEL_OK
+        );
+        let mut snapshot = ptr::null();
+        assert_eq!(
+            sys::ams_mel_ir_scheduling_execute_task_ack_event_view(event, &mut snapshot, d, 0, r),
+            sys::AMS_MEL_OK
+        );
+        let snapshot = snapshot.as_ref().unwrap();
+        assert_eq!(
+            (snapshot.command_id, snapshot.request_id),
+            (17, TASK.request_id)
+        );
+        assert_eq!(
+            sys::ams_mel_ir_scheduling_execute_task_ack_event_close(&mut event, d, 0, r),
+            sys::AMS_MEL_OK
+        );
+        assert_eq!(
+            sys::ams_mel_ir_scheduling_execute_task_ack_close(&mut ack, d, 0, r),
+            sys::AMS_MEL_OK
+        );
+        assert_eq!(release(15, 1), 1);
+    }
+    assert_eq!(
+        request.wait(5_000).unwrap(),
+        ReturnResult::Completed {
+            value: CommandReturn::Success
+        }
+    );
+    request.close().unwrap();
+    channel.close().unwrap();
+    session.close().unwrap();
 }
 
 #[test]

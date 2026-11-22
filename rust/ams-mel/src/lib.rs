@@ -31,13 +31,13 @@ pub use ams_mel_ir::{
     NucStream, NucTempData, NucTempPoint, OpticalDistortionMap, OpticalDistortionMapOpenError,
     OpticalDistortionMapStream, PixelFormat, PositionSolutionState, PositionVelocityCovariance,
     ProviderVersion, Quaternion, ReturnRequest, ReturnResult, RowCol, ScanParameters, ScanType,
-    SchedulingChannel, SchedulingConfig, SecurityArtifact, SecurityAuditRecord,
+    SchedulingChannel, SchedulingConfig, SchedulingTaskInfo, SecurityArtifact, SecurityAuditRecord,
     SecurityAuthenticationCategory, SecurityEvent, SecurityEventKind,
     SecurityFileManagementCategory, SecurityIntegrityCategory, SecurityKeyManagementCategory,
     SecurityOutcome, SecuritySanitizationCategory, SecuritySeverity, SecuritySystemCategory,
     SensorType, Session, SessionOptions, StackedChannel, StackedConfig, StateTransitionStatus,
-    StreamCounters, SubsystemDependency, SubsystemStatus, TemperatureState, TemperatureStatus,
-    UciId,
+    StreamCounters, SubsystemDependency, SubsystemStatus, TaskListAction, TemperatureState,
+    TemperatureStatus, UciId,
 };
 
 #[doc(inline)]

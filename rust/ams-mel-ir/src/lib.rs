@@ -44,8 +44,8 @@
 //! capabilities and weak common requests. It does not provide acquisition or
 //! metadata callback registration.
 //! [`SchedulingChannel`] provides attachment, explicit Enable, capability
-//! snapshots and weak common requests, but no task operations or metadata
-//! registration.
+//! snapshots, weak common requests and [`SchedulingChannel::exec_abort`].
+//! Other task operations and Scheduling metadata registration are not exposed.
 //!
 //! IR HealthStatus metadata (RUST-IR-002):
 //! [`HealthStatusChannel::open_metadata`] returns an independent
@@ -159,7 +159,7 @@ pub use ir_mode::{
 pub use ir_nuc::{
     NucCounters, NucOpenError, NucPixelValue, NucPointType, NucStream, NucTempData, NucTempPoint,
 };
-pub use ir_scheduling::{SchedulingChannel, SchedulingConfig};
+pub use ir_scheduling::{SchedulingChannel, SchedulingConfig, SchedulingTaskInfo, TaskListAction};
 pub use ir_stacked::{StackedChannel, StackedConfig};
 
 const DIAGNOSTIC_CAPACITY: usize = 4096;
@@ -1662,9 +1662,10 @@ impl Drop for ModeRequest {
 /// It currently owns requests produced by:
 ///
 /// - [`ControlChannel::submit_bit`] (one-choice C2 BIT),
-/// - [`ControlChannel::submit_bit_noop`] (C2 BIT, empty/no-op convenience), and
-/// - [`ControlChannel::submit_config_set`] (C2 opaque configuration text), and
-/// - [`ChannelView::send_keepalive`] (common Channel KeepAlive, C2/Image/Health/Stacked).
+/// - [`ControlChannel::submit_bit_noop`] (C2 BIT, empty/no-op convenience),
+/// - [`ControlChannel::submit_config_set`] (C2 opaque configuration text),
+/// - [`SchedulingChannel::exec_abort`] (Scheduling AbortTask), and
+/// - [`ChannelView::send_keepalive`] (common Channel KeepAlive).
 ///
 /// The native request owns its admitted family graph independently of the
 /// View, typed owner, and Session that created it. Wait is cached; timeout is
@@ -1722,7 +1723,7 @@ impl Drop for ReturnRequest {
 }
 
 /// Weak common Channel view of one safe typed owner ([`ControlChannel`],
-/// [`ImageStream`], [`HealthStatusChannel`], or [`StackedChannel`]).
+/// [`ImageStream`], [`HealthStatusChannel`], [`StackedChannel`] or [`SchedulingChannel`]).
 ///
 /// Ownership model:
 ///

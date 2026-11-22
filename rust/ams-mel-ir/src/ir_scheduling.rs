@@ -1,6 +1,35 @@
-//! Ownership and common Channel services, not task scheduling.
+//! Scheduling ownership, common Channel services and AbortTask execution.
 use super::*;
 use std::{fmt, marker::PhantomData};
+
+/// Task list action carried unchanged in [`SchedulingTaskInfo`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum TaskListAction {
+    /// Normal action (0).
+    Normal = 0,
+    /// Next action (1).
+    Next = 1,
+    /// Immediate action (2).
+    Immediate = 2,
+    /// Abort action (3), not required by [`SchedulingChannel::exec_abort`].
+    Abort = 3,
+}
+
+/// Owned `TaskInfo` for the upstream `AbortTask` operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SchedulingTaskInfo {
+    /// Signed system time in nanoseconds, with no epoch conversion.
+    pub system_time_ns: i64,
+    /// Full-width request ID; not a command ID.
+    pub request_id: u32,
+    /// Exact task list action; the operation does not override it.
+    pub action: TaskListAction,
+    /// Full-width precedence within the selected priority.
+    pub precedence_within_priority: u32,
+    /// Full-width priority, without normalization.
+    pub priority: u32,
+}
 
 /// Owned channel identity, platform identity and sensor location for attachment.
 #[derive(Clone, Debug, PartialEq)]
@@ -48,7 +77,7 @@ impl Session {
 /// Unique owner of an attached Scheduling channel. Not `Clone`, `Send`, or `Sync`.
 ///
 /// The native owner survives public Session closure. Weak [`ChannelView`]s do
-/// not keep it or its provider alive. Admitted common requests own independent
+/// not keep it or its provider alive. Admitted requests own independent
 /// native completion claims; timeout, request Close and parent closure do not
 /// cancel provider work.
 ///
@@ -94,6 +123,31 @@ impl SchedulingChannel {
         call_with_diagnostic(|d, c, r| {
             // SAFETY: unique live owner, serialized through &mut self.
             unsafe { sys::ams_mel_ir_scheduling_enable(raw, d, c, r) }
+        })
+    }
+
+    /// Submits the upstream `SchedulingChannel::exec(AbortTask)` once, on an
+    /// Enabled channel. Native code copies all five fields during submission.
+    /// It does not infer a command ID or require [`TaskListAction::Abort`].
+    ///
+    /// The independent request survives closure of the channel, Session and
+    /// weak views. Polling, timeouts and request Close/Drop do not cancel work.
+    /// Inspect the cached [`ReturnResult`] for a provider return or explicit
+    /// MEL rejection; neither submission nor completion proves a physical abort.
+    /// This operation does not register or consume Scheduling metadata.
+    ///
+    /// # Errors
+    /// Refuses Attached, Failed and Closed channels. Native admission and
+    /// provider failures retain their error categories and available diagnostics.
+    /// Malformed diagnostics or a missing successful request owner are errors.
+    /// A submission error can occur after dispatch and is not proof that the
+    /// provider did not execute. This method never retries submission.
+    pub fn exec_abort(&mut self, info: &SchedulingTaskInfo) -> Result<ReturnRequest, Error> {
+        let raw = self.live()?;
+        submit_abort_with(info, |info, out, d, c, r| {
+            // SAFETY: the unique borrow serializes submission against Close. Native
+            // checks Enabled and copies info synchronously. All outputs are writable.
+            unsafe { sys::ams_mel_ir_scheduling_exec_abort(raw, info, out, d, c, r) }
         })
     }
 
@@ -161,6 +215,38 @@ impl Drop for SchedulingChannel {
     fn drop(&mut self) {
         best_effort_close(mem::replace(&mut self.raw, ptr::null_mut()));
     }
+}
+
+fn submit_abort_with(
+    info: &SchedulingTaskInfo,
+    submit: impl FnOnce(
+        &sys::AmsMelIrTaskInfoV1,
+        &mut *mut sys::AmsMelIrReturnRequest,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> i32,
+) -> Result<ReturnRequest, Error> {
+    let info = sys::AmsMelIrTaskInfoV1 {
+        system_time_ns: info.system_time_ns,
+        request_id: info.request_id,
+        action: info.action as u32,
+        precedence_within_priority: info.precedence_within_priority,
+        priority: info.priority,
+    };
+    // Guard even an unexpected handle on failure or malformed success. Drop
+    // attempts cleanup once, without adopting the output as a usable request.
+    let mut owner = ReturnRequest {
+        raw: ptr::null_mut(),
+        _not_send_sync: Rc::new(()),
+    };
+    call_with_diagnostic(|d, c, r| submit(&info, &mut owner.raw, d, c, r))?;
+    if owner.raw.is_null() {
+        return Err(protocol(
+            "Scheduling AbortTask succeeded without a request owner",
+        ));
+    }
+    Ok(owner)
 }
 
 fn best_effort_close(mut raw: *mut sys::AmsMelIrScheduling) {

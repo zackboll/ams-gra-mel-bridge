@@ -62,13 +62,17 @@ impl Pin {
             c"mock_scheduling_stare_calls",
             c"mock_scheduling_track_calls",
         ] {
-            // SAFETY: all listed mock-only counters have the same signature.
-            unsafe {
-                let symbol = dlsym(self.0, name.as_ptr());
-                assert!(!symbol.is_null(), "{name:?}");
-                let count: unsafe extern "C" fn() -> u32 = std::mem::transmute(symbol);
-                assert_eq!(count(), 0, "{name:?}");
-            }
+            assert_eq!(self.count(name), 0, "{name:?}");
+        }
+    }
+
+    fn count(&self, name: &std::ffi::CStr) -> u32 {
+        // SAFETY: callers use the exact names of mock-only unsigned counters.
+        unsafe {
+            let symbol = dlsym(self.0, name.as_ptr());
+            assert!(!symbol.is_null(), "{name:?}");
+            let count: unsafe extern "C" fn() -> u32 = std::mem::transmute(symbol);
+            count()
         }
     }
 }
@@ -116,11 +120,18 @@ impl Log {
     }
     fn finish(&self, retained: bool) {
         self.check("library_unloaded", usize::from(!retained));
+        self.no_unexpected_scheduling_operations(false);
+    }
+
+    fn no_unexpected_scheduling_operations(&self, allow_abort: bool) {
         for line in self
             .text()
             .lines()
             .filter(|line| line.starts_with("scheduling_"))
         {
+            if allow_abort && line == "scheduling_abort_task_exec" {
+                continue;
+            }
             assert!(
                 !["_exec", "_sent", "_registered", "_registration_attempted"]
                     .iter()
@@ -130,6 +141,11 @@ impl Log {
         }
     }
     fn cleaned_up(&self, enabled: bool) {
+        self.check_cleanup_order(enabled);
+        self.finish(false);
+    }
+
+    fn check_cleanup_order(&self, enabled: bool) {
         self.check("scheduling_disabled", usize::from(enabled));
         let text = self.text();
         let mut lines = text.lines();
@@ -149,7 +165,6 @@ impl Log {
                 "missing or out of order: {event}\n{text}"
             );
         }
-        self.finish(false);
     }
 }
 impl Drop for Log {
@@ -558,13 +573,16 @@ macro_rules! scenarios {
     ($($name:ident => $scenario:literal),+ $(,)?) => {$(
         #[test]
         fn $name() {
-            let child = Command::new(env::current_exe().unwrap())
+            // Bound regressions that would otherwise deadlock in provider reentry.
+            let child = Command::new("timeout")
+                .args(["--kill-after=2s", "45s"])
+                .arg(env::current_exe().unwrap())
                 .args(["--exact", "scenario_child", "--ignored", "--nocapture"])
                 .env(SCENARIO, $scenario)
                 .output().unwrap();
             let stdout = String::from_utf8_lossy(&child.stdout);
             let stderr = String::from_utf8_lossy(&child.stderr);
-            assert!(child.status.success() && stdout.contains("SCHEDULING_CHILD_COMPLETE"), "{stdout}\n{stderr}");
+            assert!(child.status.success() && stdout.contains("SCHEDULING_CHILD_COMPLETE"), "{}\n{stdout}\n{stderr}", child.status);
         }
     )+};
 }
@@ -588,6 +606,9 @@ scenarios! {
     deferred_detach_failure_retains_native_graph => "deferred-detach-fail",
 }
 
+#[path = "ir_scheduling/abort.rs"]
+mod abort;
+
 #[test]
 #[ignore = "subprocess entry; exercised by the compiled-mock scenarios"]
 fn scenario_child() {
@@ -602,6 +623,7 @@ fn scenario_child() {
         "close-pending" | "drop-pending" | "abandon-pending" | "deferred-detach-fail" => {
             pending(&scenario, &log)
         }
+        scenario if scenario.starts_with("abort-") => abort::run(scenario, &log),
         _ => enable_or_close_failure(&scenario, &log),
     }
     println!("SCHEDULING_CHILD_COMPLETE {scenario}");
