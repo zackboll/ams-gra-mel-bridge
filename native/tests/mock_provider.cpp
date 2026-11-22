@@ -61,15 +61,15 @@ struct C2SendBarrier {
  * IRMEL-ADA-005 CalibrationConfigurationCmd send, and family 10 is the
  * IRMEL-ADA-006 CalibrationStatusCmd send. IRMEL-ADA-007 appends EraseCommand (11).
  * IRMEL-ADA-008 appends C2 SystemTrackDataResponse (12). */
-C2SendBarrier c2_send_barriers[19];
-unsigned send_entries[19]{};
+C2SendBarrier c2_send_barriers[20];
+unsigned send_entries[20]{};
 std::mutex c2_send_mutex;
 std::condition_variable c2_send_ready;
 
 extern "C" __attribute__((visibility("default"))) int mock_c2_send_barrier(
     unsigned family, unsigned operation, unsigned throws)
 {
-    if (family >= 19U || operation > 3U) return 0;
+    if (family >= std::size(c2_send_barriers) || operation > 3U) return 0;
     std::unique_lock lock{c2_send_mutex};
     if (operation == 3U) return static_cast<int>(send_entries[family]);
     auto& barrier = c2_send_barriers[family];
@@ -216,7 +216,7 @@ extern "C" __attribute__((visibility("default"))) int mock_completion_gate(
 extern "C" __attribute__((visibility("default"))) int mock_completion_release_family(
     unsigned family, unsigned amount)
 {
-    if (family >= 19U) return 0;
+    if (family >= std::size(c2_send_barriers)) return 0;
     for (unsigned index = 0; index < amount; ++index) {
         std::function<void()> complete;
         {
@@ -6077,6 +6077,24 @@ std::atomic<unsigned> scheduling_track_calls{};
 void (*scheduling_track_reentry)(){};
 std::array<std::uint64_t, 1283> scheduling_track_values{};
 std::unique_ptr<Return> malformed_track_value;
+std::atomic<unsigned> prioritized_calls{};
+void (*prioritized_reentry)(){};
+std::unique_ptr<irmel::TrackListResponse> malformed_prioritized_receipt;
+std::mutex prioritized_values_mutex;
+std::vector<std::uint64_t> prioritized_values;
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_prioritized_calls()
+{ return prioritized_calls.load(); }
+extern "C" __attribute__((visibility("default"))) void mock_prioritized_reentry(void (*callback)())
+{ prioritized_reentry = callback; }
+extern "C" __attribute__((visibility("default"))) std::size_t mock_prioritized_values(
+    std::uint64_t *out, std::size_t capacity)
+{
+    std::lock_guard lock{prioritized_values_mutex};
+    if (out && capacity >= prioritized_values.size())
+        std::copy(prioritized_values.begin(), prioritized_values.end(), out);
+    return prioritized_values.size();
+}
 extern "C" __attribute__((visibility("default"))) unsigned mock_scheduling_track_calls(void)
 { return scheduling_track_calls.load(); }
 extern "C" __attribute__((visibility("default"))) void mock_scheduling_track_reentry(void (*callback)())
@@ -6181,9 +6199,67 @@ public:
      * scheduling_specific_calls or mock_scheduling_ack_registrations. */
     Return registerMetadataCallback(TaskExecutingCallback callback) override
     { return task_executing_.register_callback(scenario_, *this, std::move(callback)); }
-    /* ---- Remaining Scheduling-specific surface: explicitly unsupported. ---- */
-    mel::RequestFor<irmel::TrackListResponse> send(irmel::PrioritizedTrackListCmd) override
-    { return unsupported<irmel::TrackListResponse>("scheduling_prioritized_track_list_sent"); }
+    mel::RequestFor<irmel::TrackListResponse> send(irmel::PrioritizedTrackListCmd command) override
+    {
+        using Receipt = irmel::TrackListResponse;
+        if (!scenario_.starts_with("sched-prioritized-"))
+            return unsupported<Receipt>("scheduling_prioritized_track_list_sent");
+        ++prioritized_calls;
+        record("scheduling_prioritized_track_list_sent");
+        const auto& tracks = command.getTrackData();
+        std::vector<std::uint64_t> values{
+            static_cast<std::uint64_t>(command.getScheduleTime().count()),
+            static_cast<std::uint64_t>(command.getTimeToLive().count()),
+            command.getCommandID(), command.getTrackCount(), tracks.size()};
+        for (const auto& track : tracks) {
+            const auto p = track.getPosition();
+            const auto v = track.getVelocity();
+            const std::uint64_t fields[]{
+                static_cast<std::uint64_t>(track.getTimestamp().count()),
+                static_cast<std::uint64_t>(track.getTrackId()), track.getIrstPriority(),
+                track.getReservedPriority(), track.getIrstPrecedence(), track.getReservedPrecedence(),
+                track.getIsSkippable(), track.getMaintainOutsideFOS(), static_cast<std::uint64_t>(track.getIrstTrackId()),
+                std::bit_cast<std::uint64_t>(p.range), std::bit_cast<std::uint64_t>(p.az),
+                std::bit_cast<std::uint64_t>(p.el), std::bit_cast<std::uint64_t>(p.rangerate),
+                std::bit_cast<std::uint64_t>(v.range), std::bit_cast<std::uint64_t>(v.az),
+                std::bit_cast<std::uint64_t>(v.el), std::bit_cast<std::uint64_t>(v.rangerate),
+                static_cast<std::uint64_t>(track.getTask()), track.getCommandID()};
+            values.insert(values.end(), std::begin(fields), std::end(fields));
+        }
+        {
+            std::lock_guard lock{prioritized_values_mutex};
+            prioritized_values = std::move(values);
+        }
+        if (prioritized_reentry) prioritized_reentry();
+        c2_send_boundary(19);
+        if (scenario_ == "sched-prioritized-send-throw") throw std::runtime_error("mock prioritized send exception");
+        if (scenario_ == "sched-prioritized-invalid-future") return {};
+        if (scenario_ == "sched-prioritized-null") return ready_request<Receipt>(nullptr);
+        if (scenario_ == "sched-prioritized-unowned") {
+            malformed_prioritized_receipt = std::make_unique<Receipt>(Receipt::Accepted);
+            return ready_request(std::shared_ptr<Receipt>{std::shared_ptr<Receipt>{}, malformed_prioritized_receipt.get()});
+        }
+        if (scenario_ == "sched-prioritized-delayed" || scenario_ == "sched-prioritized-detach-fail")
+            return held_request(std::make_shared<Receipt>(Receipt::Accepted), 19);
+        if (scenario_ == "sched-prioritized-mel-error" || scenario_ == "sched-prioritized-future-throw") {
+            std::promise<mel::ErrorOr<std::shared_ptr<Receipt>>> promise;
+            auto future = promise.get_future();
+            if (scenario_.ends_with("future-throw")) {
+                promise.set_exception(std::make_exception_ptr(std::runtime_error("mock prioritized future exception")));
+            } else {
+                const char bytes[]{'e', 'r', 'r', '\0', static_cast<char>(0xff)};
+                promise.set_value(mel::ErrorOr<std::shared_ptr<Receipt>>{mel::Error{
+                    mel::ErrorCode::InvalidState, std::string(bytes, sizeof bytes) + std::string(1024, 'x')}});
+            }
+            return future;
+        }
+        const auto receipt = scenario_.ends_with("-none") ? Receipt::None :
+            scenario_.ends_with("-rejected") ? Receipt::Rejected :
+            scenario_.ends_with("-expired") ? Receipt::RejectedExpired :
+            scenario_.ends_with("-bad-enum") ? static_cast<Receipt>(UINT32_MAX) : Receipt::Accepted;
+        return ready_request(std::make_shared<Receipt>(receipt));
+    }
+    /* ---- Remaining Scheduling-specific metadata: explicitly unsupported. ---- */
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&, const irmel::SchedCreatedRep *const)>) override
     { return unsupported_registration("scheduling_sched_created_registered"); }
@@ -6902,6 +6978,7 @@ public:
              instance_ == "sched-stare-detach-fail" ||
              instance_ == "sched-scan-detach-fail" ||
              instance_ == "sched-track-detach-fail" ||
+             instance_ == "sched-prioritized-detach-fail" ||
              instance_ == "sched-detach-fail" ||
              instance_ == "sched-enabled-detach-fail" ||
              instance_ == "sched-open-detach-fail" ||

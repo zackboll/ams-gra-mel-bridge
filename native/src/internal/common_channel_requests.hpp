@@ -5,6 +5,7 @@
 
 #include <ams_mel/abi.h>
 #include <irmel/library/irmel-types/Channel.h>
+#include <irmel/library/irmel-types/TrackListResponse.h>
 
 #include <atomic>
 #include <condition_variable>
@@ -178,12 +179,14 @@ struct CommsWorkerInput {
     std::atomic<unsigned> launch_state{};
 };
 
-void arm_return_worker(const std::shared_ptr<ReturnWorkerInput>&) noexcept;
-void retain_return_worker(const std::shared_ptr<ReturnWorkerInput>&) noexcept;
 void run_return_worker(const std::shared_ptr<ReturnWorkerInput>&) noexcept;
 void arm_comms_worker(const std::shared_ptr<CommsWorkerInput>&) noexcept;
 void retain_comms_worker(const std::shared_ptr<CommsWorkerInput>&) noexcept;
 void run_comms_worker(const std::shared_ptr<CommsWorkerInput>&) noexcept;
+using TrackListSend = ams::iface::mel::RequestFor<ams::iface::irmel::TrackListResponse> (*)(
+    ams::iface::irmel::Channel&, void *);
+ams_mel_status_t submit_track_list(const CommonChannelAccess&, TrackListSend, void *,
+    ams_mel_ir_track_list_request **, char *, std::size_t, std::size_t *) noexcept;
 CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *);
 CommonChannelAccess common_from_stream(const ams_mel_ir_stream *);
 CommonChannelAccess common_from_health(const ams_mel_ir_health *);

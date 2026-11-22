@@ -3,6 +3,100 @@ use std::mem::{align_of, offset_of, size_of};
 use std::path::Path;
 use std::process::Command;
 
+#[test]
+fn scheduling_prioritized_track_list_abi() {
+    type H = AmsMelIrTrackListRequest;
+    type C = std::ffi::c_char;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrScheduling,
+        *const AmsMelIrPrioritizedTrackListCmdV1,
+        *mut *mut H,
+        *mut C,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_scheduling_send_prioritized_tracks;
+    let _: unsafe extern "C" fn(
+        *const H,
+        u32,
+        *mut AmsMelIrTrackListResultV1,
+        *mut C,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_list_request_wait;
+    let _: unsafe extern "C" fn(*mut *mut H, *mut C, usize, *mut usize) -> AmsMelStatus =
+        ams_mel_ir_track_list_request_close;
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable =
+        std::env::temp_dir().join(format!("ams-prioritized-sys-{}", std::process::id()));
+    assert!(
+        Command::new(std::env::var("CC").unwrap_or_else(|_| "cc".into()))
+            .args([
+                "-std=c11",
+                "-pedantic-errors",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-I"
+            ])
+            .arg(root.join("native/include"))
+            .arg(root.join("native/tests/scheduling_prioritized_layout_probe.c"))
+            .arg("-o")
+            .arg(&executable)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let output = Command::new(&executable).output().unwrap();
+    std::fs::remove_file(executable).unwrap();
+    assert!(output.status.success());
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|s| s.parse().unwrap())
+        .collect();
+    let mut expected = Vec::new();
+    macro_rules! layout {
+        ($t:ty, $($field:ident),+ $(,)?) => {
+            expected.extend([size_of::<$t>(), align_of::<$t>(), $(offset_of!($t, $field)),+]);
+        };
+    }
+    layout!(
+        AmsMelIrRangeAzElV1,
+        range_m,
+        azimuth_rad,
+        elevation_rad,
+        range_rate_mps
+    );
+    layout!(
+        AmsMelIrTrackDataV1,
+        timestamp_ns,
+        track_id,
+        irst_priority,
+        reserved_priority,
+        irst_precedence,
+        reserved_precedence,
+        is_skippable,
+        maintain_outside_fos,
+        irst_track_id,
+        position,
+        velocity,
+        task,
+        command_id
+    );
+    layout!(AmsMelIrTrackDataSpanV1, data, size);
+    layout!(
+        AmsMelIrPrioritizedTrackListCmdV1,
+        schedule_time_ns,
+        time_to_live_ns,
+        command_id,
+        track_count,
+        tracks
+    );
+    layout!(AmsMelIrTrackListResultV1, value, error_code);
+    assert_eq!(actual, expected);
+}
+
 /// IRMEL-ADA-011: private raw SchedulingChannel foundation mirror only; exact
 /// signatures and every layout value compared with the compiled C11 probe.
 #[test]

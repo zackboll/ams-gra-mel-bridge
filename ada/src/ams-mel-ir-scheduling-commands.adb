@@ -1,3 +1,5 @@
+with Ada.Unchecked_Conversion;
+with Ada.Unchecked_Deallocation;
 with AMS.MEL.IR.Scan_Conversion;
 with Interfaces.C;
 with System;
@@ -233,14 +235,14 @@ package body AMS.MEL.IR.Scheduling.Commands is
    end Value;
    function Rejection_Code (Result : Abort_Result) return Error_Code is
    begin
-      if Result.Result_Status /= Rejected then
+      if Result.Result_Status /= AMS.MEL.IR.Channel.Rejected then
          raise Provider_Error with "Scheduling task result is not rejected";
       end if;
       return Result.Result_Code;
    end Rejection_Code;
    function Description (Result : Abort_Result) return String is
    begin
-      if Result.Result_Status /= Rejected then
+      if Result.Result_Status /= AMS.MEL.IR.Channel.Rejected then
          raise Provider_Error with "Scheduling task result is not rejected";
       end if;
       return US.To_String (Result.Result_Text);
@@ -289,7 +291,7 @@ package body AMS.MEL.IR.Scheduling.Commands is
          return
            (Result_Status => Success,
             Result_Value  => Command_Return'Val (Raw.Value),
-            Result_Code   => None,
+            Result_Code   => AMS.MEL.IR.Channel.None,
             Result_Text   => US.Null_Unbounded_String);
       elsif Code = C.Command_Rejected then
          if Raw.Error_Code > Error_Code'Pos (Error_Code'Last) then
@@ -326,11 +328,210 @@ package body AMS.MEL.IR.Scheduling.Commands is
                end;
             end if;
             return
-              (Result_Status => Rejected,
+              (Result_Status => AMS.MEL.IR.Channel.Rejected,
                Result_Value  => Return_Success,
                Result_Code   => Error_Code'Val (Raw.Error_Code),
                Result_Text   => Text);
          end;
+      else
+         raise Provider_Error with Failure_Message (D);
+      end if;
+   end Wait;
+
+   function To_Double is new Ada.Unchecked_Conversion (Long_Float, Interfaces.C.double);
+
+   function To_Raw (Value : Range_Az_El) return C.IR_Range_Az_El_V1
+   is (To_Double (Value.Range_M),
+       To_Double (Value.Azimuth_Rad),
+       To_Double (Value.Elevation_Rad),
+       To_Double (Value.Range_Rate_MPS));
+
+   type Raw_Track_Array is array (Positive range <>) of C.IR_Track_Data_V1 with Convention => C;
+   type Raw_Track_Access is access Raw_Track_Array;
+   procedure Free is new Ada.Unchecked_Deallocation (Raw_Track_Array, Raw_Track_Access);
+
+   function Send_Prioritized_Tracks
+     (Channel : Scheduling_Channel; Value : Prioritized_Track_List_Cmd) return Track_List_Request
+   is
+      Data : Raw_Track_Access;
+      Raw  : aliased C.IR_Prioritized_Track_List_Cmd_V1 :=
+        (Value.Schedule_Time_NS,
+         Value.Time_To_Live_NS,
+         Value.Command_ID,
+         Value.Track_Count,
+         (System.Null_Address, C.Size_T (Value.Length)));
+      D    : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+   begin
+      if Value.Length /= 0 then
+         Data := new Raw_Track_Array (Value.Tracks'Range);
+         for Index in Value.Tracks'Range loop
+            declare
+               Item : Track_Data renames Value.Tracks (Index);
+            begin
+               Data (Index) :=
+                 (Item.Timestamp_NS,
+                  Item.Track_ID,
+                  Item.IRST_Priority,
+                  Item.Reserved_Priority,
+                  Item.IRST_Precedence,
+                  Item.Reserved_Precedence,
+                  Boolean'Pos (Item.Is_Skippable),
+                  Boolean'Pos (Item.Maintain_Outside_FOS),
+                  Item.IRST_Track_ID,
+                  To_Raw (Item.Position),
+                  To_Raw (Item.Velocity),
+                  Metadata.Task_Kind'Enum_Rep (Item.Task_Kind),
+                  Item.Command_ID);
+            end;
+         end loop;
+         Raw.Tracks.Data := Data (Data'First)'Address;
+      end if;
+      return Result : Track_List_Request do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Scheduling_Send_Prioritized_Tracks
+                (Channel.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, null);
+         begin
+            Free (Data);
+            Check_Submission (Code, Failure_Message (D));
+         end;
+      end return;
+   exception
+      when Storage_Error =>
+         Free (Data);
+         raise Resource_Exhausted with "could not allocate prioritized track input";
+      when others =>
+         Free (Data);
+         raise;
+   end Send_Prioritized_Tracks;
+
+   function Status (Result : Track_List_Result) return Outcome is
+   begin
+      if not Result.Observed then
+         raise Provider_Error with "no TrackListResponse observed";
+      end if;
+      return Result.Result_Status;
+   end Status;
+
+   function Value (Result : Track_List_Result) return Track_List_Response is
+   begin
+      if Status (Result) /= Success then
+         raise Provider_Error with "prioritized track request contains a MEL error";
+      end if;
+      return Result.Result_Value;
+   end Value;
+
+   function Rejection_Code (Result : Track_List_Result) return Error_Code is
+   begin
+      if Status (Result) /= AMS.MEL.IR.Channel.Rejected then
+         raise Provider_Error with "prioritized track request contains no MEL error";
+      end if;
+      return Result.Result_Code;
+   end Rejection_Code;
+
+   function Description (Result : Track_List_Result) return String is
+   begin
+      if Status (Result) /= AMS.MEL.IR.Channel.Rejected then
+         raise Provider_Error with "prioritized track request contains no MEL error";
+      end if;
+      return US.To_String (Result.Result_Text);
+   end Description;
+
+   procedure Close (Request : in out Track_List_Request) is
+      Code : constant Interfaces.Integer_32 :=
+        C.IR_Track_List_Request_Close (Request.Handle'Access, System.Null_Address, 0, null);
+   begin
+      if Code /= C.Success then
+         raise Provider_Error with "could not close TrackListResponse observer";
+      end if;
+   end Close;
+
+   overriding
+   procedure Finalize (Request : in out Track_List_Request) is
+   begin
+      Close (Request);
+   exception
+      when others =>
+         Request.Handle := C.Null_Track_List_Request;
+   end Finalize;
+
+   function Wait
+     (Request : Track_List_Request; Timeout_Milliseconds : Natural) return Track_List_Result
+   is
+      Raw      : aliased C.IR_Track_List_Result_V1 := (0, 0);
+      D        : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      Required : aliased C.Size_T := 0;
+      Code     : constant Interfaces.Integer_32 :=
+        C.IR_Track_List_Request_Wait
+          (Request.Handle,
+           Interfaces.Unsigned_32 (Timeout_Milliseconds),
+           Raw'Access,
+           D'Address,
+           D'Length,
+           Required'Access);
+
+      function Copy_Description (Buffer : Diagnostic_Array) return US.Unbounded_String is
+         Text : String (1 .. Natural (Required - 1));
+      begin
+         if Buffer (Required - 1) /= Interfaces.C.nul then
+            raise Provider_Error with "missing TrackListResponse diagnostic terminator";
+         end if;
+         for Index in Text'Range loop
+            Text (Index) := Character'Val (Interfaces.C.char'Pos (Buffer (C.Size_T (Index - 1))));
+         end loop;
+         return US.To_Unbounded_String (Text);
+      end Copy_Description;
+
+      function Rejection return US.Unbounded_String is
+         type Diagnostic_Access is access Diagnostic_Array;
+         procedure Release is new Ada.Unchecked_Deallocation (Diagnostic_Array, Diagnostic_Access);
+         Full           : Diagnostic_Access;
+         Retry_Raw      : aliased C.IR_Track_List_Result_V1 := (0, 0);
+         Retry_Required : aliased C.Size_T := 0;
+      begin
+         if Required = 0 or else Required - 1 > C.Size_T (Natural'Last) then
+            raise Provider_Error with "invalid TrackListResponse diagnostic length";
+         elsif Required <= D'Length then
+            return Copy_Description (D);
+         end if;
+         Full := new Diagnostic_Array (0 .. Required - 1);
+         if C.IR_Track_List_Request_Wait
+              (Request.Handle,
+               0,
+               Retry_Raw'Access,
+               Full.all'Address,
+               Full'Length,
+               Retry_Required'Access)
+           /= C.Command_Rejected
+           or else Retry_Raw.Error_Code /= Raw.Error_Code
+           or else Retry_Required /= Required
+         then
+            raise Provider_Error with "cached TrackListResponse diagnostic changed";
+         end if;
+         return Text : constant US.Unbounded_String := Copy_Description (Full.all) do
+            Release (Full);
+         end return;
+      exception
+         when others =>
+            Release (Full);
+            raise;
+      end Rejection;
+   begin
+      if Code = C.Timeout then
+         raise Timeout_Error with "TrackListResponse is still pending";
+      elsif Code = C.Success
+        and then Raw.Value <= Track_List_Response'Pos (Track_List_Response'Last)
+      then
+         return
+           (True,
+            Success,
+            Track_List_Response'Val (Raw.Value),
+            AMS.MEL.IR.Channel.None,
+            US.Null_Unbounded_String);
+      elsif Code = C.Command_Rejected and then Raw.Error_Code <= Error_Code'Pos (Error_Code'Last)
+      then
+         return
+           (True, AMS.MEL.IR.Channel.Rejected, None, Error_Code'Val (Raw.Error_Code), Rejection);
       else
          raise Provider_Error with Failure_Message (D);
       end if;

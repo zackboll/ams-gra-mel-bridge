@@ -264,6 +264,11 @@ class AbiTests(unittest.TestCase):
                                                        pointer(_native.IrChannelCapabilityHandle)],
             "ams_mel_ir_scheduling_exec_track": [owner, pointer(_native.IrTrackTaskV1),
                 pointer(_native.IrReturnRequestHandle)],
+            "ams_mel_ir_scheduling_send_prioritized_tracks": [owner, pointer(_native.IrPrioritizedTrackListCmdV1),
+                pointer(_native.IrTrackListRequestHandle)],
+            "ams_mel_ir_track_list_request_wait": [_native.IrTrackListRequestHandle, ctypes.c_uint32,
+                pointer(_native.IrTrackListResultV1)],
+            "ams_mel_ir_track_list_request_close": [pointer(_native.IrTrackListRequestHandle)],
             "ams_mel_ir_scheduling_exec_scan": [owner, pointer(_native.IrScanTaskV1),
                                                    pointer(_native.IrReturnRequestHandle)],
             "ams_mel_ir_scheduling_exec_stare": [owner, pointer(_native.IrStareTaskV1),
@@ -279,7 +284,7 @@ class AbiTests(unittest.TestCase):
             self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
             self.assertIs(function.restype, ctypes.c_int32)
         # IRMEL-ADA-012 and IRMEL-ADA-013 allow exactly the six raw acknowledgement and six
-        # raw TaskExecutingRep exports; no task execution, track-list send or other callback.
+        # raw TaskExecutingRep exports beyond the individually listed functions.
         self.assertEqual(sorted(n for n in _native.BOUND_FUNCTION_NAMES
                                 if "scheduling" in n and n not in signatures),
                          sorted("ams_mel_ir_scheduling_" + family + "_" + suffix
@@ -305,6 +310,27 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.IrTrackTaskV1, "track_parameters", "task_info", "command_id"))
         self.assertEqual(actual, expected)
         self.assertEqual(len(_native.IrTrackTaskParamV1().targets), 255)
+
+    def test_private_scheduling_prioritized_layout(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-pedantic-errors",
+                            "-Wall", "-Wextra", "-Werror", "-I" + str(root / "native/include"),
+                            str(root / "native/tests/scheduling_prioritized_layout_probe.c"),
+                            "-o", str(executable)], check=True)
+            actual = [int(v) for v in subprocess.check_output([str(executable)], text=True).split()]
+        expected = []
+        for record, fields in (
+            (_native.IrRangeAzElV1, "range_m azimuth_rad elevation_rad range_rate_mps"),
+            (_native.IrTrackDataV1, "timestamp_ns track_id irst_priority reserved_priority irst_precedence "
+             "reserved_precedence is_skippable maintain_outside_fos irst_track_id position velocity task command_id"),
+            (_native.IrTrackDataSpanV1, "data size"),
+            (_native.IrPrioritizedTrackListCmdV1, "schedule_time_ns time_to_live_ns command_id track_count tracks"),
+            (_native.IrTrackListResultV1, "value error_code"),
+        ):
+            expected.extend(self._layout(record, *fields.split()))
+        self.assertEqual(actual, expected)
 
     def test_private_scheduling_scan_layout(self) -> None:
         """Raw ScanTask ABI only, checked against a strict compiled C11 probe."""
@@ -1528,6 +1554,9 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_scheduling_exec_stare",
                 "ams_mel_ir_scheduling_exec_scan",
                 "ams_mel_ir_scheduling_exec_track",
+                "ams_mel_ir_scheduling_send_prioritized_tracks",
+                "ams_mel_ir_track_list_request_wait",
+                "ams_mel_ir_track_list_request_close",
                 "ams_mel_ir_scheduling_close",
                 "ams_mel_ir_track_metadata_open",
                 "ams_mel_ir_track_metadata_receive",
@@ -1658,8 +1687,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 335)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 335)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 338)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 338)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1667,7 +1696,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 335)
+        self.assertEqual(len(exported), 338)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
