@@ -1188,7 +1188,7 @@ ams_mel_ir_erase_request_close = _LIBRARY.ams_mel_ir_erase_request_close
 ams_mel_ir_erase_request_close.argtypes = [ctypes.POINTER(IrEraseRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_erase_request_close.restype = ctypes.c_int32
 
-# IRMEL-ADA-008 private ABI only; deliberately no safe Python C2 SystemTrackDataResponse API.
+# C2 SystemTrackDataResponse private ABI (IRMEL-ADA-008, PY-MEL-026).
 # Reuses IrSystemTrackDataResponseV1 and IrCommandStatusV1; the C2 result and
 # request handle are distinct from the Track ones.
 class IrC2SystemResponseResultV1(ctypes.Structure):

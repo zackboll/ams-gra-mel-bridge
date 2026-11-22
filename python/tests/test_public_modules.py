@@ -55,6 +55,8 @@ class PublicModuleTests(unittest.TestCase):
                      'CameraProtectRejected', 'CameraProtectRequest',
                      'CameraProtectResponseOpenError', 'CameraProtectResponseStream',
                      'EraseCommandType', 'EraseCommand', 'EraseCompleted', 'EraseRejected', 'EraseRequest',
+                     'AzimuthElevation', 'SystemTrackDataResponse', 'C2SystemTrackDataCompleted',
+                     'C2SystemTrackDataRejected', 'C2SystemTrackDataRequest',
                      'Quaternion', 'LineOfSightQuaternion',
                      'LineOfSightQuaternionOpenError', 'LineOfSightQuaternionStream'):
             self.assertIn(name, ir.__all__)
@@ -88,8 +90,21 @@ class PublicModuleTests(unittest.TestCase):
         for module in (ams_mel, ir):
             self.assertFalse(hasattr(module, 'submit_erase'))
 
+    def test_system_track_data_response_is_only_a_c2_operation(self):
+        name = 'submit_system_track_data_response'
+        self.assertTrue(callable(getattr(ir.ControlChannel, name)))
+        self.assertFalse(hasattr(ir.C2SystemTrackDataRequest, 'receive'))
+        for other in (ams_mel, ir, ir.Session, ir.ChannelView, ir.ImageStream):
+            self.assertFalse(hasattr(other, name))
+
     def test_domain_values_keep_legacy_pickle_paths(self):
+        az_el = ir.AzimuthElevation(-0.25, 0.5)
         values = (
+            az_el,
+            ir.SystemTrackDataResponse(0, 1, 2, 3, 4.0, 5.0, 6.0, 7.0, True, False, az_el, az_el),
+            ir.C2SystemTrackDataCompleted(ir.C2CommandStatus(
+                8, ir.C2CommandState.REJECTED, ir.C2CannotComply.NOT_SET, 'reason µ')),
+            ir.C2SystemTrackDataRejected(ir.MelErrorCode(0xF1234567), 'rejected €'),
             *ir.EraseCommandType,
             ir.EraseCommand(0x80000001, ir.EraseCommandType.CDE_AND_ZEROIZE),
             ir.EraseCompleted(ir.EraseCommandType.CLASSIFIED_DATA_ERASE),

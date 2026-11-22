@@ -28,13 +28,17 @@ def _bit_type(raw) -> t.C2BitType:
         int(raw.expected_duration_ns))
 
 
+def _copy_command_status(raw: _native.IrCommandStatusV1, reason_field: str) -> t.C2CommandStatus:
+    """Copy while the callback or request still owns the borrowed reason text."""
+    return t.C2CommandStatus(
+        int(raw.command_id), _enum(t.C2CommandState, raw.state),
+        _enum(t.C2CannotComply, raw.reason_id), _copy_string_view(raw.reason_description, reason_field))
+
+
 def _event_from_raw(raw: _native.IrC2MetadataEventV1) -> t.C2MetadataEvent:
     kind = _enum(t.C2MetadataKind, raw.kind)
     if kind == t.C2MetadataKind.COMMAND_STATUS:
-        status = raw.command_status
-        payload = t.C2CommandStatus(
-            int(status.command_id), _enum(t.C2CommandState, status.state),
-            _enum(t.C2CannotComply, status.reason_id), _text(status.reason_description))
+        payload = _copy_command_status(raw.command_status, "C2 metadata text")
     elif kind == t.C2MetadataKind.BIT_CONFIGURATION:
         payload = t.C2BitConfiguration(
             _span(raw.bit_configuration.bit_types, _bit_type, "C2 BIT types"))

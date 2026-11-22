@@ -12,6 +12,9 @@ from ._calibration_configuration_command import (
 from ._camera_protect_command import CameraProtectCommand, CameraProtectRequest, _submit_camera_protect
 from ._erase_command import EraseCommand, EraseRequest, _submit_erase
 from ._c2_metadata import C2MetadataStream
+from ._c2_system_track_response import (
+    C2SystemTrackDataRequest, SystemTrackDataResponse, _submit_system_track_data_response,
+)
 from ._camera_protect_response import CameraProtectResponseStream, _open_camera_protect_response
 from ._calibration_configuration import CalibrationConfigurationStream, _open_calibration_configuration
 from ._calibration_status import CalibrationStatusStream, _open_calibration_status
@@ -114,6 +117,16 @@ class ControlChannel:
         Externally serialize submission against other parent C2 operations.
         """
         return _submit_erase(self, command)
+
+    def submit_system_track_data_response(
+        self, response: SystemTrackDataResponse
+    ) -> C2SystemTrackDataRequest:
+        """Submit the optional C2 overload once on an explicitly Enabled channel.
+
+        This does not enable the channel, open a Track channel, register
+        metadata, or retry a failure. Serialize against other C2 operations.
+        """
+        return _submit_system_track_data_response(self, response)
 
     def open_calibration_status(self, queue_capacity: int = 16) -> CalibrationStatusStream:
         """Register CalibrationStatus metadata once while Attached or Enabled.

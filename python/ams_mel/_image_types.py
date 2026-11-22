@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import Union
 
+from ._errors import ErrorKind, _local_error
 from ._health_types import Euler
+from ._validation import _validate_double
 
 
 class ImageMetadataKind(IntEnum):
@@ -52,6 +54,18 @@ class AzimuthElevation:
 
     azimuth_rad: float
     elevation_rad: float
+
+    def __post_init__(self) -> None:
+        _az_el_fields(self)
+
+
+def _az_el_fields(value: AzimuthElevation) -> tuple[float, float]:
+    if type(value) is not AzimuthElevation:
+        raise _local_error(ErrorKind.INVALID_ARGUMENT, "angle pair must be AzimuthElevation")
+    azimuth = getattr(value, "azimuth_rad", None)
+    elevation = getattr(value, "elevation_rad", None)
+    return (_validate_double(azimuth, "azimuth_rad"),
+            _validate_double(elevation, "elevation_rad"))
 
 
 @dataclass(frozen=True)
