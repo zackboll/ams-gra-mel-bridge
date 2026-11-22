@@ -111,15 +111,46 @@ gates; local qualification does not satisfy either of them.
 |---|---|
 | `make format-ada`; `make check-ada-format`; `make check-ada-docs-changed` | 0 each; eight changed public declarations inspected, zero annotation defects. |
 | `make test-native` | 0; 1,009 passed, including 16 focused UpdateTrackListResponse cases (one layout probe). |
+| `make test-ada` | 0; full smoke suite and public-only ownership example passed. |
+| `make test-python` | 0; 840 passed. |
+| `make test-rust` | 0; 666 passed, zero failed, 15 ignored. |
+| `make check-ir-api-coverage` | 0; 87 regression tests passed; 127 headers and 148 operations audited. |
+| `make check` | 0; build-tree isolation, native and Ada tests, formatting and text hygiene passed. |
+| `alr -n -C ada build` | 0; Ada and production facade built. |
+| `alr -n -C ada/tests run` | 0 on the serial retry; the full Ada smoke suite ran, including UpdateTrackListResponse. |
 | `ctest --test-dir native/build-tests -R '^ir_scheduling_\|^(ir_)?common_' --output-on-failure` | 0; 355 passed, including the existing Scheduling command and inherited Return/Comms tests. |
 | Strict C11 probe (`gcc` and `clang`, `-std=c11 -pedantic-errors -Wall -Wextra -Werror`) | 0 each; layout, opaque handle pointer layout, constants, and six signatures match. |
 | C++20 upstream checks | 0; GCC 14.2 and Clang 19.1 compiled the getter/type/value assertions and the mock's exact overload. The prioritized conversion test and callback mapping tests passed. |
 | Clang ASan/UBSan focused CTest (`ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1`) | 0; 31 passed, including the SchedCreatedRep and prioritized conversion regressions. |
 | Isolated sanitizer CTest `--repeat until-fail:50` (eight focused cases) | 0; 400 executions passed, covering blocked Receive, admitted-copy drain, observer Close during a copy, serialized overlap, reentry, detach failure, family coexistence and future independence. |
-| `python3 scripts/check_doc_source_integrity.py` | 0; 825 vendor files and seven workflows checked. |
+| Production export comparison (`nm -D --defined-only`) | 0; exactly the six additive `AMS_MEL_0.1` exports, no removals or test symbols. |
+| `python3 scripts/check_doc_source_integrity.py`; `git diff --check` | 0 each; 825 vendor files and seven workflows checked. |
 
 Early runs exposed outdated test inventory expectations, a missing trailing
 newline in the new C probe, and a missing C++ sanitizer runtime when linking a
 C test executable. An initial stress run also overlapped a build that replaced
 its shared library. These failures are not counted as passes; the isolated
 stress and strict probe results above are from reruns.
+
+An earlier Ada build stopped on an unused test `use type` clause; the clause
+was removed. The first Alire runtime invocation exited 1 with `bad_function_call`
+in the existing Image checkout test before reaching the new Scheduling test.
+A `--skip-build` diagnostic exited 1 in the Image lease address-log test while
+the native test tree was rebuilding. Scratch runtime-comparison runs passed
+the new Scheduling tests but exited 1 in an RF trace assertion while sharing
+its trace path. None counts as a full pass. The exact serial Alire run passed
+without source changes or a runtime override; the first failure's root cause
+was not established.
+
+### Hosted qualification and review
+
+For implementation commit `1f31a9ad5ce769ed43bc92771bf1a5e5a5bfba37`,
+GitHub tested merge result `9fcfa22bb6bff3c245ae709ecd5db3754215ec66`
+(tree `44d91dfca923e8b2c7018f21c67fab3fb38a3a06`) against updated main
+`26370d0b0cd203a232389337946d43d7873c60f0`. All ten applicable jobs passed:
+policy, build-tree isolation, the four GCC/Clang Debug/Release native jobs,
+Ada, Rust, Python, and documentation build. Deployment and live verification
+were skipped. This documentation-only follow-up has its own hosted status
+on [PR #258](https://github.com/zackboll/ams-gra-mel-bridge/pull/258/checks).
+Independent non-author technical review remains required; no eligible reviewer
+was available to assign. The PR remains open with auto-merge disabled.
