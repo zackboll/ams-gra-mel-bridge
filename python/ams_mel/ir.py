@@ -94,6 +94,7 @@ from ._calibration_status_command import (
 from ._camera_protect_command import (
     CameraProtectCommand, CameraProtectCompleted, CameraProtectRejected, CameraProtectRequest,
 )
+from ._erase_command import EraseCommandType, EraseCommand, EraseCompleted, EraseRejected, EraseRequest
 from ._camera_protect_response import (
     CameraProtectStatus,
     CameraProtectResponse,
@@ -298,6 +299,11 @@ __all__ = [
     "CameraProtectCompleted",
     "CameraProtectRejected",
     "CameraProtectRequest",
+    "EraseCommandType",
+    "EraseCommand",
+    "EraseCompleted",
+    "EraseRejected",
+    "EraseRequest",
     "CameraProtectStatus",
     "CameraProtectResponse",
     "CameraProtectResponseOpenError",

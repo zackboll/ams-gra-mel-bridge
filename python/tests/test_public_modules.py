@@ -54,6 +54,7 @@ class PublicModuleTests(unittest.TestCase):
                      'CameraProtectCommand', 'CameraProtectCompleted',
                      'CameraProtectRejected', 'CameraProtectRequest',
                      'CameraProtectResponseOpenError', 'CameraProtectResponseStream',
+                     'EraseCommandType', 'EraseCommand', 'EraseCompleted', 'EraseRejected', 'EraseRequest',
                      'Quaternion', 'LineOfSightQuaternion',
                      'LineOfSightQuaternionOpenError', 'LineOfSightQuaternionStream'):
             self.assertIn(name, ir.__all__)
@@ -79,8 +80,20 @@ class PublicModuleTests(unittest.TestCase):
         for module in (ams_mel, ir):
             self.assertFalse(hasattr(module, 'submit_calibration_status'))
 
+    def test_erase_is_only_an_explicit_control_channel_submission(self):
+        self.assertTrue(callable(ir.ControlChannel.submit_erase))
+        self.assertTrue(callable(ir.ControlChannel.submit_camera_protect))
+        self.assertTrue(callable(ir.ControlChannel.open_camera_protect_response))
+        self.assertFalse(hasattr(ir.EraseRequest, 'receive'))
+        for module in (ams_mel, ir):
+            self.assertFalse(hasattr(module, 'submit_erase'))
+
     def test_domain_values_keep_legacy_pickle_paths(self):
         values = (
+            *ir.EraseCommandType,
+            ir.EraseCommand(0x80000001, ir.EraseCommandType.CDE_AND_ZEROIZE),
+            ir.EraseCompleted(ir.EraseCommandType.CLASSIFIED_DATA_ERASE),
+            ir.EraseRejected(ir.MelErrorCode(0xF1234567), 'erase rejected €'),
             ir.CalibrationConfigurationCommand(0xFFFFFFFF, 0),
             ir.CalibrationConfigurationCompleted(ir.CalibrationConfiguration(())),
             ir.CalibrationConfigurationRejected(ir.MelErrorCode.INVALID_PARAMETERS, '校正'),
