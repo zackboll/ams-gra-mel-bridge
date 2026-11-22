@@ -15,8 +15,9 @@
  * IRMEL-ADA-024 adds exec(IRSTScanTask) through that same engine.
  * IRMEL-ADA-025 adds exec(IRSTTrackTask) through that same engine.
  * IRMEL-ADA-026 adds send(PrioritizedTrackListCmd) with a typed receipt.
- * NOT implemented: the four other Scheduling
- * registerMetadataCallback overloads (SchedCreatedRep,
+ * IRMEL-ADA-027 integrates the independent SchedCreatedRep owner and
+ * drains its admitted payload reads before physical teardown.
+ * NOT implemented: the other three Scheduling registerMetadataCallback overloads (
  * UpdateTrackListResponse, TaskEvents, ScanPerformanceReport). No translation
  * unit in the bridge calls those remaining operations. */
 #include <ams_mel/abi.h>
@@ -25,6 +26,7 @@
 #include "internal/common_channel_requests.hpp"
 #include "internal/ir_scheduling_execute_task_ack.hpp"
 #include "internal/ir_scheduling_task_executing.hpp"
+#include "internal/ir_scheduling_schedule_created.hpp"
 #include "internal/ir_task_info.hpp"
 #include "internal/ir_stare_task.hpp"
 #include "internal/ir_scan_task.hpp"
@@ -135,6 +137,8 @@ struct SchedulingState {
      * Neither family's attempt or state affects the other. */
     bool task_executing_attempted{};
     std::shared_ptr<TaskExecutingState> task_executing;
+    bool schedule_created_attempted{};
+    std::shared_ptr<ScheduleCreatedState> schedule_created;
     /* Allocation-free permanent retention root for graphs whose detach
      * ownership could not be proven. */
     std::shared_ptr<SchedulingState> emergency_self;
@@ -179,6 +183,7 @@ bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
     std::shared_ptr<irmel::Channel> channel;
     std::shared_ptr<ExecuteTaskAckState> ack;
     std::shared_ptr<TaskExecutingState> executing;
+    std::shared_ptr<ScheduleCreatedState> created;
     bool disable = false;
     {
         std::lock_guard lock{state->mutex};
@@ -188,12 +193,16 @@ bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
         channel = state->channel;
         ack = state->execute_task_ack;
         executing = state->task_executing;
+        created = state->schedule_created;
         disable = state->enable_attempted;
         /* disable() is attempted at most once: a Close retried after an
          * unproven detach only retries the detach. */
         state->enable_attempted = false;
     }
     bool ok = true;
+    /* No new SchedCreatedRep payload reads after stop. Finish admitted
+     * copies before provider disable/detach can destroy their source. */
+    ams_mel::internal::scheduling_schedule_created_drained(created);
     /* Inherited Channel::disable() is invoked only when Enable was attempted;
      * this foundation has no separate public Disable. */
     if (disable && channel) {
@@ -214,6 +223,7 @@ bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
         ams_mel::internal::scheduling_execute_task_ack_failed(ack);
         /* IRMEL-ADA-013: likewise for the retained TaskExecutingRep callback. */
         ams_mel::internal::scheduling_task_executing_failed(executing);
+        ams_mel::internal::scheduling_schedule_created_failed(created);
         return false;
     }
     {
@@ -237,6 +247,7 @@ bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
     if (!ok) {
         ams_mel::internal::scheduling_execute_task_ack_failed(ack);
         ams_mel::internal::scheduling_task_executing_failed(executing);
+        ams_mel::internal::scheduling_schedule_created_failed(created);
     }
     return ok;
 }
@@ -505,6 +516,28 @@ bool claim_scheduling_task_executing(
         return false;
     }
 }
+
+bool claim_scheduling_schedule_created(
+    ams_mel_ir_scheduling& owner, const std::shared_ptr<ScheduleCreatedState>& state,
+    std::shared_ptr<irmel::SchedulingChannel>& channel, std::shared_ptr<void>& graph) noexcept
+{
+    try {
+        const auto& scheduling = owner.state;
+        if (!scheduling) return false;
+        std::lock_guard lock{scheduling->mutex};
+        if ((scheduling->lifecycle != Lifecycle::Attached &&
+             scheduling->lifecycle != Lifecycle::Enabled) ||
+            !scheduling->scheduling || scheduling->schedule_created_attempted)
+            return false;
+        scheduling->schedule_created_attempted = true;
+        scheduling->schedule_created = state;
+        channel = scheduling->scheduling;
+        graph = scheduling;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
 } // namespace ams_mel::internal
 
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
@@ -688,6 +721,7 @@ extern "C" ams_mel_status_t ams_mel_ir_scheduling_close(
         auto state = owner->state;
         std::shared_ptr<ExecuteTaskAckState> ack;
         std::shared_ptr<TaskExecutingState> executing;
+        std::shared_ptr<ScheduleCreatedState> created;
         bool now = false;
         {
             std::lock_guard lock{state->mutex};
@@ -697,6 +731,7 @@ extern "C" ams_mel_status_t ams_mel_ir_scheduling_close(
             now = state->requests == 0U;
             ack = state->execute_task_ack;
             executing = state->task_executing;
+            created = state->schedule_created;
         }
         /* IRMEL-ADA-012: logical Close stops ExecuteTaskAck consumption and
          * wakes receivers immediately, even while admitted common requests
@@ -704,6 +739,7 @@ extern "C" ams_mel_status_t ams_mel_ir_scheduling_close(
         ams_mel::internal::scheduling_execute_task_ack_stopped(ack);
         /* IRMEL-ADA-013: and likewise, independently, TaskExecutingRep. */
         ams_mel::internal::scheduling_task_executing_stopped(executing);
+        ams_mel::internal::scheduling_schedule_created_stopped(created);
         const bool ok = !now || cleanup(state, false);
         if (now && state->channel) {
             /* Detach could not be proven: the graph and the caller's owner are

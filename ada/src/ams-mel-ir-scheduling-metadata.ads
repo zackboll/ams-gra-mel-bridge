@@ -1,18 +1,18 @@
 with Interfaces;
+private with Ada.Containers.Vectors;
 private with Ada.Finalization;
 private with AMS.MEL_C_API;
 
 package AMS.MEL.IR.Scheduling.Metadata is
-   --  Independent opt-in reception of the pinned @RequiredIfIRSTTrackTasking ExecuteTaskAck and
-   --  TaskExecutingRep callbacks.
+   --  Independent opt-in reception of the pinned @RequiredIfIRSTTrackTasking ExecuteTaskAck,
+   --  TaskExecutingRep and SchedCreatedRep callbacks.
    --  Reception and provider task execution are separate events. An acknowledgement means only
    --  that the provider delivered this value: it proves neither completion nor success. No
    --  Scheduling exec/send, local request matching, identifier reordering or uniqueness rule is
    --  implemented. Qualification uses the separate mock provider only.
 
    Not_Supported : exception;
-   --  The provider answered NotSupported for the requested ExecuteTaskAck or TaskExecutingRep
-   --  registration.
+   --  The provider answered NotSupported for the requested metadata registration.
    --  The Scheduling owner and its inherited common Channel services are unaffected.
 
    type Execute_Task_Ack is record
@@ -236,7 +236,108 @@ package AMS.MEL.IR.Scheduling.Metadata is
    --  quiescence. Already returned Ada values remain owned.
    --  @param Stream Metadata owner to close.
    --  @exception Provider_Error Native closure failed.
+
+   type Range_Az_El is record
+      Range_M, Azimuth_Rad, Elevation_Rad, Range_Rate_MPS : Long_Float := 0.0;
+   end record;
+   --  Complete owned RangeAzEl with four independent binary64 bit patterns.
+   --  Non-finite patterns are preserved as data; evaluating a non-finite component as an Ada
+   --  scalar may trigger validity checks. Inspect its representation when needed.
+   --  @field Range_M Range in meters, unchanged.
+   --  @field Azimuth_Rad Azimuth in radians, unchanged.
+   --  @field Elevation_Rad Elevation in radians, unchanged.
+   --  @field Range_Rate_MPS Range rate in meters per second, unchanged.
+   pragma Convention (C, Range_Az_El);
+
+   type Activity_Record is record
+      Activity_ID : Interfaces.Unsigned_32 := 0;
+      Task_ID     : Task_Kind := Task_Kind'First;
+      Track_ID    : Interfaces.Integer_32 := 0;
+      Position    : Range_Az_El;
+      Duration_NS : Interfaces.Integer_64 := 0;
+   end record;
+   --  Owned activity value. No identifier is required to be nonzero or unique.
+   --  @field Activity_ID Upstream getActivityId(), unsigned 32-bit.
+   --  @field Task_ID Upstream getTaskId(), including non-operational reserved values.
+   --  @field Track_ID Upstream getTrackId(), signed 32-bit.
+   --  @field Position All four members of upstream getPosition().
+   --  @field Duration_NS Signed nanoseconds from upstream getDuration().
+
+   type Activity_Collection is private;
+   --  Ada-owned variable-length collection; copies do not borrow from the native event.
+
+   function Length (Activities : Activity_Collection) return Natural;
+   --  @param Activities Owned collection.
+   --  @return Actual vector length, independent of the report's Activity_Count.
+
+   function Element (Activities : Activity_Collection; Index : Positive) return Activity_Record;
+   --  @param Activities Owned collection.
+   --  @param Index One-based index in upstream vector order.
+   --  @return Activity value at Index, including any duplicate identifiers.
+   --  @exception Constraint_Error Index exceeds Length.
+
+   type Schedule_Created_Report is record
+      Command_ID, Scan_ID   : Interfaces.Unsigned_32 := 0;
+      Estimated_Duration_NS : Interfaces.Integer_64 := 0;
+      Activity_Count        : Interfaces.Unsigned_32 := 0;
+      Activities            : Activity_Collection;
+   end record;
+   --  A provider schedule-created report, not a task start, completion, request correlation,
+   --  feasibility check or evidence of sensor imagery.
+   --  @field Command_ID Unsigned getCommandID(), without local correlation.
+   --  @field Scan_ID Independent unsigned getScanId().
+   --  @field Estimated_Duration_NS Signed nanoseconds from getEstDuration().
+   --  @field Activity_Count Independent scalar from getActivityCount(), not a vector bound.
+   --  @field Activities Complete ordered getActivity() vector, including duplicates.
+
+   type Schedule_Created_Stream is limited private;
+   --  Limited-controlled consumption owner with non-raising finalization. Serialize operations
+   --  and Close on this stream; Scheduling Close may run while its Receive waits.
+
+   function Open_Schedule_Created
+     (Channel : Scheduling_Channel; Queue_Capacity : Positive) return Schedule_Created_Stream;
+   --  Register only the SchedCreatedRep overload, independently and at most once (including
+   --  provider refusal or exception). Synchronous delivery is supported; no unregister exists.
+   --  @param Channel Attached or Enabled owner, serialized against its other owner operations.
+   --  @param Queue_Capacity Maximum number of reports admitted to the drop-incoming queue.
+   --  @return Independent metadata consumption owner.
+   --  @exception Not_Supported Provider answered NotSupported.
+   --  @exception Provider_Error Ineligible owner, duplicate attempt or other native failure.
+
+   function Receive_Schedule_Created
+     (Stream : Schedule_Created_Stream; Timeout_Milliseconds : Natural := 0)
+      return Schedule_Created_Report;
+   --  Copy the complete event into Ada-owned storage before releasing the native event.
+   --  Queued reports drain after Scheduling Close in successful-enqueue order.
+   --  @param Stream Open consumption owner.
+   --  @param Timeout_Milliseconds Maximum wait in milliseconds; zero polls without cancellation.
+   --  @return Owned report valid after all streams, channels, sessions and the provider close.
+   --  @exception Timeout_Error Active queue remained empty.
+   --  @exception Stream_Stopped Stopped queue is empty.
+   --  @exception Provider_Error Closed stream, malformed native view or provider cleanup failure.
+   --  @exception Storage_Error Insufficient Ada memory for the activity collection.
+
+   function Schedule_Created_Counters (Stream : Schedule_Created_Stream) return Metadata_Counters;
+   --  @param Stream Open consumption owner.
+   --  @return Saturating callback counters; malformed includes null, invalid Task and copy failure.
+   --  @exception Provider_Error Closed stream or native query failure.
+
+   procedure Close (Stream : in out Schedule_Created_Stream);
+   --  Idempotently deactivate consumption only. Neither unregisters nor affects other families.
+   --  @param Stream Consumption owner to close.
+   --  @exception Provider_Error Native closure failed.
 private
+   package Activity_Vectors is new Ada.Containers.Vectors (Positive, Activity_Record);
+   type Activity_Collection is record
+      Values : Activity_Vectors.Vector;
+   end record;
+
+   type Schedule_Created_Stream is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Scheduling_Created_Metadata_Handle :=
+        AMS.MEL_C_API.Null_Scheduling_Created_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Stream : in out Schedule_Created_Stream);
    type Execute_Task_Ack_Stream is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.Scheduling_Ack_Metadata_Handle :=
         AMS.MEL_C_API.Null_Scheduling_Ack_Metadata;

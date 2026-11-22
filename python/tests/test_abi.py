@@ -304,7 +304,7 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(sorted(n for n in _native.BOUND_FUNCTION_NAMES
                                 if "scheduling" in n and n not in signatures),
                          sorted("ams_mel_ir_scheduling_" + family + "_" + suffix
-                                for family in ("execute_task_ack", "task_executing") for suffix in
+                                for family in ("execute_task_ack", "task_executing", "schedule_created") for suffix in
                                 ("open", "receive", "get_counters", "close", "event_view", "event_close")))
         import ams_mel
         self.assertFalse([n for n in dir(ams_mel) if "schedul" in n.lower()])
@@ -387,6 +387,45 @@ class AbiTests(unittest.TestCase):
             actual = [int(v) for v in subprocess.check_output([str(executable)], text=True).split()]
         self.assertEqual(actual, self._layout(_native.IrTaskInfoV1, "system_time_ns", "request_id",
                                              "action", "precedence_within_priority", "priority"))
+
+    def test_private_scheduling_schedule_created_abi(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-pedantic-errors",
+                            "-Wall", "-Wextra", "-Werror", "-I", str(root / "native/include"),
+                            str(root / "native/tests/scheduling_schedule_created_layout_probe.c"),
+                            "-o", str(executable)], check=True)
+            actual = list(map(int, subprocess.check_output([executable]).split()))
+        activity, span, report = (_native.IrActivityRecordV1, _native.IrActivitySpanV1,
+                                  _native.IrSchedCreatedRepV1)
+        self.assertEqual(actual,
+                         self._layout(_native.IrRangeAzElV1, "range_m", "azimuth_rad",
+                                      "elevation_rad", "range_rate_mps")
+                         + self._layout(activity, "activity_id", "task_id", "track_id",
+                                        "position", "duration_ns")
+                         + self._layout(span, "data", "size")
+                         + self._layout(report, "command_id", "scan_id", "estimated_duration_ns",
+                                        "activity_count", "activities"))
+        pointer = ctypes.POINTER
+        self.assertEqual(span._fields_, [("data", pointer(activity)), ("size", ctypes.c_size_t)])
+        self.assertEqual(dict(activity._fields_)["track_id"], ctypes.c_int32)
+        self.assertEqual(dict(activity._fields_)["duration_ns"], ctypes.c_int64)
+        self.assertEqual(dict(report._fields_)["estimated_duration_ns"], ctypes.c_int64)
+        owner, event = _native.IrSchedulingCreatedMetadataHandle, _native.IrSchedulingCreatedEventHandle
+        signatures = {
+            "open": [_native.IrSchedulingHandle, ctypes.c_size_t, pointer(owner), pointer(ctypes.c_uint32)],
+            "receive": [owner, ctypes.c_uint32, pointer(event)],
+            "get_counters": [owner, pointer(_native.IrC2MetadataCountersV1)],
+            "close": [pointer(owner)],
+            "event_view": [event, pointer(pointer(report))],
+            "event_close": [pointer(event)],
+        }
+        for suffix, arguments in signatures.items():
+            function = getattr(_native, "ams_mel_ir_scheduling_schedule_created_" + suffix)
+            self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t,
+                                                             _native.SizePointer])
+            self.assertEqual(function.restype, ctypes.c_int32)
 
     def test_private_scheduling_task_executing_abi(self) -> None:
         """IRMEL-ADA-013: private raw Scheduling TaskExecutingRep mirror only."""
@@ -1381,6 +1420,12 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_scheduling_task_executing_close",
                 "ams_mel_ir_scheduling_task_executing_event_view",
                 "ams_mel_ir_scheduling_task_executing_event_close",
+                "ams_mel_ir_scheduling_schedule_created_open",
+                "ams_mel_ir_scheduling_schedule_created_receive",
+                "ams_mel_ir_scheduling_schedule_created_get_counters",
+                "ams_mel_ir_scheduling_schedule_created_close",
+                "ams_mel_ir_scheduling_schedule_created_event_view",
+                "ams_mel_ir_scheduling_schedule_created_event_close",
                 "ams_mel_ir_scheduling_execute_task_ack_open",
                 "ams_mel_ir_scheduling_execute_task_ack_receive",
                 "ams_mel_ir_scheduling_execute_task_ack_get_counters",
@@ -1703,8 +1748,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 338)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 338)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 344)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 344)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1712,7 +1757,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 338)
+        self.assertEqual(len(exported), 344)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

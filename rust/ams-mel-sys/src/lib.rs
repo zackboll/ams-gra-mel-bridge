@@ -2441,6 +2441,49 @@ pub struct AmsMelIrSchedulingRepEvent {
 }
 
 /// Opaque public consumption owner for the retained IRSTTrackReport queue.
+/// Complete raw owned-event activity value.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrActivityRecordV1 {
+    pub activity_id: u32,
+    pub task_id: u32,
+    pub track_id: i32,
+    pub position: AmsMelIrRangeAzElV1,
+    pub duration_ns: i64,
+}
+
+/// Immutable event-owned buffer, valid only until event_close.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrActivitySpanV1 {
+    pub data: *const AmsMelIrActivityRecordV1,
+    pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrSchedCreatedRepV1 {
+    pub command_id: u32,
+    pub scan_id: u32,
+    pub estimated_duration_ns: i64,
+    pub activity_count: u32,
+    pub activities: AmsMelIrActivitySpanV1,
+}
+
+/// Raw opt-in Scheduling SchedCreatedRep consumption owner.
+#[repr(C)]
+pub struct AmsMelIrSchedulingCreatedMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// Raw SchedCreatedRep event owner, independent of provider lifetime.
+#[repr(C)]
+pub struct AmsMelIrSchedulingCreatedEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
+/// Opaque public consumption owner for the retained IRSTTrackReport queue.
 #[repr(C)]
 pub struct AmsMelIrTrackMetadata {
     _private: [u8; 0],
@@ -4318,6 +4361,49 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_scheduling_task_executing_event_close(
         event: *mut *mut AmsMelIrSchedulingRepEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_schedule_created_open(
+        scheduling: *mut AmsMelIrScheduling,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrSchedulingCreatedMetadata,
+        out_registration: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_schedule_created_receive(
+        metadata: *mut AmsMelIrSchedulingCreatedMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrSchedulingCreatedEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_schedule_created_get_counters(
+        metadata: *const AmsMelIrSchedulingCreatedMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_schedule_created_close(
+        metadata: *mut *mut AmsMelIrSchedulingCreatedMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_schedule_created_event_view(
+        event: *const AmsMelIrSchedulingCreatedEvent,
+        out: *mut *const AmsMelIrSchedCreatedRepV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_schedule_created_event_close(
+        event: *mut *mut AmsMelIrSchedulingCreatedEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

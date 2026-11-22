@@ -213,6 +213,12 @@ AMS_MEL_0.1 {
         ams_mel_ir_scheduling_task_executing_close;
         ams_mel_ir_scheduling_task_executing_event_view;
         ams_mel_ir_scheduling_task_executing_event_close;
+        ams_mel_ir_scheduling_schedule_created_open;
+        ams_mel_ir_scheduling_schedule_created_receive;
+        ams_mel_ir_scheduling_schedule_created_get_counters;
+        ams_mel_ir_scheduling_schedule_created_close;
+        ams_mel_ir_scheduling_schedule_created_event_view;
+        ams_mel_ir_scheduling_schedule_created_event_close;
         ams_mel_ir_track_metadata_open;
         ams_mel_ir_track_metadata_receive;
         ams_mel_ir_track_metadata_get_counters;

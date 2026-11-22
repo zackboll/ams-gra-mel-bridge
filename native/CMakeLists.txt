@@ -15,6 +15,7 @@ add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/
     src/channel_comms_metadata.cpp src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/ir_scheduling.cpp src/ir_stacked.cpp src/ir_buffer.cpp
     src/ir_scheduling_execute_task_ack.cpp src/ir_scheduling_task_executing.cpp
+    src/ir_scheduling_schedule_created.cpp
     src/completion_probe.cpp
     src/rf_data.cpp src/rf_product_rx.cpp src/rf_admin.cpp src/rf_c2.cpp src/rf_virtual_aperture.cpp
     src/rf_job.cpp src/rf_job_interval_status.cpp src/rf_va_status.cpp)
@@ -46,6 +47,8 @@ if(UNIX AND NOT APPLE)
         # Never extend the production export map or installed C headers.
         file(READ "${ams_mel_export_map}" ams_mel_test_exports)
         string(REPLACE "    global:" "    global:\n        ams_mel_test_comms_metadata_probe;"
+            ams_mel_test_exports "${ams_mel_test_exports}")
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_schedule_created_probe;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_va_signal_hold;\n        ams_mel_test_va_signal_waiters;\n        ams_mel_test_va_signal_preset;\n        ams_mel_test_va_signal_last;"
             ams_mel_test_exports "${ams_mel_test_exports}")
@@ -97,6 +100,7 @@ if(AMS_MEL_BUILD_TESTS)
     add_library(mock_ir_provider SHARED tests/mock_provider.cpp)
     target_compile_features(mock_ir_provider PRIVATE cxx_std_20)
     target_include_directories(mock_ir_provider PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/common-mel/include
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ir-mel/include
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include)
@@ -1557,6 +1561,29 @@ if(AMS_MEL_BUILD_TESTS)
     ams_mel_warnings(test_ir_scheduling_task_executing_layout)
     add_test(NAME ir_scheduling_task_executing_layout
         COMMAND test_ir_scheduling_task_executing_layout)
+    add_executable(test_ir_scheduling_schedule_created tests/test_ir_scheduling_schedule_created.c)
+    target_compile_features(test_ir_scheduling_schedule_created PRIVATE c_std_11)
+    set_target_properties(test_ir_scheduling_schedule_created PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_scheduling_schedule_created PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_scheduling_schedule_created PRIVATE ams_mel::ams_mel_c
+        Threads::Threads ${CMAKE_DL_LIBS})
+    add_dependencies(test_ir_scheduling_schedule_created mock_ir_provider)
+    ams_mel_warnings(test_ir_scheduling_schedule_created)
+    add_executable(test_ir_scheduling_schedule_created_layout tests/scheduling_schedule_created_layout_probe.c)
+    target_compile_features(test_ir_scheduling_schedule_created_layout PRIVATE c_std_11)
+    set_target_properties(test_ir_scheduling_schedule_created_layout PROPERTIES C_EXTENSIONS OFF)
+    target_include_directories(test_ir_scheduling_schedule_created_layout PRIVATE include)
+    ams_mel_warnings(test_ir_scheduling_schedule_created_layout)
+    add_test(NAME ir_scheduling_created_layout COMMAND test_ir_scheduling_schedule_created_layout)
+    foreach(case IN ITEMS sched-created-sync sched-created-saturate sched-created-wake
+            sched-created-copy sched-created-unpin sched-both-sync sched-created-detach-fail sched-created-throw
+            sched-created-unknown sched-created-not-supported sched-created-not-implemented
+            sched-created-bad-pointer sched-created-fail)
+        add_test(NAME ir_scheduling_created_${case}
+            COMMAND test_ir_scheduling_schedule_created ${case})
+        set_tests_properties(ir_scheduling_created_${case} PROPERTIES TIMEOUT 30)
+    endforeach()
 
     add_executable(test_ir_track_metadata tests/test_ir_track_metadata.c)
     target_compile_features(test_ir_track_metadata PRIVATE c_std_11)
