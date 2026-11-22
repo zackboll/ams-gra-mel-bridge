@@ -115,6 +115,60 @@ class StackedConfig:
 
 
 @dataclass(frozen=True)
+class TrackConfig:
+    """IRST Track attachment identities and sensor location; no provider work."""
+
+    channel_id: UciId
+    platform_id: UciId
+    sensor_location: ComponentLocation
+
+    def __post_init__(self) -> None:
+        channel, platform, location = self._validated_values()
+        object.__setattr__(self, "channel_id", channel)
+        object.__setattr__(self, "platform_id", platform)
+        object.__setattr__(self, "sensor_location", location)
+
+    @classmethod
+    def new(cls, channel_id: UciId, platform_id: UciId,
+            sensor_location: ComponentLocation) -> "TrackConfig":
+        """Create a validated, immutable Track attachment configuration."""
+        return cls(channel_id, platform_id, sensor_location)
+
+    def _validated_values(self) -> tuple[UciId, UciId, ComponentLocation]:
+        # Read each input field once, then validate and encode only the private
+        # copies. A forced mutation cannot replace a value after validation.
+        def text(value: str, name: str) -> str:
+            if not isinstance(value, str):
+                raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{name} must be str")
+            return str.__str__(value)  # Do not use a subclass's encode/contains hooks.
+
+        def identity(value: UciId, name: str) -> UciId:
+            if type(value) is not UciId:
+                raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{name} must be UciId")
+            uuid = value.uuid
+            if not isinstance(uuid, bytes):
+                raise _local_error(ErrorKind.INVALID_ARGUMENT, "uuid must be exactly 16 bytes")
+            return UciId(bytes.__bytes__(uuid), text(value.descriptive_label, "descriptive_label"))
+
+        try:
+            channel = identity(self.channel_id, "channel_id")
+            platform = identity(self.platform_id, "platform_id")
+            location = self.sensor_location
+            if type(location) is not ComponentLocation:
+                raise _local_error(ErrorKind.INVALID_ARGUMENT,
+                                   "sensor_location must be ComponentLocation")
+            return channel, platform, ComponentLocation(
+                _validate_double(location.offset_x_m, "offset_x_m"),
+                _validate_double(location.offset_y_m, "offset_y_m"),
+                _validate_double(location.offset_z_m, "offset_z_m"),
+                text(location.key, "key"),
+                text(location.system_name, "system_name"),
+            )
+        except AttributeError as error:
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "incomplete TrackConfig") from error
+
+
+@dataclass(frozen=True)
 class ImageControlConfig:
     """Image command/metadata attachment, without acquisition geometry or storage."""
 

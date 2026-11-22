@@ -29,6 +29,7 @@ from ._types import (
     InstrumentationConfig,
     ProviderVersion,
     StackedConfig,
+    TrackConfig,
 )
 from ._ffi import (
     _RawControlConfig,
@@ -37,6 +38,7 @@ from ._ffi import (
     _RawImageControlConfig,
     _RawInstrumentationConfig,
     _RawStackedConfig,
+    _RawTrackConfig,
 )
 from ._image import (
     ImageStream,
@@ -51,6 +53,7 @@ from ._health import (
     HealthStatusChannel,
 )
 from ._stacked import StackedChannel
+from ._track import TrackChannel
 
 
 def abi_version() -> AbiVersion:
@@ -376,6 +379,24 @@ class Session:
                     _native.ams_mel_ir_stacked_close(_ctypes.byref(owner), None, 0, None)
             except BaseException:
                 pass
+            raise
+
+    def open_track_channel(self, config: TrackConfig) -> TrackChannel:
+        """Attach an IRST Track channel without enabling it or registering callbacks."""
+        self._require_open()
+        bundle = _RawTrackConfig(config)
+        track = TrackChannel._prepare_open(_native.IrTrackHandle())
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_track_open(
+                    self._owner, _ctypes.byref(bundle.raw), track._owner_pointer,
+                    diagnostic, len(diagnostic), _ctypes.byref(required),
+                )
+            )
+            track._publish_open()
+            return track
+        except BaseException:
+            track._abandon_open()
             raise
 
     def open_control_channel(self, config: ControlConfig) -> ControlChannel:

@@ -252,6 +252,35 @@ class AbiTests(unittest.TestCase):
         for name in signatures:
             self.assertFalse(hasattr(ams_mel, name))
 
+    def test_track_uses_existing_private_foundation_abi(self) -> None:
+        import ams_mel
+        from ams_mel import ir
+
+        pointer = ctypes.POINTER
+        owner = _native.IrTrackHandle
+        self.assertEqual(_native.AMS_MEL_IR_CHANNEL_IRST_TRACK, 0)
+        self.assertEqual(_native.IrTrackConfigV1._fields_, [
+            ("channel_id", _native.UciIdV1), ("channel_type", ctypes.c_uint32),
+            ("platform_id", _native.UciIdV1), ("sensor_location", _native.ComponentLocationV1),
+        ])
+        signatures = {
+            "ams_mel_ir_track_open": [_native.SessionHandle,
+                                      pointer(_native.IrTrackConfigV1), pointer(owner)],
+            "ams_mel_ir_track_enable": [owner],
+            "ams_mel_ir_track_get_capabilities": [owner, pointer(_native.IrChannelCapabilityHandle)],
+            "ams_mel_ir_track_close": [pointer(owner)],
+            "ams_mel_ir_channel_from_track": [owner, pointer(_native.IrChannelHandle)],
+        }
+        for name, arguments in signatures.items():
+            with self.subTest(name=name):
+                fn = getattr(_native, name)
+                self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+                self.assertEqual(fn.argtypes, arguments + [
+                    _native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+                self.assertIs(fn.restype, ctypes.c_int32)
+                self.assertFalse(hasattr(ams_mel, name))
+                self.assertFalse(hasattr(ir, name))
+
     def test_private_scheduling_foundation_abi(self) -> None:
         """IRMEL-ADA-011: private raw SchedulingChannel foundation mirror only."""
         root = Path(__file__).resolve().parents[2]

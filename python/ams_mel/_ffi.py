@@ -32,6 +32,7 @@ from ._types import (
     PixelFormat,
     SensorType,
     StackedConfig,
+    TrackConfig,
     UciId,
 )
 
@@ -90,6 +91,26 @@ class _RawStackedConfig(_RawImageConfig):
                 offset_z_m=float(config.sensor_location.offset_z_m),
                 key=self._view(config.sensor_location.key, "key"),
                 system_name=self._view(config.sensor_location.system_name, "system_name"),
+            ),
+        )
+
+
+class _RawTrackConfig(_RawImageConfig):
+    """Validated Track config and backing storage for synchronous Open."""
+
+    def __init__(self, config: TrackConfig) -> None:
+        if type(config) is not TrackConfig:
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "config must be TrackConfig")
+        channel, platform, location = TrackConfig._validated_values(config)
+        self.buffers = []
+        self.raw = _native.IrTrackConfigV1(
+            channel_id=self._id(channel),
+            channel_type=_native.AMS_MEL_IR_CHANNEL_IRST_TRACK,
+            platform_id=self._id(platform),
+            sensor_location=_native.ComponentLocationV1(
+                location.offset_x_m, location.offset_y_m, location.offset_z_m,
+                self._view(location.key, "key"),
+                self._view(location.system_name, "system_name"),
             ),
         )
 

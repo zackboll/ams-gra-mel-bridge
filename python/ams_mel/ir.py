@@ -136,6 +136,7 @@ from ._types import (
     ImageConfig,
     ImageControlConfig,
     StackedConfig,
+    TrackConfig,
     ControlConfig,
     InstrumentationConfig,
     HealthConfig,
@@ -222,6 +223,7 @@ from ._health_metadata import (
 from ._stacked import (
     StackedChannel,
 )
+from ._track import TrackChannel
 
 from ._health_types import (
     About,
@@ -446,6 +448,8 @@ __all__ = [
     "HealthStatusChannel",
     "StackedConfig",
     "StackedChannel",
+    "TrackConfig",
+    "TrackChannel",
     "ImageBand",
     "ImageConfig",
     "ImageControlConfig",
