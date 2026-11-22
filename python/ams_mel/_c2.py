@@ -5,6 +5,10 @@ from __future__ import annotations
 import ctypes as _ctypes
 
 from . import _native
+from ._calibration_configuration_command import (
+    CalibrationConfigurationCommand, CalibrationConfigurationRequest,
+    _submit_calibration_configuration,
+)
 from ._camera_protect_command import CameraProtectCommand, CameraProtectRequest, _submit_camera_protect
 from ._c2_metadata import C2MetadataStream
 from ._camera_protect_response import CameraProtectResponseStream, _open_camera_protect_response
@@ -70,6 +74,16 @@ class ControlChannel:
                 _ctypes.byref(required),
             )
         )
+
+    def submit_calibration_configuration(
+        self, command: CalibrationConfigurationCommand
+    ) -> CalibrationConfigurationRequest:
+        """Submit once on Enabled C2, independently of metadata registration.
+
+        Timeout and request Close do not cancel admitted provider work. Externally
+        serialize submission with other operations on this channel.
+        """
+        return _submit_calibration_configuration(self, command)
 
     def open_calibration_configuration(self, queue_capacity: int = 16) -> CalibrationConfigurationStream:
         """Register complete calibration metadata once while Attached or Enabled.

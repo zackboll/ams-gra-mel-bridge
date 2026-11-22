@@ -17,11 +17,19 @@ class AbiTests(unittest.TestCase):
         from ams_mel import ir, _calibration_configuration
         self.assertIs(ams_mel.CalibrationConfiguration, ir.CalibrationConfiguration)
         self.assertIs(_calibration_configuration.C2MetadataCounters, ir.C2MetadataCounters)
-        self.assertFalse(hasattr(ams_mel.ControlChannel, "submit_calibration_configuration"))
+        self.assertTrue(callable(ams_mel.ControlChannel.submit_calibration_configuration))
         pointer = ctypes.POINTER
         owner = _native.IrCalibrationConfigurationMetadataHandle
         event = _native.IrCalibrationConfigurationEventHandle
         signatures = {
+            "ams_mel_ir_c2_submit_calibration_configuration": [
+                _native.IrC2Handle, pointer(_native.IrCalibrationConfigurationCommandV1),
+                pointer(_native.IrCalibrationConfigurationRequestHandle)],
+            "ams_mel_ir_calibration_configuration_request_wait": [
+                _native.IrCalibrationConfigurationRequestHandle, ctypes.c_uint32,
+                pointer(_native.IrCalibrationConfigurationResultV1)],
+            "ams_mel_ir_calibration_configuration_request_close": [
+                pointer(_native.IrCalibrationConfigurationRequestHandle)],
             "ams_mel_ir_c2_calibration_configuration_open": [
                 _native.IrC2Handle, ctypes.c_size_t, pointer(owner), pointer(ctypes.c_uint32)],
             "ams_mel_ir_calibration_configuration_receive": [owner, ctypes.c_uint32, pointer(event)],
