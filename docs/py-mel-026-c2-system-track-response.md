@@ -133,26 +133,30 @@ assert completed.status.reason_description == "C2 system response accepted µ"
 
 The task worktree started from `26370d0b0cd203a232389337946d43d7873c60f0`
 (tree `3d541998fda1283733c8169948c5303cfb645a7e`) and incorporated
-`86e689864b24d330ab670ec8a211b1976d562338` by merge. The focused suite checks the
+`86e689864b24d330ab670ec8a211b1976d562338` and then
+`1c471f1cdae52d0d8f0d58ea5b71421807418892` by ordinary merges. The focused suite checks the
 compiled mock's fourteen observed scalar slots, both validity bits without
 zeroing, bit fidelity for all eight doubles, the complete status/rejection
 domains, and isolated worker retention/reclamation with exact native barriers.
 Hostile FFI tests check metadata and diagnostics as well as uncertain Close.
 
-| Local qualification | Result |
+| Local qualification on the first integrated baseline (`86e6898`) | Result |
 | --- | --- |
 | `make native`, `make test-native` | Production build passed; 993 native tests passed, including the existing C2/Track mixed-domain test |
 | `make test-python` | 883 tests passed, including the executable example |
 | `make test-rust` | Workspace tests and doctests passed |
+| `make check` | Native build-tree isolation, native tests, Ada formatting and smoke tests, and source checks passed |
 | Focused Python regression | 257 tests passed across C2 response, metadata, erase, calibration commands, navigation, C2 control, ABI and exports |
 | `make test-policy`, `make test-docs-ci`, `make check-ir-api-coverage` | Passed |
 | Source integrity, final newlines, Python `-W error` compilation, Git whitespace | Passed |
 
-The separate production builds of the feature and incorporated `main` have
+The separate production builds on the first integrated baseline had
 identical dynamic export names, types and versions (344 `ams_mel_*` symbols
-and the version node). The local Python reference generator rendered all five
-public types and the C2 method; runtime inventory qualification passed.
-See the PR ledger for final source identity and hosted qualification.
+and the version node). The later main merge includes six Scheduling exports
+unrelated to this feature. The local Python reference generator rendered all
+five public types and the C2 method; runtime inventory qualification passed.
+See the PR ledger for final source identity, latest-main export parity and
+requalification, and hosted checks.
 
 All positive functional qualification uses the compiled mock. This optional
 operation may be unsupported by a real provider; no hardware operation,
