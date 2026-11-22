@@ -12,6 +12,41 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_calibration_status_reuses_existing_receiver_abi(self) -> None:
+        import ams_mel
+        from ams_mel import _calibration_status
+
+        pointer = ctypes.POINTER
+        owner = _native.IrCalibrationStatusMetadataHandle
+        event = _native.IrCalibrationStatusEventHandle
+        signatures = {
+            "ams_mel_ir_c2_calibration_status_open": [
+                _native.IrC2Handle, ctypes.c_size_t, pointer(owner), pointer(ctypes.c_uint32)],
+            "ams_mel_ir_calibration_status_receive": [owner, ctypes.c_uint32, pointer(event)],
+            "ams_mel_ir_calibration_status_get_counters": [owner, pointer(_native.IrC2MetadataCountersV1)],
+            "ams_mel_ir_calibration_status_close": [pointer(owner)],
+            "ams_mel_ir_calibration_status_event_view": [
+                event, pointer(pointer(_native.IrCalibrationStatusV1))],
+            "ams_mel_ir_calibration_status_event_close": [pointer(event)],
+        }
+        for name, arguments in signatures.items():
+            with self.subTest(name=name):
+                function = getattr(_native, name)
+                self.assertEqual(function.argtypes, arguments + [
+                    _native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+                self.assertIs(function.restype, ctypes.c_int32)
+                self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+                self.assertFalse(hasattr(ams_mel, name))
+        self.assertIs(dict(_native.IrCompletedCalibrationV1._fields_)["time_tag_ns"], ctypes.c_int64)
+        self.assertIs(_calibration_status.C2MetadataCounters, ams_mel.C2MetadataCounters)
+        self.assertEqual(tuple((member.name, member.value) for member in ams_mel.SubsystemCalibrationResult), (
+            ("NOT_SET", _native.AMS_MEL_IR_CALIBRATION_RESULT_NOT_SET),
+            ("COMPLETED", _native.AMS_MEL_IR_CALIBRATION_RESULT_COMPLETED),
+            ("FAILED", _native.AMS_MEL_IR_CALIBRATION_RESULT_FAILED),
+            ("INTERRUPTED", _native.AMS_MEL_IR_CALIBRATION_RESULT_INTERRUPTED),
+            ("NOT_CALIBRATED", _native.AMS_MEL_IR_CALIBRATION_RESULT_NOT_CALIBRATED),
+        ))
+
     def test_calibration_configuration_reuses_six_existing_operations(self) -> None:
         import ams_mel
         from ams_mel import ir, _calibration_configuration
