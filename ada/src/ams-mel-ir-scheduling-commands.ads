@@ -4,6 +4,7 @@ private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
 private with AMS.MEL_C_API;
 with AMS.MEL.IR.Channel;
+with AMS.MEL.IR.Scheduling.Metadata;
 
 package AMS.MEL.IR.Scheduling.Commands is
    --  Outgoing task requests, independent of Scheduling metadata. A future
@@ -295,6 +296,111 @@ package AMS.MEL.IR.Scheduling.Commands is
    --  Idempotently close only the observer; pending native work retains its graph.
    --  @param Request Observer to close, serialized against Wait.
    --  @exception Provider_Error Native observer closure failed.
+   type Range_Az_El is record
+      Range_M, Azimuth_Rad, Elevation_Rad, Range_Rate_MPS : Long_Float := 0.0;
+   end record;
+   --  Four independent binary64 values; no coordinate transformation or normalization.
+   --  @field Range_M Published range in meters.
+   --  @field Azimuth_Rad Published azimuth in radians.
+   --  @field Elevation_Rad Published elevation in radians.
+   --  @field Range_Rate_MPS Published range rate in meters per second.
+
+   type Track_Data is record
+      Timestamp_NS                                                           :
+        Interfaces.Integer_64 := 0;
+      Track_ID                                                               :
+        Interfaces.Integer_32 := 0;
+      IRST_Priority, Reserved_Priority, IRST_Precedence, Reserved_Precedence :
+        Interfaces.Unsigned_32 := 0;
+      Is_Skippable, Maintain_Outside_FOS                                     : Boolean := False;
+      IRST_Track_ID                                                          :
+        Interfaces.Integer_32 := 0;
+      Position, Velocity                                                     : Range_Az_El;
+      Task_Kind                                                              : Metadata.Task_Kind :=
+        Metadata.No_Task;
+      Command_ID                                                             :
+        Interfaces.Unsigned_32 := 0;
+   end record;
+   --  Complete upstream TrackData; distinct from TrackTaskData (Track_Target).
+   --  @field Timestamp_NS Exact signed nanoseconds, without epoch conversion.
+   --  @field Track_ID Exact signed track identifier.
+   --  @field IRST_Priority Independent IRST priority.
+   --  @field Reserved_Priority Independent future-subsystem priority.
+   --  @field IRST_Precedence Independent IRST precedence.
+   --  @field Reserved_Precedence Independent future-subsystem precedence.
+   --  @field Is_Skippable Independent flag for the next available scan.
+   --  @field Maintain_Outside_FOS Independent maintain-outside-field-of-scan flag.
+   --  @field IRST_Track_ID Independent signed IRST track identifier.
+   --  @field Position Complete RangeAzEl position.
+   --  @field Velocity Complete RangeAzEl velocity.
+   --  @field Task_Kind Pinned Task alternatives 0 through 16, including reserved values.
+   --  @field Command_ID All 32 bits of the track command identifier.
+
+   type Track_Data_Array is array (Positive range <>) of Track_Data;
+   --  Owned ordered tracks; may be empty and preserve duplicate identifiers.
+
+   type Prioritized_Track_List_Cmd (Length : Natural) is record
+      Schedule_Time_NS, Time_To_Live_NS : Interfaces.Integer_64 := 0;
+      Command_ID, Track_Count           : Interfaces.Unsigned_32 := 0;
+      Tracks                            : Track_Data_Array (1 .. Length);
+   end record;
+   --  Complete owned prioritized list; Length controls storage only.
+   --  @field Length Number of stored tracks; does not set Track_Count.
+   --  @field Schedule_Time_NS Exact signed schedule time in nanoseconds.
+   --  @field Time_To_Live_NS Exact signed time to live in nanoseconds.
+   --  @field Command_ID Exact unsigned command identifier.
+   --  @field Track_Count Published scalar, independent from Length.
+   --  @field Tracks Every ordered element, regardless of Track_Count.
+
+   type Track_List_Response is (None, Rejected, Rejected_Expired, Accepted);
+   --  Receipt/status only, not proof of physical tracking or schedule execution.
+   --  @enum None Published None receipt.
+   --  @enum Rejected Published Rejected receipt, not an ErrorOr error.
+   --  @enum Rejected_Expired Published RejectedExpired receipt, not an ErrorOr error.
+   --  @enum Accepted Published Accepted receipt.
+
+   type Track_List_Request is limited private;
+   --  Limited-controlled typed observer; closure/finalization never cancels work.
+   type Track_List_Result is private;
+   --  Owned terminal result, independent of observer, channel and Session.
+
+   function Send_Prioritized_Tracks
+     (Channel : Scheduling_Channel; Value : Prioritized_Track_List_Cmd) return Track_List_Request;
+   --  Submit the list through the published send overload, without registering metadata.
+   --  @param Channel Live Enabled owner, serialized against Close until admission.
+   --  @param Value Complete owned values, copied before provider dispatch.
+   --  @return Typed observer of independently retained work.
+   --  @exception Provider_Error Ineligible owner, malformed input or provider send failure.
+   --  @exception Resource_Exhausted Completion admission or storage unavailable.
+
+   function Wait
+     (Request : Track_List_Request; Timeout_Milliseconds : Natural) return Track_List_Result;
+   --  Observe the cached terminal result without consumption or cancellation.
+   --  @param Request Open observer, serialized against Close.
+   --  @param Timeout_Milliseconds Maximum wait in milliseconds; zero polls.
+   --  @return Exact receipt or ErrorOr rejection with its owned description.
+   --  @exception Timeout_Error Still pending; the request remains open.
+   --  @exception Provider_Error Closed request, malformed result or future failure.
+
+   function Status (Result : Track_List_Result) return AMS.MEL.IR.Channel.Outcome;
+   --  @param Result Owned terminal result.
+   --  @return Success for all four receipts; Rejected only for a MEL ErrorOr error.
+   --  @exception Provider_Error Result has not been obtained from Wait.
+   function Value (Result : Track_List_Result) return Track_List_Response;
+   --  @param Result Successfully completed receipt.
+   --  @return Exact receipt; Rejected and Rejected_Expired are distinct values.
+   --  @exception Provider_Error Result contains a MEL error or no observed value.
+   function Rejection_Code (Result : Track_List_Result) return AMS.MEL.IR.Channel.Error_Code;
+   --  @param Result Terminal MEL error result.
+   --  @return Exact MEL error code, not a receipt value.
+   --  @exception Provider_Error Result does not contain a MEL error.
+   function Description (Result : Track_List_Result) return String;
+   --  @param Result Terminal MEL error result.
+   --  @return Complete owned description bytes, including any embedded NUL.
+   --  @exception Provider_Error Result does not contain a MEL error.
+   procedure Close (Request : in out Track_List_Request);
+   --  @param Request Observer to close, serialized against Wait.
+   --  @exception Provider_Error Native observer closure failed.
 private
    package US renames Ada.Strings.Unbounded;
    type Abort_Request is new Ada.Finalization.Limited_Controlled with record
@@ -325,5 +431,18 @@ private
    end record;
    type Track_Result is record
       Owner : Abort_Result;
+   end record;
+   type Track_List_Request is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Track_List_Request_Handle :=
+        AMS.MEL_C_API.Null_Track_List_Request;
+   end record;
+   overriding
+   procedure Finalize (Request : in out Track_List_Request);
+   type Track_List_Result is record
+      Observed      : Boolean := False;
+      Result_Status : AMS.MEL.IR.Channel.Outcome := AMS.MEL.IR.Channel.Success;
+      Result_Value  : Track_List_Response := None;
+      Result_Code   : AMS.MEL.IR.Channel.Error_Code := AMS.MEL.IR.Channel.None;
+      Result_Text   : US.Unbounded_String;
    end record;
 end AMS.MEL.IR.Scheduling.Commands;

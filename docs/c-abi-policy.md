@@ -899,6 +899,13 @@ status. All ordinary C++ exceptions are translated. Provider destructors and
 deleters are required not to throw, consistent with ordinary C++ destruction
 rules.
 
+`ams_mel_ir_track_list_request_wait` has one explicitly length-delimited
+exception: on `AMS_MEL_COMMAND_REJECTED` it reports the MEL error description
+as exact bytes followed by one extra NUL. `diagnostic_required` includes that
+extra byte; clients must not use `strlen` to recover the description. This
+preserves embedded NUL and non-UTF-8 bytes without changing other diagnostic
+paths or existing request profiles.
+
 The initial threading contract permits concurrent use of independent sessions.
 Calls using the same session, including close, must be externally serialized.
 No callback, asynchronous work, cancellation, timeout, or child-resource

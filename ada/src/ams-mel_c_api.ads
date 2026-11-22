@@ -106,13 +106,13 @@ private package AMS.MEL_C_API is
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_buffer_close";
 
-   Null_Session         : constant Session_Handle := Session_Handle (System.Null_Address);
+   Null_Session            : constant Session_Handle := Session_Handle (System.Null_Address);
    type Stream_Handle is new System.Address;
-   Null_Stream          : constant Stream_Handle := Stream_Handle (System.Null_Address);
+   Null_Stream             : constant Stream_Handle := Stream_Handle (System.Null_Address);
    type Checkout_Handle is new System.Address;
-   Null_Checkout        : constant Checkout_Handle := Checkout_Handle (System.Null_Address);
+   Null_Checkout           : constant Checkout_Handle := Checkout_Handle (System.Null_Address);
    type Checkout_Lease_Handle is new System.Address;
-   Null_Checkout_Lease  : constant Checkout_Lease_Handle :=
+   Null_Checkout_Lease     : constant Checkout_Lease_Handle :=
      Checkout_Lease_Handle (System.Null_Address);
    type Checkout_Counters_V1 is record
       Callbacks_Received,
@@ -160,21 +160,25 @@ private package AMS.MEL_C_API is
       Required        : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_image_checkout_lease_close";
    type Frame_Snapshot_Handle is new System.Address;
-   Null_Frame_Snapshot  : constant Frame_Snapshot_Handle :=
+   Null_Frame_Snapshot     : constant Frame_Snapshot_Handle :=
      Frame_Snapshot_Handle (System.Null_Address);
    type C2_Handle is new System.Address;
-   Null_C2              : constant C2_Handle := C2_Handle (System.Null_Address);
+   Null_C2                 : constant C2_Handle := C2_Handle (System.Null_Address);
    type Mode_Request_Handle is new System.Address;
-   Null_Mode_Request    : constant Mode_Request_Handle := Mode_Request_Handle (System.Null_Address);
+   Null_Mode_Request       : constant Mode_Request_Handle :=
+     Mode_Request_Handle (System.Null_Address);
    type Return_Request_Handle is new System.Address;
-   Null_Return_Request  : constant Return_Request_Handle :=
+   Null_Return_Request     : constant Return_Request_Handle :=
      Return_Request_Handle (System.Null_Address);
+   type Track_List_Request_Handle is new System.Address;
+   Null_Track_List_Request : constant Track_List_Request_Handle :=
+     Track_List_Request_Handle (System.Null_Address);
    type Comms_Request_Handle is new System.Address;
-   Null_Comms_Request   : constant Comms_Request_Handle :=
+   Null_Comms_Request      : constant Comms_Request_Handle :=
      Comms_Request_Handle (System.Null_Address);
    type Capability_Handle is new System.Address;
    type Capability_List_Handle is new System.Address;
-   Null_Capability_List : constant Capability_List_Handle :=
+   Null_Capability_List    : constant Capability_List_Handle :=
      Capability_List_Handle (System.Null_Address);
 
    function IR_Capability_List_Create
@@ -2532,6 +2536,65 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_exec_track";
+
+   type IR_Range_Az_El_V1 is record
+      Range_M, Azimuth_Rad, Elevation_Rad, Range_Rate_MPS : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type IR_Track_Data_V1 is record
+      Timestamp_NS                                                           :
+        Interfaces.Integer_64;
+      Track_ID                                                               :
+        Interfaces.Integer_32;
+      IRST_Priority, Reserved_Priority, IRST_Precedence, Reserved_Precedence :
+        Interfaces.Unsigned_32;
+      Is_Skippable, Maintain_Outside_FOS                                     :
+        Interfaces.Unsigned_32;
+      IRST_Track_ID                                                          :
+        Interfaces.Integer_32;
+      Position, Velocity                                                     : IR_Range_Az_El_V1;
+      Task_Code, Command_ID                                                  :
+        Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Track_Data_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type IR_Prioritized_Track_List_Cmd_V1 is record
+      Schedule_Time_NS, Time_To_Live_NS : Interfaces.Integer_64;
+      Command_ID, Track_Count           : Interfaces.Unsigned_32;
+      Tracks                            : IR_Track_Data_Span_V1;
+   end record
+   with Convention => C;
+   type IR_Track_List_Result_V1 is record
+      Value, Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+
+   function IR_Scheduling_Send_Prioritized_Tracks
+     (Handle     : Scheduling_Handle;
+      Value      : access constant IR_Prioritized_Track_List_Cmd_V1;
+      Output     : access Track_List_Request_Handle;
+      Diagnostic : System.Address;
+      Capacity   : Size_T;
+      Required   : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_send_prioritized_tracks";
+   function IR_Track_List_Request_Wait
+     (Handle               : Track_List_Request_Handle;
+      Timeout_Milliseconds : Interfaces.Unsigned_32;
+      Output               : access IR_Track_List_Result_V1;
+      Diagnostic           : System.Address;
+      Capacity             : Size_T;
+      Required             : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_list_request_wait";
+   function IR_Track_List_Request_Close
+     (Handle     : access Track_List_Request_Handle;
+      Diagnostic : System.Address;
+      Capacity   : Size_T;
+      Required   : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_list_request_close";
    function IR_Scheduling_Exec_Stare
      (Handle              : Scheduling_Handle;
       Value               : access constant IR_Stare_Task_V1;

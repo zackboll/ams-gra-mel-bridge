@@ -134,6 +134,8 @@ AMS_MEL_0.1 {
         ams_mel_ir_c2_metadata_event_view;
         ams_mel_ir_c2_metadata_event_close;
         ams_mel_ir_return_request_wait;
+        ams_mel_ir_track_list_request_wait;
+        ams_mel_ir_track_list_request_close;
         ams_mel_ir_return_request_close;
         ams_mel_ir_c2_close;
         ams_mel_ir_health_open;
@@ -195,6 +197,7 @@ AMS_MEL_0.1 {
         ams_mel_ir_stacked_close;
         ams_mel_ir_channel_from_stacked;
         ams_mel_ir_scheduling_open;
+        ams_mel_ir_scheduling_send_prioritized_tracks;
         ams_mel_ir_scheduling_enable;
         ams_mel_ir_scheduling_get_capabilities;
         ams_mel_ir_scheduling_close;
