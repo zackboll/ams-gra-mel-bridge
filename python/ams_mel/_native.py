@@ -1330,6 +1330,20 @@ class IrTaskInfoV1(ctypes.Structure):
                 ("action", ctypes.c_uint32), ("precedence_within_priority", ctypes.c_uint32),
                 ("priority", ctypes.c_uint32)]
 
+class IrTrackTaskDataV1(ctypes.Structure):
+    _fields_ = [("target_id", ctypes.c_int32), ("location_azimuth_rad", ctypes.c_double),
+                ("location_elevation_rad", ctypes.c_double),
+                ("rate_azimuth_rad_per_second", ctypes.c_double),
+                ("rate_elevation_rad_per_second", ctypes.c_double)]
+
+class IrTrackTaskParamV1(ctypes.Structure):
+    _fields_ = [("duration_ns", ctypes.c_int64), ("count", ctypes.c_uint32),
+                ("targets", IrTrackTaskDataV1 * 255)]
+
+class IrTrackTaskV1(ctypes.Structure):
+    _fields_ = [("track_parameters", IrTrackTaskParamV1), ("task_info", IrTaskInfoV1),
+                ("command_id", ctypes.c_uint32)]
+
 class IrScanTaskV1(ctypes.Structure):
     _fields_ = [("scan_parameters", IrScanParamV1), ("task_info", IrTaskInfoV1),
                 ("command_id", ctypes.c_uint32)]
@@ -1353,6 +1367,10 @@ ams_mel_ir_scheduling_enable.restype = ctypes.c_int32
 ams_mel_ir_scheduling_get_capabilities = _LIBRARY.ams_mel_ir_scheduling_get_capabilities
 ams_mel_ir_scheduling_get_capabilities.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrChannelCapabilityHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_scheduling_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_scheduling_exec_track = _LIBRARY.ams_mel_ir_scheduling_exec_track
+ams_mel_ir_scheduling_exec_track.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrTrackTaskV1), ctypes.POINTER(IrReturnRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_exec_track.restype = ctypes.c_int32
+
 ams_mel_ir_scheduling_exec_scan = _LIBRARY.ams_mel_ir_scheduling_exec_scan
 ams_mel_ir_scheduling_exec_scan.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrScanTaskV1), ctypes.POINTER(IrReturnRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_scheduling_exec_scan.restype = ctypes.c_int32
@@ -2664,6 +2682,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_scheduling_exec_abort",
     "ams_mel_ir_scheduling_exec_stare",
     "ams_mel_ir_scheduling_exec_scan",
+    "ams_mel_ir_scheduling_exec_track",
     "ams_mel_ir_scheduling_close",
     "ams_mel_ir_track_metadata_open",
     "ams_mel_ir_track_metadata_receive",

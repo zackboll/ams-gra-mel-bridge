@@ -1328,6 +1328,30 @@ if(AMS_MEL_BUILD_TESTS)
     add_test(NAME ir_stacked_layout COMMAND test_ir_stacked_layout)
 
     # IRMEL-ADA-011 SchedulingChannel foundation; one process per scenario.
+    add_executable(test_ir_scheduling_track tests/test_ir_scheduling_track.c)
+    target_compile_features(test_ir_scheduling_track PRIVATE c_std_11)
+    set_target_properties(test_ir_scheduling_track PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_scheduling_track PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_scheduling_track PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_scheduling_track mock_ir_provider)
+    ams_mel_warnings(test_ir_scheduling_track)
+    foreach(case IN ITEMS success fail not-supported not-implemented unsupported invalid-state
+            null malformed invalid-future invalid-return exec-throw future-throw delayed reentry closure observer-close concurrent-close failed
+            post-allocation post-worker-launch detach-fail pre-allocation pre-worker-launch pre-after-claim pre-detach
+            pre-return-allocation pre-return-worker-launch pre-return-after-claim pre-return-detach
+            pre-comms-allocation pre-comms-worker-launch pre-comms-after-claim pre-comms-detach return-invalid-future comms-invalid-future)
+        add_test(NAME ir_scheduling_track_${case} COMMAND test_ir_scheduling_track ${case})
+        set_tests_properties(ir_scheduling_track_${case} PROPERTIES TIMEOUT 60)
+    endforeach()
+    add_executable(test_ir_scheduling_track_layout tests/scheduling_track_layout_probe.c)
+    target_compile_features(test_ir_scheduling_track_layout PRIVATE c_std_11)
+    set_target_properties(test_ir_scheduling_track_layout PROPERTIES C_EXTENSIONS OFF)
+    target_link_libraries(test_ir_scheduling_track_layout PRIVATE ams_mel::ams_mel_c)
+    ams_mel_warnings(test_ir_scheduling_track_layout)
+    add_test(NAME ir_scheduling_track_layout COMMAND test_ir_scheduling_track_layout)
+    add_test(NAME ir_scheduling_track_resource COMMAND test_ir_scheduling_track resource)
+    set_tests_properties(ir_scheduling_track_resource PROPERTIES TIMEOUT 60)
     add_executable(test_ir_scheduling_scan tests/test_ir_scheduling_scan.c)
     target_compile_features(test_ir_scheduling_scan PRIVATE c_std_11)
     set_target_properties(test_ir_scheduling_scan PROPERTIES C_EXTENSIONS OFF)
@@ -1393,6 +1417,13 @@ if(AMS_MEL_BUILD_TESTS)
     ams_mel_warnings(test_ir_scheduling_abort_layout)
     add_test(NAME ir_scheduling_abort_layout COMMAND test_ir_scheduling_abort_layout)
     add_executable(test_scan_conversion tests/test_scan_conversion.cpp)
+    add_executable(test_track_conversion tests/test_track_conversion.cpp)
+    target_compile_features(test_track_conversion PRIVATE cxx_std_20)
+    target_include_directories(test_track_conversion PRIVATE src include)
+    target_include_directories(test_track_conversion SYSTEM PRIVATE
+        vendor/ir-mel/include vendor/common-mel/include vendor/ams-math/include)
+    ams_mel_warnings(test_track_conversion)
+    add_test(NAME ir_scheduling_track_conversion COMMAND test_track_conversion)
     target_compile_features(test_scan_conversion PRIVATE cxx_std_20)
     target_include_directories(test_scan_conversion PRIVATE src include)
     target_include_directories(test_scan_conversion SYSTEM PRIVATE
