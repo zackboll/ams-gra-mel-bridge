@@ -112,3 +112,45 @@ physical movement or pointing, time synchronization accuracy, imagery, or
 correlation with a local command. It neither completes a `RequestFor` future nor
 synthesizes another Scheduling metadata event. The five command operations and
 the four existing metadata APIs are unchanged.
+
+### Local qualification record
+
+`eaa50778d1200df5681aa126a99d287be61c81b6` (tree
+`0999b95321bac455b66305fa9b99ef4ca40bc401`) is the implementation commit.
+The two test corrections and this qualification record do not change the
+native implementation, Ada library, raw mirrors, or vendor inputs. The last
+code/test commit was `aaa2d5d7395389ece16fe1dd670cfd2fa644c4e1` (tree
+`0696954942ed7dd27a4c4de4d49eb78f345b384c`). The following results are
+identified by the source they exercised, not claimed as reruns on this
+documentation-only follow-up.
+
+| Command or evidence | Result and source |
+|---|---|
+| `make format-ada`; `make check-ada-format`; `make check-ada-docs-changed` | Passed; formatting was also checked after the Ada test correction. Seven changed public declarations inspected, no annotation defects. |
+| `make test-native` and Scheduling/common CTest selection | 1,026 and 372 passed, respectively, on the implementation commit. The complete 1,026-case suite also passed on the code/test head as part of `make test-python`. |
+| `make test-ada` | Full mock-provider smoke suite and examples passed on the code/test head. |
+| `make test-python` | 863 passed on the code/test head. |
+| `make test-rust` | 690 passed, 16 ignored; the Rust inputs were unchanged during the test-only follow-ups. |
+| `make check-ir-api-coverage` | 90 passed on the code/test head; 127 headers and 148 operations audited. |
+| `make check` | Passed on the code/test head: build-tree isolation, native, Ada, formatting, and text hygiene. |
+| `alr -n -C ada build`; `alr -n -C ada/tests run` | Both passed on the code/test head; the first test run passed the Image checkout and TaskEvents tests. No retry or environment override of provider runtime paths was needed. |
+| Strict C11 GCC 14.2 / Clang 19.1 and C++20 | Both C compilers agreed on the complete layout and all six signatures. Both C++ compilers accepted the pinned type/value assertions. |
+| Clang ASan/UBSan and deterministic stress | On the implementation commit, 47 focused cases passed with leak detection enabled; nine callback/ownership scenarios each passed 50 repetitions in a separate build tree. |
+| Production ELF exports and source integrity | 350 → 356 exports, exactly six additions under `AMS_MEL_0.1`, no removals or test hooks. All eight affected reviewed-source hashes matched; source integrity, final-newline and whitespace checks passed. |
+
+Initial `make test-ada` failed at compilation because unary minus for the
+signed test literals was not directly visible. Initial `make test-python`
+failed the existing exact Scheduling inventory test, which still listed four
+metadata families. Each was fixed in the corresponding test. The first shell
+export comparison failed because the two inputs used different sort locales;
+the equal-locale comparison above is separate evidence. Original logs and
+exit statuses were retained locally under `/tmp/irmel029`. These failures are
+not reported as passes and were not recurrences of the prior Image checkout
+failure from IRMEL-ADA-028.
+
+At delivery, `main` had advanced through #259 and #260 to
+`eab6a8004069933678357adc340a2066eb7f3518` (tree
+`1248d4a9962e465e1c057e29deb3b9ff5a1327a1`). The two PRs changed safe Python
+and Rust code without changing the native or Ada baseline; Git's merge-tree
+check found no conflict. Hosted CI on the PR merge result and independent
+technical review remain separate gates.
