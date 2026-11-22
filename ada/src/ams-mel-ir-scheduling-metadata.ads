@@ -5,7 +5,7 @@ private with AMS.MEL_C_API;
 
 package AMS.MEL.IR.Scheduling.Metadata is
    --  Independent opt-in reception of the pinned @RequiredIfIRSTTrackTasking ExecuteTaskAck,
-   --  TaskExecutingRep and SchedCreatedRep callbacks.
+   --  TaskExecutingRep, SchedCreatedRep and UpdateTrackListResponse callbacks.
    --  Reception and provider task execution are separate events. An acknowledgement means only
    --  that the provider delivered this value: it proves neither completion nor success. No
    --  Scheduling exec/send, local request matching, identifier reordering or uniqueness rule is
@@ -33,8 +33,8 @@ package AMS.MEL.IR.Scheduling.Metadata is
    --  @field Events_Received Callback entries, including inactive callbacks and rejected events.
    --  @field Events_Dropped_Queue_Full Valid incoming events dropped without snapshot allocation
    --  because the bounded queue is full. Already queued events are retained.
-   --  @field Malformed_Or_Unsupported Null payloads (even while full) and callback allocation or
-   --  copy failures. A failed event is rejected atomically; later reception can recover.
+   --  @field Malformed_Or_Unsupported Null or unsupported payloads (even while full) and callback
+   --  allocation or copy failures. A failed event is rejected atomically; reception can recover.
 
    type Execute_Task_Ack_Stream is limited private;
    --  Limited controlled consumption owner. Explicit Close is preferred; finalization attempts
@@ -326,7 +326,70 @@ package AMS.MEL.IR.Scheduling.Metadata is
    --  Idempotently deactivate consumption only. Neither unregisters nor affects other families.
    --  @param Stream Consumption owner to close.
    --  @exception Provider_Error Native closure failed.
+
+   type Track_List_Receipt is (None, Rejected, Rejected_Expired, Accepted);
+   --  Exact TrackListResponse values as reported by metadata, not a command future result.
+   --  @enum None Upstream None (0).
+   --  @enum Rejected Upstream Rejected (1); a valid event, not a bridge error.
+   --  @enum Rejected_Expired Upstream RejectedExpired (2); a valid event, not a bridge error.
+   --  @enum Accepted Upstream Accepted (3); does not establish physical tracking, task execution,
+   --  schedule feasibility or image acquisition.
+   for Track_List_Receipt use (None => 0, Rejected => 1, Rejected_Expired => 2, Accepted => 3);
+   for Track_List_Receipt'Size use 32;
+
+   type Update_Track_List_Response is record
+      Command_ID : Interfaces.Unsigned_32 := 0;
+      Response   : Track_List_Receipt := None;
+   end record;
+   --  Complete Ada-owned metadata event, independent of provider objects and typed futures.
+   --  @field Command_ID All 32 bits of getCommandID(), without matching, deduplication or sorting.
+   --  @field Response The exact getTrackListResponse() value.
+
+   type Update_Track_List_Stream is limited private;
+   --  Limited-controlled consumption owner with non-raising finalization. Serialize operations
+   --  and Close on this stream; Scheduling Close may run while its Receive waits.
+
+   function Open_Update_Track_List
+     (Channel : Scheduling_Channel; Queue_Capacity : Positive) return Update_Track_List_Stream;
+   --  Opt in to only the UpdateTrackListResponse overload, once per Scheduling owner. Any
+   --  provider attempt consumes the one-shot; registration may deliver synchronously. This does
+   --  not submit a command and neither a command submission nor its future registers this stream.
+   --  @param Channel Attached or Enabled owner, serialized against its other owner operations.
+   --  @param Queue_Capacity Maximum number of events in the bounded drop-incoming queue.
+   --  @return Independent metadata consumption owner.
+   --  @exception Not_Supported Provider answered NotSupported.
+   --  @exception Provider_Error Ineligible owner, second attempt or other native failure.
+
+   function Receive_Update_Track_List
+     (Stream : Update_Track_List_Stream; Timeout_Milliseconds : Natural := 0)
+      return Update_Track_List_Response;
+   --  Copy both fields before closing the native event. Queued events drain in successful-enqueue
+   --  order after Scheduling Close. Receiving an event does not complete or change any future.
+   --  @param Stream Open consumption owner.
+   --  @param Timeout_Milliseconds Maximum wait in milliseconds; zero polls without cancellation.
+   --  @return Owned event valid after the stream, channel, session and provider close.
+   --  @exception Timeout_Error Active queue remained empty.
+   --  @exception Stream_Stopped Stopped queue is empty.
+   --  @exception Provider_Error Closed stream, malformed native view or provider cleanup failure.
+
+   function Update_Track_List_Counters (Stream : Update_Track_List_Stream) return Metadata_Counters;
+   --  @param Stream Open consumption owner.
+   --  @return Saturating callback counters; malformed includes null, unknown response or copy failure.
+   --  @exception Provider_Error Closed stream or native query failure.
+
+   procedure Close (Stream : in out Update_Track_List_Stream);
+   --  Idempotently discard queued events and deactivate consumption without unregistering,
+   --  affecting other metadata families or cancelling any Scheduling command.
+   --  @param Stream Consumption owner to close.
+   --  @exception Provider_Error Native closure failed.
 private
+   type Update_Track_List_Stream is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Scheduling_Update_Track_List_Metadata_Handle :=
+        AMS.MEL_C_API.Null_Scheduling_Update_Track_List_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Stream : in out Update_Track_List_Stream);
+
    package Activity_Vectors is new Ada.Containers.Vectors (Positive, Activity_Record);
    type Activity_Collection is record
       Values : Activity_Vectors.Vector;
