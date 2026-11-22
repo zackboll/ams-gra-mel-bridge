@@ -1469,6 +1469,43 @@ ams_mel_ir_scheduling_task_executing_event_view.restype = ctypes.c_int32
 ams_mel_ir_scheduling_task_executing_event_close = _LIBRARY.ams_mel_ir_scheduling_task_executing_event_close
 ams_mel_ir_scheduling_task_executing_event_close.argtypes = [ctypes.POINTER(IrSchedulingRepEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_scheduling_task_executing_event_close.restype = ctypes.c_int32
+# IRMEL-ADA-027: private raw event and event-owned activity span.
+class IrActivityRecordV1(ctypes.Structure):
+    _fields_ = [("activity_id", ctypes.c_uint32), ("task_id", ctypes.c_uint32),
+                ("track_id", ctypes.c_int32), ("position", IrRangeAzElV1),
+                ("duration_ns", ctypes.c_int64)]
+
+
+class IrActivitySpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(IrActivityRecordV1)), ("size", ctypes.c_size_t)]
+
+
+class IrSchedCreatedRepV1(ctypes.Structure):
+    _fields_ = [("command_id", ctypes.c_uint32), ("scan_id", ctypes.c_uint32),
+                ("estimated_duration_ns", ctypes.c_int64), ("activity_count", ctypes.c_uint32),
+                ("activities", IrActivitySpanV1)]
+
+
+IrSchedulingCreatedMetadataHandle = ctypes.c_void_p
+IrSchedulingCreatedEventHandle = ctypes.c_void_p
+ams_mel_ir_scheduling_schedule_created_open = _LIBRARY.ams_mel_ir_scheduling_schedule_created_open
+ams_mel_ir_scheduling_schedule_created_open.argtypes = [IrSchedulingHandle, ctypes.c_size_t, ctypes.POINTER(IrSchedulingCreatedMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_schedule_created_open.restype = ctypes.c_int32
+ams_mel_ir_scheduling_schedule_created_receive = _LIBRARY.ams_mel_ir_scheduling_schedule_created_receive
+ams_mel_ir_scheduling_schedule_created_receive.argtypes = [IrSchedulingCreatedMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrSchedulingCreatedEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_schedule_created_receive.restype = ctypes.c_int32
+ams_mel_ir_scheduling_schedule_created_get_counters = _LIBRARY.ams_mel_ir_scheduling_schedule_created_get_counters
+ams_mel_ir_scheduling_schedule_created_get_counters.argtypes = [IrSchedulingCreatedMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_schedule_created_get_counters.restype = ctypes.c_int32
+ams_mel_ir_scheduling_schedule_created_close = _LIBRARY.ams_mel_ir_scheduling_schedule_created_close
+ams_mel_ir_scheduling_schedule_created_close.argtypes = [ctypes.POINTER(IrSchedulingCreatedMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_schedule_created_close.restype = ctypes.c_int32
+ams_mel_ir_scheduling_schedule_created_event_view = _LIBRARY.ams_mel_ir_scheduling_schedule_created_event_view
+ams_mel_ir_scheduling_schedule_created_event_view.argtypes = [IrSchedulingCreatedEventHandle, ctypes.POINTER(ctypes.POINTER(IrSchedCreatedRepV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_schedule_created_event_view.restype = ctypes.c_int32
+ams_mel_ir_scheduling_schedule_created_event_close = _LIBRARY.ams_mel_ir_scheduling_schedule_created_event_close
+ams_mel_ir_scheduling_schedule_created_event_close.argtypes = [ctypes.POINTER(IrSchedulingCreatedEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_schedule_created_event_close.restype = ctypes.c_int32
 ams_mel_ir_track_metadata_open = _LIBRARY.ams_mel_ir_track_metadata_open
 ams_mel_ir_track_metadata_open.argtypes = [IrTrackHandle, ctypes.c_size_t, ctypes.POINTER(IrTrackMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_metadata_open.restype = ctypes.c_int32
@@ -2529,6 +2566,12 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_scheduling_task_executing_close",
     "ams_mel_ir_scheduling_task_executing_event_view",
     "ams_mel_ir_scheduling_task_executing_event_close",
+    "ams_mel_ir_scheduling_schedule_created_open",
+    "ams_mel_ir_scheduling_schedule_created_receive",
+    "ams_mel_ir_scheduling_schedule_created_get_counters",
+    "ams_mel_ir_scheduling_schedule_created_close",
+    "ams_mel_ir_scheduling_schedule_created_event_view",
+    "ams_mel_ir_scheduling_schedule_created_event_close",
     "ams_mel_ir_scheduling_execute_task_ack_open",
     "ams_mel_ir_scheduling_execute_task_ack_receive",
     "ams_mel_ir_scheduling_execute_task_ack_get_counters",

@@ -347,6 +347,12 @@ private package AMS.MEL_C_API is
    type Scheduling_Rep_Event_Handle is new System.Address;
    Null_Scheduling_Rep_Event               : constant Scheduling_Rep_Event_Handle :=
      Scheduling_Rep_Event_Handle (System.Null_Address);
+   type Scheduling_Created_Metadata_Handle is new System.Address;
+   Null_Scheduling_Created_Metadata        : constant Scheduling_Created_Metadata_Handle :=
+     Scheduling_Created_Metadata_Handle (System.Null_Address);
+   type Scheduling_Created_Event_Handle is new System.Address;
+   Null_Scheduling_Created_Event           : constant Scheduling_Created_Event_Handle :=
+     Scheduling_Created_Event_Handle (System.Null_Address);
    type IR_Task_Executing_Rep_V1 is record
       Command_ID            : Interfaces.Unsigned_32;
       Activity_ID           : Interfaces.Unsigned_32;
@@ -2741,6 +2747,77 @@ private package AMS.MEL_C_API is
      Import,
      Convention    => C,
      External_Name => "ams_mel_ir_scheduling_task_executing_event_close";
+   type IR_Activity_Record_V1 is record
+      Activity_ID, Task_ID : Interfaces.Unsigned_32;
+      Track_ID             : Interfaces.Integer_32;
+      Position             : IR_Range_Az_El_V1;
+      Duration_NS          : Interfaces.Integer_64;
+   end record
+   with Convention => C;
+   type IR_Activity_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type IR_Sched_Created_Rep_V1 is record
+      Command_ID, Scan_ID   : Interfaces.Unsigned_32;
+      Estimated_Duration_NS : Interfaces.Integer_64;
+      Activity_Count        : Interfaces.Unsigned_32;
+      Activities            : IR_Activity_Span_V1;
+   end record
+   with Convention => C;
+   function IR_Scheduling_Created_Open
+     (Stream              : Scheduling_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Scheduling_Created_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_schedule_created_open";
+   function IR_Scheduling_Created_Receive
+     (Handle              : Scheduling_Created_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Scheduling_Created_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_schedule_created_receive";
+   function IR_Scheduling_Created_Get_Counters
+     (Handle              : Scheduling_Created_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_scheduling_schedule_created_get_counters";
+   function IR_Scheduling_Created_Close
+     (Handle              : access Scheduling_Created_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_schedule_created_close";
+   function IR_Scheduling_Created_Event_View
+     (Handle              : Scheduling_Created_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_scheduling_schedule_created_event_view";
+   function IR_Scheduling_Created_Event_Close
+     (Handle              : access Scheduling_Created_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_scheduling_schedule_created_event_close";
    function IR_Track_Metadata_Open
      (Handle              : Track_Handle;
       Queue_Capacity      : Size_T;

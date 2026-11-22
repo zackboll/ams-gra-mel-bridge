@@ -247,6 +247,10 @@ typedef struct ams_mel_ir_scheduling_task_executing_metadata
     ams_mel_ir_scheduling_task_executing_metadata;
 typedef struct ams_mel_ir_scheduling_task_executing_event
     ams_mel_ir_scheduling_task_executing_event;
+typedef struct ams_mel_ir_scheduling_schedule_created_metadata
+    ams_mel_ir_scheduling_schedule_created_metadata;
+typedef struct ams_mel_ir_scheduling_schedule_created_event
+    ams_mel_ir_scheduling_schedule_created_event;
 /* Owns public consumption of the retained IRSTTrackReport callback queue. The
  * callback-accessible state itself belongs to the Track channel, not to this
  * wrapper, because upstream provides no unregister operation. */
@@ -3746,6 +3750,76 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_task_executing_event_view(
 /* Idempotent; NULL *event succeeds. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_task_executing_event_close(
     ams_mel_ir_scheduling_task_executing_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Complete SchedCreatedRep payload in upstream vector order. RangeAzEl and
+ * signed duration are copied without conversion. Task uses the shared
+ * ams_mel_ir_task_t values (including Reserved1..Reserved6). */
+typedef struct ams_mel_ir_activity_record_v1 {
+    uint32_t activity_id;
+    ams_mel_ir_task_t task_id;
+    int32_t track_id;
+    ams_mel_ir_range_az_el_v1 position;
+    int64_t duration_ns;
+} ams_mel_ir_activity_record_v1;
+
+typedef struct ams_mel_ir_activity_span_v1 {
+    const ams_mel_ir_activity_record_v1 *data; /* NULL for an empty span */
+    size_t size; /* element count, not byte count */
+} ams_mel_ir_activity_span_v1;
+
+typedef struct ams_mel_ir_sched_created_rep_v1 {
+    uint32_t command_id;
+    uint32_t scan_id;
+    int64_t estimated_duration_ns;
+    uint32_t activity_count; /* provider scalar; independent of activities.size */
+    ams_mel_ir_activity_span_v1 activities;
+} ams_mel_ir_sched_created_rep_v1;
+
+/* Opt in to just the SchedCreatedRep overload on an Attached or Enabled
+ * Scheduling owner. Serialize open against Scheduling owner operations.
+ * Invalid local arguments do not consume the independent one-shot attempt;
+ * provider refusal/exception does. Registration runs unlocked and may deliver
+ * synchronously. A known provider Return is written to out_registration (if
+ * present); unknown/exception leaves it unchanged. Failed open publishes no
+ * owner. out_metadata must be non-NULL and initially NULL.
+ *
+ * The queue is bounded in events (including in-progress reservations), not in
+ * activities. Null, invalid Task (including the sentinel), overflow or copy
+ * failure rejects the entire event as malformed. Full admission drops valid
+ * incoming events without snapshot allocation. No callback data is borrowed
+ * from the provider after callback return. No execution or correlation is
+ * inferred from reception. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_schedule_created_open(
+    ams_mel_ir_scheduling *scheduling, size_t queue_capacity,
+    ams_mel_ir_scheduling_schedule_created_metadata **out_metadata,
+    ams_mel_ir_return_t *out_registration, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Dequeue in successful-enqueue order. Scheduling Close wakes receivers;
+ * queued events drain before STREAM_STOPPED or eventual PROVIDER_FAILED.
+ * Zero timeout polls; timeout is not cancellation. out_event must be non-NULL
+ * and initially NULL. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_schedule_created_receive(
+    ams_mel_ir_scheduling_schedule_created_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_scheduling_schedule_created_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_schedule_created_get_counters(
+    const ams_mel_ir_scheduling_schedule_created_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Serialized against operations on the same stream. Idempotently deactivate
+ * consumption, not registration; does not wait for callback quiescence. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_schedule_created_close(
+    ams_mel_ir_scheduling_schedule_created_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* The immutable view AND its activity span borrow only from the event owner.
+ * Both are valid until event_close, independent of every provider owner. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_schedule_created_event_view(
+    const ams_mel_ir_scheduling_schedule_created_event *event,
+    const ams_mel_ir_sched_created_rep_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_schedule_created_event_close(
+    ams_mel_ir_scheduling_schedule_created_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Registers the @RequiredIfTrack IRSTTrackReport callback and opens bounded

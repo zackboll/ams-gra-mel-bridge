@@ -5,11 +5,10 @@ with AMS.MEL.IR.Channel;
 --  Conditionally required IR MEL Scheduling channel (@RequiredIfIRSTTrackTasking).
 --  IRMEL-ADA-011 implements only the Scheduling channel ownership/lifecycle
 --  foundation: Open, explicit Enable, owned Capabilities, the weak inherited
---  common Channel view, and Close. IRMEL-ADA-012 and IRMEL-ADA-013 add only
---  independent opt-in ExecuteTaskAck and TaskExecutingRep reception in
---  AMS.MEL.IR.Scheduling.Metadata, independent of execution. AbortTask submission
---  is provided separately by AMS.MEL.IR.Scheduling.Commands. The three other task
---  exec overloads, PrioritizedTrackListCmd send and four other callbacks remain unbound.
+--  common Channel view, and Close. Independent opt-in ExecuteTaskAck, TaskExecutingRep
+--  and SchedCreatedRep reception is provided by AMS.MEL.IR.Scheduling.Metadata.
+--  Task execution and PrioritizedTrackListCmd submission are provided separately by
+--  AMS.MEL.IR.Scheduling.Commands.
 --
 --  The upstream channel is conditional on provider tasking support. A provider
 --  that does not publish the Scheduling category makes Open raise a provider
