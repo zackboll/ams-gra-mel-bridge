@@ -23,7 +23,7 @@ namespace ams_mel_test_completion {
  * completion-probe synchronization remain unchanged. */
 enum Family : unsigned {
     Mode, Return, Comms, Navigation, Instrumentation, Track, Camera, CameraProtect, CalibrationConfiguration,
-    CalibrationStatus, Erase, C2SystemResponse, Count
+    CalibrationStatus, Erase, C2SystemResponse, TrackList, Count
 };
 struct Counters {
     std::atomic<std::uint64_t> started{}, active{}, peak{}, completed{};

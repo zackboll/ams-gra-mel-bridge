@@ -40,6 +40,68 @@ pub struct AmsMelIrTrackTaskV1 {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrRangeAzElV1 {
+    pub range_m: f64,
+    pub azimuth_rad: f64,
+    pub elevation_rad: f64,
+    pub range_rate_mps: f64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrTrackDataV1 {
+    pub timestamp_ns: i64,
+    pub track_id: i32,
+    pub irst_priority: u32,
+    pub reserved_priority: u32,
+    pub irst_precedence: u32,
+    pub reserved_precedence: u32,
+    pub is_skippable: u32,
+    pub maintain_outside_fos: u32,
+    pub irst_track_id: i32,
+    pub position: AmsMelIrRangeAzElV1,
+    pub velocity: AmsMelIrRangeAzElV1,
+    pub task: u32,
+    pub command_id: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrTrackDataSpanV1 {
+    pub data: *const AmsMelIrTrackDataV1,
+    pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrPrioritizedTrackListCmdV1 {
+    pub schedule_time_ns: i64,
+    pub time_to_live_ns: i64,
+    pub command_id: u32,
+    pub track_count: u32,
+    pub tracks: AmsMelIrTrackDataSpanV1,
+}
+
+pub type AmsMelIrTrackListResponse = u32;
+pub const AMS_MEL_IR_TRACK_LIST_RESPONSE_NONE: AmsMelIrTrackListResponse = 0;
+pub const AMS_MEL_IR_TRACK_LIST_RESPONSE_REJECTED: AmsMelIrTrackListResponse = 1;
+pub const AMS_MEL_IR_TRACK_LIST_RESPONSE_REJECTED_EXPIRED: AmsMelIrTrackListResponse = 2;
+pub const AMS_MEL_IR_TRACK_LIST_RESPONSE_ACCEPTED: AmsMelIrTrackListResponse = 3;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrTrackListResultV1 {
+    pub value: AmsMelIrTrackListResponse,
+    pub error_code: u32,
+}
+
+#[repr(C)]
+pub struct AmsMelIrTrackListRequest {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrScanTaskV1 {
     pub scan_parameters: AmsMelIrScanParamV1,
     pub task_info: AmsMelIrTaskInfoV1,
@@ -4312,6 +4374,28 @@ extern "C" {
         scheduling: *mut AmsMelIrScheduling,
         task: *const AmsMelIrTrackTaskV1,
         out_request: *mut *mut AmsMelIrReturnRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_send_prioritized_tracks(
+        scheduling: *mut AmsMelIrScheduling,
+        command: *const AmsMelIrPrioritizedTrackListCmdV1,
+        out_request: *mut *mut AmsMelIrTrackListRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_list_request_wait(
+        request: *const AmsMelIrTrackListRequest,
+        timeout_ms: u32,
+        result: *mut AmsMelIrTrackListResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_list_request_close(
+        request: *mut *mut AmsMelIrTrackListRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

@@ -1344,6 +1344,33 @@ class IrTrackTaskV1(ctypes.Structure):
     _fields_ = [("track_parameters", IrTrackTaskParamV1), ("task_info", IrTaskInfoV1),
                 ("command_id", ctypes.c_uint32)]
 
+class IrRangeAzElV1(ctypes.Structure):
+    _fields_ = [("range_m", ctypes.c_double), ("azimuth_rad", ctypes.c_double),
+                ("elevation_rad", ctypes.c_double), ("range_rate_mps", ctypes.c_double)]
+
+class IrTrackDataV1(ctypes.Structure):
+    _fields_ = [("timestamp_ns", ctypes.c_int64), ("track_id", ctypes.c_int32),
+                ("irst_priority", ctypes.c_uint32), ("reserved_priority", ctypes.c_uint32),
+                ("irst_precedence", ctypes.c_uint32), ("reserved_precedence", ctypes.c_uint32),
+                ("is_skippable", ctypes.c_uint32), ("maintain_outside_fos", ctypes.c_uint32),
+                ("irst_track_id", ctypes.c_int32), ("position", IrRangeAzElV1),
+                ("velocity", IrRangeAzElV1), ("task", ctypes.c_uint32), ("command_id", ctypes.c_uint32)]
+
+class IrTrackDataSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(IrTrackDataV1)), ("size", ctypes.c_size_t)]
+
+class IrPrioritizedTrackListCmdV1(ctypes.Structure):
+    _fields_ = [("schedule_time_ns", ctypes.c_int64), ("time_to_live_ns", ctypes.c_int64),
+                ("command_id", ctypes.c_uint32), ("track_count", ctypes.c_uint32), ("tracks", IrTrackDataSpanV1)]
+
+class IrTrackListResultV1(ctypes.Structure):
+    _fields_ = [("value", ctypes.c_uint32), ("error_code", ctypes.c_uint32)]
+
+class _IrTrackListRequest(ctypes.Structure):
+    pass
+
+IrTrackListRequestHandle = ctypes.POINTER(_IrTrackListRequest)
+
 class IrScanTaskV1(ctypes.Structure):
     _fields_ = [("scan_parameters", IrScanParamV1), ("task_info", IrTaskInfoV1),
                 ("command_id", ctypes.c_uint32)]
@@ -1370,6 +1397,16 @@ ams_mel_ir_scheduling_get_capabilities.restype = ctypes.c_int32
 ams_mel_ir_scheduling_exec_track = _LIBRARY.ams_mel_ir_scheduling_exec_track
 ams_mel_ir_scheduling_exec_track.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrTrackTaskV1), ctypes.POINTER(IrReturnRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_scheduling_exec_track.restype = ctypes.c_int32
+
+ams_mel_ir_scheduling_send_prioritized_tracks = _LIBRARY.ams_mel_ir_scheduling_send_prioritized_tracks
+ams_mel_ir_scheduling_send_prioritized_tracks.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrPrioritizedTrackListCmdV1), ctypes.POINTER(IrTrackListRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_send_prioritized_tracks.restype = ctypes.c_int32
+ams_mel_ir_track_list_request_wait = _LIBRARY.ams_mel_ir_track_list_request_wait
+ams_mel_ir_track_list_request_wait.argtypes = [IrTrackListRequestHandle, ctypes.c_uint32, ctypes.POINTER(IrTrackListResultV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_list_request_wait.restype = ctypes.c_int32
+ams_mel_ir_track_list_request_close = _LIBRARY.ams_mel_ir_track_list_request_close
+ams_mel_ir_track_list_request_close.argtypes = [ctypes.POINTER(IrTrackListRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_list_request_close.restype = ctypes.c_int32
 
 ams_mel_ir_scheduling_exec_scan = _LIBRARY.ams_mel_ir_scheduling_exec_scan
 ams_mel_ir_scheduling_exec_scan.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrScanTaskV1), ctypes.POINTER(IrReturnRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
@@ -2683,6 +2720,9 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_scheduling_exec_stare",
     "ams_mel_ir_scheduling_exec_scan",
     "ams_mel_ir_scheduling_exec_track",
+    "ams_mel_ir_scheduling_send_prioritized_tracks",
+    "ams_mel_ir_track_list_request_wait",
+    "ams_mel_ir_track_list_request_close",
     "ams_mel_ir_scheduling_close",
     "ams_mel_ir_track_metadata_open",
     "ams_mel_ir_track_metadata_receive",

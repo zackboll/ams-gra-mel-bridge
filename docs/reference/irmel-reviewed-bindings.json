@@ -2660,12 +2660,49 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::SchedulingChannel::send(PrioritizedTrackListCmd)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_send_prioritized_tracks"
+        },
+        {
+          "path": "native/src/common_channel_requests.cpp",
+          "symbol": "ams_mel_ir_track_list_request_wait"
+        },
+        {
+          "path": "native/src/common_channel_requests.cpp",
+          "symbol": "ams_mel_ir_track_list_request_close"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Send_Prioritized_Tracks"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Wait"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Close"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_prioritized.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_prioritized_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-026: full ordered dynamic TrackData vector and independent count; Enabled-only admission and typed, cached TrackListResponse or independent MEL ErrorOr rejection. No metadata registration or execution claim.",
+      "limitations": [
+        "Mock-provider qualification only; no physical tracking or execution guarantee."
+      ],
       "representation": []
     },
     {
@@ -11750,37 +11787,83 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::PrioritizedTrackListCmd",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_send_prioritized_tracks"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Prioritized_Track_List_Cmd"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_prioritized.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_prioritized_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Complete signed schedule time/TTL, unsigned command ID/count, and independently sized ordered TrackData vector; no fixed 255-element limit.",
+      "limitations": [
+        "Mock-provider qualification only; no physical tracking or execution guarantee."
+      ],
       "representation": [
         {
           "upstream": "getScheduleTime",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Prioritized_Track_List_Cmd"
+            }
+          ]
         },
         {
           "upstream": "getTimeToLive",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Prioritized_Track_List_Cmd"
+            }
+          ]
         },
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Prioritized_Track_List_Cmd"
+            }
+          ]
         },
         {
           "upstream": "getTrackCount",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Prioritized_Track_List_Cmd"
+            }
+          ]
         },
         {
           "upstream": "getTrackData",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Prioritized_Track_List_Cmd"
+            }
+          ]
         }
       ]
     },
@@ -12439,9 +12522,9 @@
       "native": [],
       "ada": [],
       "tests": [],
-      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks. IRMEL-ADA-023 adds actual exec(IRSTStareTask) with complete owned parameters and the existing TaskInfo; metadata remains independent. IRMEL-ADA-024 adds actual exec(IRSTScanTask) reusing complete C2 ScanParam and TaskInfo; metadata remains independent. IRMEL-ADA-025 adds actual exec(IRSTTrackTask), preserving all 255 stored targets, signed IDs/duration and independent binary64 location/rate values; metadata remains independent.",
+      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks. IRMEL-ADA-023 adds actual exec(IRSTStareTask) with complete owned parameters and the existing TaskInfo; metadata remains independent. IRMEL-ADA-024 adds actual exec(IRSTScanTask) reusing complete C2 ScanParam and TaskInfo; metadata remains independent. IRMEL-ADA-025 adds actual exec(IRSTTrackTask), preserving all 255 stored targets, signed IDs/duration and independent binary64 location/rate values; metadata remains independent. IRMEL-ADA-026 adds send(PrioritizedTrackListCmd) with a distinct typed receipt and no metadata correlation.",
       "limitations": [
-        "Five Scheduling-specific operations remain missing: send(PrioritizedTrackListCmd) and four other registrations. AbortTask, StareTask, ScanTask and TrackTask futures are independent of ExecuteTaskAck and TaskExecutingRep; no physical execution or metadata delivery is inferred.",
+        "Four Scheduling-specific metadata registrations remain missing, including UpdateTrackListResponse. No physical execution or metadata delivery is inferred from a command future.",
         "Disable is performed only inside Close; there is no standalone Disable.",
         "Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.",
         "Positive evidence is mock-provider only; no real provider or hardware tasking ran."
@@ -13963,77 +14046,219 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::TrackData",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling.cpp",
+          "symbol": "ams_mel_ir_scheduling_send_prioritized_tracks"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Track_Data"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Range_Az_El"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_prioritized.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_prioritized_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Complete thirteen getters, both full four-component binary64 RangeAzEl values, independent IDs, priorities, precedences and flags; pinned Task 0..16 including reserved values.",
+      "limitations": [
+        "Mock-provider qualification only; no physical tracking or execution guarantee."
+      ],
       "representation": [
         {
           "upstream": "getTimestamp",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getTrackId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getIrstPriority",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getReservedPriority",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getIrstPrecedence",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getReservedPrecedence",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getIsSkippable",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getMaintainOutsideFOS",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getIrstTrackId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getPosition",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getVelocity",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getTask",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         },
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Track_Data"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+              "symbol": "Range_Az_El"
+            }
+          ]
         }
       ]
     },
@@ -14401,12 +14626,33 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::TrackListResponse",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/common_channel_requests.cpp",
+          "symbol": "ams_mel_ir_track_list_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-commands.ads",
+          "symbol": "Track_List_Response"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_prioritized.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_prioritized_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Exact receipts None, Rejected, RejectedExpired and Accepted, distinct from MEL ErrorOr errors and UpdateTrackListResponse metadata.",
+      "limitations": [
+        "Mock-provider qualification only; no physical tracking or execution guarantee."
+      ],
       "representation": []
     },
     {
@@ -15250,14 +15496,14 @@
     "ada/src/ams-mel-status.ads": "309b6e11b9979a86661ea65807c534b156da3f42e84e451dfbb3226540127f06",
     "ada/src/ams-mel.adb": "5f3abf3e9ee264da4da5898ad7500ea1e550d5a7ce76563243463f1f287fe7db",
     "ada/src/ams-mel.ads": "8356a8d10aa905993f849affe0e01d23b4343a4f81b1f8d0704ba0366a9fc426",
-    "ada/src/ams-mel_c_api.ads": "4bce048040ea2f590e862325db88930b5e8d7c2b5187f15eb7cccf783e624e9d",
-    "native/include/ams_mel/abi.h": "19c7ffef260148967d5ce2af10da42a8046ed342142990a5f8aa98c7c11d75c2",
+    "ada/src/ams-mel_c_api.ads": "662ee81748a6993e0da18bf7e4d5411a8c7c8dd715d6247a2e94666ff21da0fa",
+    "native/include/ams_mel/abi.h": "3c44aeb5feacd5a55ce72df1e30cefcd03c68964b77228ebdfdc3e9f9891fd6d",
     "native/src/abi.cpp": "a8a2c41770297b7bb5a3b0d8f8e50fce89ea275a596cc56d207fe41f345501b1",
-    "native/src/common_channel_requests.cpp": "cdaa0bc5aaed0457d3f94978a17f44a79e260f109cdaf81cbf1e794fb89093f6",
+    "native/src/common_channel_requests.cpp": "c6c014c42c67fe95b341f15c48d48e26bea20feb240706ee77d5590bc7b4142a",
     "native/src/completion_probe.cpp": "b8470e409b4013f001039d800060eaeda4c045935c13e9c7e67c03dd5abfcb10",
-    "native/src/exports.map": "cb2630eec87d8b22d990bcbcf820f34f1c21354783f512bbbe9f109800a5a37b",
+    "native/src/exports.map": "88bd85ca4d9ac4eeacb92a9bc68746b661dec295f5bdb2c7c34c65945a15c433",
     "native/src/internal.hpp": "d3ccd4d633f6563fb26f56834f7ddae5802a64335402e04ee13c6318257f5b6b",
-    "native/src/internal/common_channel_requests.hpp": "f0c3e5e90d91470ea8a885a531ce0c8059c21e6b42eed876545c2429a274f67d",
+    "native/src/internal/common_channel_requests.hpp": "625e9894028a5a4f5b3342478e5e4529f34e2bf8625a1f2c1090bd1dce099bea",
     "native/src/internal/completion_probe.hpp": "00001e661c4aaf132920d9bdd06860454024db2a82371b59c699f61ce5b93a80",
     "native/src/internal/ir_camera_command.hpp": "c9d70cb5ed73f4c913782cad2fab95da6659429d23e73fd9568c64329ad40003",
     "native/src/internal/ir_camera_protect.hpp": "c8486fc23e4d666ef402ee6c28bc8a87827350bde351b804609f64cf41dc09dc",
@@ -15303,11 +15549,12 @@
     "native/tests/test_image_checkout.c": "b298aa094232f0b08580ec616df9a149fa0f661b6a4d3e0360556430b97711c0",
     "native/tests/test_image_checkout_allocation.cpp": "7118864358763daf1e36964b960ebdd3d445aaf70ee25d169b7a4df725136323",
     "ada/tests/src/ams_mel_ir_checkout_tests.adb": "00f1234ccd21d8dfec24b80d0c85bbb5a21c4766f1f923a2ae3156088b51b76b",
-    "native/src/ir_scheduling.cpp": "39260b944ab361c684adf834484129c3af21f494f17efd9644bf44a3020b7730",
+    "native/src/ir_scheduling.cpp": "911eeb421b05ef5cb1dcacdc65daea47ce852728293f68ffc6fa6f65966903ca",
     "native/src/internal/ir_task_info.hpp": "d0b9f07e210d7dd08d530675226a1aa21a2437080b3738b46eebea9cbad0a7d8",
-    "ada/src/ams-mel-ir-scheduling-commands.ads": "f31ba8c5bb72985943cacabb39b11f18de6d90b60f4d79017566d6279bdb9c60",
-    "ada/src/ams-mel-ir-scheduling-commands.adb": "ba1029ac42f722516e1ffcab58922b61df6ba36f0f7a92105ff1a1eca400aae1",
+    "ada/src/ams-mel-ir-scheduling-commands.ads": "d25c5ab80188751e24f802f6bbb6cf0eeecc83fc5bc630e252c3f5177c51e333",
+    "ada/src/ams-mel-ir-scheduling-commands.adb": "d3281523c3cce5bac5e7c3e2101f9f27983ee915d7c3a6bc22a443fb5bd258ea",
     "ada/src/ams-mel-ir-scheduling.ads": "05982680b143478604b685bf58e6915346975f03d4e8758f3cedd4d338b909ec",
-    "native/src/internal/ir_track_task.hpp": "57603388252390860046152439e4420851b67833e34ab880dbf8dd1dd1aa2d4f"
+    "native/src/internal/ir_track_task.hpp": "57603388252390860046152439e4420851b67833e34ab880dbf8dd1dd1aa2d4f",
+    "native/src/internal/ir_prioritized_track_list.hpp": "7064fb617e61ec5ba613a28a6ef1c3d18cc384eef9f5fdcd4be04a51bc18ca40"
   }
 }

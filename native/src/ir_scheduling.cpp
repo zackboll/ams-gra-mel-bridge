@@ -13,8 +13,9 @@
  * IRMEL-ADA-022 adds exec(AbortTask) through the shared Return engine.
  * IRMEL-ADA-023 adds exec(IRSTStareTask) through that same engine.
  * IRMEL-ADA-024 adds exec(IRSTScanTask) through that same engine.
- * NOT implemented: the remaining exec(IRSTTrackTask) overload,
- * send(PrioritizedTrackListCmd) and the four other Scheduling
+ * IRMEL-ADA-025 adds exec(IRSTTrackTask) through that same engine.
+ * IRMEL-ADA-026 adds send(PrioritizedTrackListCmd) with a typed receipt.
+ * NOT implemented: the four other Scheduling
  * registerMetadataCallback overloads (SchedCreatedRep,
  * UpdateTrackListResponse, TaskEvents, ScanPerformanceReport). No translation
  * unit in the bridge calls those remaining operations. */
@@ -28,6 +29,7 @@
 #include "internal/ir_stare_task.hpp"
 #include "internal/ir_scan_task.hpp"
 #include "internal/ir_track_task.hpp"
+#include "internal/ir_prioritized_track_list.hpp"
 
 #include <irmel/library/scheduling/SchedulingChannel.h>
 
@@ -35,6 +37,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -109,8 +112,8 @@ enum class Lifecycle { Attached, Enabled, Failed, Closed };
 
 /* Owns the complete Scheduling provider graph: the Session state (and thus
  * Control, manager and provider library), the attached generic Channel and its
- * SchedulingChannel view. `requests` counts admitted common requests and
- * AbortTask commands for this Scheduling owner; it is never shared with
+ * SchedulingChannel view. `requests` counts admitted common and typed
+ * commands for this Scheduling owner; it is never shared with
  * C2, Track, Health, Instrumentation or Image accounting. */
 struct SchedulingState {
     std::mutex mutex;
@@ -414,6 +417,40 @@ extern "C" ams_mel_status_t ams_mel_ir_scheduling_exec_track(
             }, &command, request, out, capacity, required);
     } catch (...) {
         diagnostic("TrackTask construction failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_scheduling_send_prioritized_tracks(
+    ams_mel_ir_scheduling *owner, const ams_mel_ir_prioritized_track_list_cmd_v1 *input,
+    ams_mel_ir_track_list_request **request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!owner || !owner->state || !input || !request || *request || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        bool fail_allocation = false;
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        const char *failure = std::getenv("AMS_MEL_TEST_TRACK_LIST_CONVERSION_FAILURE");
+        fail_allocation = failure && std::strcmp(failure, "allocation") == 0;
+#endif
+        irmel::PrioritizedTrackListCmd command;
+        const auto status = ams_mel_prioritized_tracks::convert(*input, command, fail_allocation);
+        if (status != AMS_MEL_OK) {
+            diagnostic("invalid or unrepresentable PrioritizedTrackListCmd", out, capacity, required);
+            return status;
+        }
+        return ams_mel_common::submit_track_list(ams_mel_common::scheduling_access<true>(owner),
+            [](irmel::Channel& channel, void *context) {
+                return dynamic_cast<irmel::SchedulingChannel&>(channel).send(
+                    std::move(*static_cast<irmel::PrioritizedTrackListCmd *>(context)));
+            }, &command, request, out, capacity, required);
+    } catch (const std::bad_alloc&) {
+        diagnostic("PrioritizedTrackListCmd allocation failed before send", out, capacity, required);
+        return AMS_MEL_RESOURCE_EXHAUSTED;
+    } catch (...) {
+        diagnostic("PrioritizedTrackListCmd preparation failed before send", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
 }

@@ -175,6 +175,7 @@ typedef uint32_t ams_mel_ir_image_flag_t;
 typedef struct ams_mel_ir_c2 ams_mel_ir_c2;
 typedef struct ams_mel_ir_mode_request ams_mel_ir_mode_request;
 typedef struct ams_mel_ir_return_request ams_mel_ir_return_request;
+typedef struct ams_mel_ir_track_list_request ams_mel_ir_track_list_request;
 typedef struct ams_mel_ir_channel_comms_request ams_mel_ir_channel_comms_request;
 typedef struct ams_mel_ir_channel_capability ams_mel_ir_channel_capability;
 typedef struct ams_mel_ir_capability_list ams_mel_ir_capability_list;
@@ -3409,6 +3410,80 @@ typedef struct ams_mel_ir_track_task_v1 {
 AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_exec_track(
     ams_mel_ir_scheduling *scheduling, const ams_mel_ir_track_task_v1 *task,
     ams_mel_ir_return_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+typedef struct ams_mel_ir_range_az_el_v1 {
+    double range_m;
+    double azimuth_rad;
+    double elevation_rad;
+    double range_rate_mps;
+} ams_mel_ir_range_az_el_v1;
+
+typedef struct ams_mel_ir_track_data_v1 {
+    int64_t timestamp_ns;
+    int32_t track_id;
+    uint32_t irst_priority;
+    uint32_t reserved_priority;
+    uint32_t irst_precedence;
+    uint32_t reserved_precedence;
+    uint32_t is_skippable;          /* 0 or 1 */
+    uint32_t maintain_outside_fos; /* 0 or 1 */
+    int32_t irst_track_id;
+    ams_mel_ir_range_az_el_v1 position;
+    ams_mel_ir_range_az_el_v1 velocity;
+    uint32_t task;                 /* AMS_MEL_IR_TASK_*; 0 through 16 only */
+    uint32_t command_id;
+} ams_mel_ir_track_data_v1;
+
+typedef struct ams_mel_ir_track_data_span_v1 {
+    const ams_mel_ir_track_data_v1 *data;
+    size_t size; /* Number of records, not bytes. NULL is valid only if size == 0. */
+} ams_mel_ir_track_data_span_v1;
+
+typedef struct ams_mel_ir_prioritized_track_list_cmd_v1 {
+    int64_t schedule_time_ns;
+    int64_t time_to_live_ns;
+    uint32_t command_id;
+    uint32_t track_count; /* Independent of tracks.size. */
+    ams_mel_ir_track_data_span_v1 tracks;
+} ams_mel_ir_prioritized_track_list_cmd_v1;
+
+typedef uint32_t ams_mel_ir_track_list_response_t;
+#define AMS_MEL_IR_TRACK_LIST_RESPONSE_NONE UINT32_C(0)
+#define AMS_MEL_IR_TRACK_LIST_RESPONSE_REJECTED UINT32_C(1)
+#define AMS_MEL_IR_TRACK_LIST_RESPONSE_REJECTED_EXPIRED UINT32_C(2)
+#define AMS_MEL_IR_TRACK_LIST_RESPONSE_ACCEPTED UINT32_C(3)
+
+typedef struct ams_mel_ir_track_list_result_v1 {
+    ams_mel_ir_track_list_response_t value; /* Valid only on AMS_MEL_OK. */
+    ams_mel_error_code_t error_code;       /* Valid only on AMS_MEL_COMMAND_REJECTED. */
+} ams_mel_ir_track_list_result_v1;
+
+/* Exactly SchedulingChannel::send(PrioritizedTrackListCmd), Enabled only.
+ * Copy every track, in order, before provider entry. The caller owns readable
+ * inputs for the duration of submission. No pointers are retained. out_request
+ * must point to a NULL slot. Same admission and ownership as exec_abort; no
+ * metadata registered. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_send_prioritized_tracks(
+    ams_mel_ir_scheduling *scheduling, const ams_mel_ir_prioritized_track_list_cmd_v1 *command,
+    ams_mel_ir_track_list_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Cached typed receipt, not proof of physical tracking. All four enum values
+ * are AMS_MEL_OK. Only ErrorOr errors yield AMS_MEL_COMMAND_REJECTED. On that
+ * status the buffer contains the exact description bytes (including embedded
+ * NULs), with one extra terminating NUL; required includes that terminator.
+ * Retry Wait with sufficient capacity to retrieve all bytes. Other statuses
+ * use ordinary UTF-8 diagnostics. Serialize Wait against Close; timeout (zero
+ * polls) does not cancel work. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_list_request_wait(
+    const ams_mel_ir_track_list_request *request, uint32_t timeout_ms,
+    ams_mel_ir_track_list_result_v1 *result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Idempotent for a NULL slot value; consumes only the observer. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_list_request_close(
+    ams_mel_ir_track_list_request **request, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Complete owned ScanTask input reusing the frozen C2 ScanParam and TaskInfo.

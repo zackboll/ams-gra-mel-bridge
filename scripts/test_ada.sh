@@ -28,5 +28,7 @@ export AMS_MEL_TEST_PROVIDER_DIR
     "$AMS_MEL_TEST_PROVIDER_DIR/libmock_ir_provider.so"
 "$root/ada/tests/bin/ams_mel_ir_scheduling_track_example" \
     "$AMS_MEL_TEST_PROVIDER_DIR/libmock_ir_provider.so"
+"$root/ada/tests/bin/ams_mel_ir_prioritized_example" \
+    "$AMS_MEL_TEST_PROVIDER_DIR/libmock_ir_provider.so"
 "$root/ada/tests/bin/ams_mel_ir_scheduling_scan_example" \
     "$AMS_MEL_TEST_PROVIDER_DIR/libmock_ir_provider.so"
