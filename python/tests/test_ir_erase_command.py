@@ -84,7 +84,10 @@ def completion_boundary(test, operation=3, target=0):
 
 
 def await_reclamation(test, consumed):
-    values = completion_boundary(test)
+    # A terminal Wait on one observer does not synchronize any sibling whose
+    # observer was closed. Wait for every released future to reach the native
+    # post-get boundary before checking the exact consumption count.
+    values = completion_boundary(test, operation=1, target=consumed)
     # This includes temporary owners allocated for refused admissions; they
     # never enter the worker or consume a provider future.
     created = values[2]
