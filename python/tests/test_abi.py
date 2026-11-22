@@ -12,6 +12,22 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_calibration_status_command_reuses_private_request_abi(self) -> None:
+        import ams_mel
+        from ams_mel import _calibration_status, _calibration_status_command
+
+        # Layouts and signatures are checked against the C probe below. The
+        # command layer must use those exact bindings and the reception model.
+        for name in ("ams_mel_ir_c2_submit_calibration_status",
+                     "ams_mel_ir_calibration_status_request_wait",
+                     "ams_mel_ir_calibration_status_request_close"):
+            with self.subTest(name=name):
+                self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+                self.assertFalse(hasattr(ams_mel, name))
+        self.assertIs(_calibration_status_command._native, _native)
+        self.assertIs(_calibration_status_command._status_from_raw, _calibration_status._status_from_raw)
+        self.assertIs(_calibration_status_command.CalibrationStatus, ams_mel.CalibrationStatus)
+
     def test_calibration_status_reuses_existing_receiver_abi(self) -> None:
         import ams_mel
         from ams_mel import _calibration_status

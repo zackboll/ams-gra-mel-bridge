@@ -46,6 +46,8 @@ class PublicModuleTests(unittest.TestCase):
                      'CalibrationConfigurationCommand', 'CalibrationConfigurationCompleted',
                      'CalibrationConfigurationRejected', 'CalibrationConfigurationRequest',
                      'CalibrationStatus', 'CalibrationStatusOpenError', 'CalibrationStatusStream',
+                     'CalibrationStatusCommand', 'CalibrationStatusCompleted',
+                     'CalibrationStatusRejected', 'CalibrationStatusRequest',
                      'CompletedCalibration', 'CompletedCalibrationItem', 'SubsystemCalibrationResult',
                      'ImageStream', 'HealthStatusChannel', 'ControlChannel',
                      'CameraProtectStatus', 'CameraProtectResponse',
@@ -65,23 +67,26 @@ class PublicModuleTests(unittest.TestCase):
         self.assertIs(type(config.channel_id), ams_mel.UciId)
         self.assertIs(type(config.sensor_location), ams_mel.ComponentLocation)
 
-    def test_calibration_status_is_receive_only(self):
+    def test_calibration_status_request_and_receiver_are_separate(self):
         self.assertTrue(callable(ir.ControlChannel.open_calibration_status))
         self.assertTrue(callable(ir.ControlChannel.open_calibration_configuration))
         self.assertTrue(callable(ir.ControlChannel.submit_calibration_configuration))
-        self.assertFalse(hasattr(ir.ControlChannel, 'submit_calibration_status'))
+        self.assertTrue(callable(ir.ControlChannel.submit_calibration_status))
         self.assertFalse(hasattr(ir.CalibrationStatusStream, 'wait'))
+        self.assertFalse(hasattr(ir.CalibrationStatusRequest, 'receive'))
         self.assertTrue(issubclass(ir.CalibrationStatusOpenError, common.MelError))
         self.assertIsNot(ir.SubsystemCalibrationResult, ir.CalibrationControlInterface)
         for module in (ams_mel, ir):
-            for name in ('CalibrationStatusCommand', 'CalibrationStatusRequest', 'submit_calibration_status'):
-                self.assertFalse(hasattr(module, name))
+            self.assertFalse(hasattr(module, 'submit_calibration_status'))
 
     def test_domain_values_keep_legacy_pickle_paths(self):
         values = (
             ir.CalibrationConfigurationCommand(0xFFFFFFFF, 0),
             ir.CalibrationConfigurationCompleted(ir.CalibrationConfiguration(())),
             ir.CalibrationConfigurationRejected(ir.MelErrorCode.INVALID_PARAMETERS, '校正'),
+            ir.CalibrationStatusCommand(42, 7),
+            ir.CalibrationStatusCompleted(ir.CalibrationStatus((), ())),
+            ir.CalibrationStatusRejected(ir.MelErrorCode(0xF1234567), '校正'),
             ir.CalibrationStatus((common.UciId(bytes(16), 'active'),), (ir.CompletedCalibration(
                 common.UciId(bytes(range(16)), '校正'), -(1 << 63),
                 ir.SubsystemCalibrationResult.COMPLETED, '',
@@ -137,6 +142,10 @@ assert ams_mel.CalibrationConfigurationStream is ir.CalibrationConfigurationStre
 assert ams_mel.CalibrationConfigurationOpenError is ir.CalibrationConfigurationOpenError
 assert ams_mel.CalibrationStatusStream is ir.CalibrationStatusStream
 assert ams_mel.CalibrationStatus is ir.CalibrationStatus
+assert ams_mel.CalibrationStatusCommand is ir.CalibrationStatusCommand
+assert ams_mel.CalibrationStatusCompleted is ir.CalibrationStatusCompleted
+assert ams_mel.CalibrationStatusRejected is ir.CalibrationStatusRejected
+assert ams_mel.CalibrationStatusRequest is ir.CalibrationStatusRequest
 assert ams_mel.LineOfSightQuaternion is ir.LineOfSightQuaternion
 assert ir.ForwardRightDown is ams_mel.ForwardRightDown
 assert all(getattr(ams_mel, name).__module__ == 'ams_mel'
