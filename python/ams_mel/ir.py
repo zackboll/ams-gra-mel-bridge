@@ -95,6 +95,12 @@ from ._camera_protect_command import (
     CameraProtectCommand, CameraProtectCompleted, CameraProtectRejected, CameraProtectRequest,
 )
 from ._erase_command import EraseCommandType, EraseCommand, EraseCompleted, EraseRejected, EraseRequest
+from ._c2_system_track_response import (
+    C2SystemTrackDataCompleted,
+    C2SystemTrackDataRejected,
+    C2SystemTrackDataRequest,
+    SystemTrackDataResponse,
+)
 from ._camera_protect_response import (
     CameraProtectStatus,
     CameraProtectResponse,
@@ -304,6 +310,10 @@ __all__ = [
     "EraseCompleted",
     "EraseRejected",
     "EraseRequest",
+    "SystemTrackDataResponse",
+    "C2SystemTrackDataCompleted",
+    "C2SystemTrackDataRejected",
+    "C2SystemTrackDataRequest",
     "CameraProtectStatus",
     "CameraProtectResponse",
     "CameraProtectResponseOpenError",

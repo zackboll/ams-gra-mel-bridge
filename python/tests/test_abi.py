@@ -621,6 +621,8 @@ class AbiTests(unittest.TestCase):
                          "OpticalDistortionMapStream"}.issubset(ams_mel.__all__))
 
     def test_private_c2_system_response_abi(self) -> None:
+        import ams_mel
+
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as temp:
             executable = Path(temp) / "layout"
@@ -650,6 +652,8 @@ class AbiTests(unittest.TestCase):
         for name, arguments in signatures.items():
             function = getattr(_native, name)
             self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertFalse(hasattr(ams_mel, name))
+            self.assertFalse(hasattr(ams_mel.ir, name))
             self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
             self.assertIs(function.restype, ctypes.c_int32)
 
