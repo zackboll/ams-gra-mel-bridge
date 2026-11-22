@@ -1,6 +1,6 @@
 //! Safe Rust provider sessions, IR Mono8 frames, IR C2, IR HealthAndStatus
-//! lifecycle, and the common Channel façade for C2, Image, Health and Stacked through
-//! `ams_mel_c`.
+//! lifecycle, and the common Channel façade for C2, Image, Health, Scheduling
+//! and Stacked through `ams_mel_c`.
 //!
 //! [`Session`], [`ImageStream`], [`ControlChannel`], [`HealthStatusChannel`],
 //! [`ModeRequest`], [`ReturnRequest`], [`ChannelView`], and [`CommsRequest`]
@@ -29,7 +29,7 @@
 //! Common Channel coverage (Task 032B3, RUST-IR-001):
 //!
 //! ```text
-//! safe Rust common Channel:      C2 + Image + Health + Stacked
+//! safe Rust common Channel:      C2 + Image + Health + Scheduling + Stacked
 //! native C / safe Ada common:    C2/Image/Health/Instrumentation/Track/Scheduling/Stacked
 //! ```
 //!
@@ -43,6 +43,9 @@
 //! [`StackedConfig`], discovery-derived attachment, explicit Enable, complete
 //! capabilities and weak common requests. It does not provide acquisition or
 //! metadata callback registration.
+//! [`SchedulingChannel`] provides attachment, explicit Enable, capability
+//! snapshots and weak common requests, but no task operations or metadata
+//! registration.
 //!
 //! IR HealthStatus metadata (RUST-IR-002):
 //! [`HealthStatusChannel::open_metadata`] returns an independent
@@ -106,6 +109,7 @@ pub use ir_image_checkout::{
 mod ir_image_metadata;
 mod ir_los_quaternion;
 mod ir_navigation;
+mod ir_scheduling;
 mod ir_stacked;
 pub use ir_navigation::{
     AttitudeRate, NavigationReport, NavigationRequest, NavigationResult, NorthEastDown,
@@ -155,6 +159,7 @@ pub use ir_mode::{
 pub use ir_nuc::{
     NucCounters, NucOpenError, NucPixelValue, NucPointType, NucStream, NucTempData, NucTempPoint,
 };
+pub use ir_scheduling::{SchedulingChannel, SchedulingConfig};
 pub use ir_stacked::{StackedChannel, StackedConfig};
 
 const DIAGNOSTIC_CAPACITY: usize = 4096;
