@@ -1,6 +1,7 @@
 //! Compatibility exports must be the same concrete types, not wrapper owners.
 use ams_mel::{
-    BufferFlag, BufferFlagsError, BufferInfo, BufferOpenError, HostBuffer, ImageLocation, Session,
+    BufferFlag, BufferFlagsError, BufferInfo, BufferOpenError, ChannelOperationError, ChannelView,
+    HostBuffer, ImageLocation, Session,
 };
 
 #[test]
@@ -15,4 +16,14 @@ fn buffer_exports_share_identity() {
     assert_eq!(BufferFlag::Host as u32, 0);
     assert_eq!(BufferFlag::Gpu as u32, 1);
     assert_eq!(BufferFlag::Rdma as u32, 2);
+}
+
+#[test]
+fn channel_operations_share_identity() {
+    type BufferOperation =
+        fn(&mut ChannelView, &mut HostBuffer) -> Result<(), ChannelOperationError>;
+    let _: BufferOperation = ams_mel_ir::ChannelView::register_buffer;
+    let _: BufferOperation = ams_mel_ir::ChannelView::unregister_buffer;
+    let _: fn(&mut ChannelView) -> Result<(), ChannelOperationError> =
+        ams_mel_ir::ChannelView::disable;
 }

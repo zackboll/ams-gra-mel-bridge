@@ -7,6 +7,9 @@ use ams_mel_sys as sys;
 
 use crate::{call_with_diagnostic, protocol, Error, ErrorKind, Session};
 
+mod channel_operations;
+pub use channel_operations::ChannelOperationError;
+
 /// Exact provider bookkeeping flag. GPU/RDMA do not allocate device memory.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
@@ -101,14 +104,17 @@ impl std::error::Error for BufferFlagsError {
 /// Unique standalone provider Buffer with fixed, zero-initialized host storage.
 ///
 /// The native owner retains the Session/provider graph independently of the
-/// originating Session. No borrowed storage, native address, registration,
-/// checkout or unrestricted upstream `Buffer::release()` is exposed. This is
-/// not a delivered image [`crate::Frame`]. GPU/RDMA flags are bookkeeping only.
+/// originating Session. [`crate::ChannelView::register_buffer`] associates this
+/// allocation with an eligible channel without transferring public ownership.
+/// No borrowed storage, native address, checkout or unrestricted upstream
+/// `Buffer::release()` is exposed. This is not a delivered image [`crate::Frame`].
+/// GPU/RDMA flags are bookkeeping only.
 ///
 /// Prefer explicit retryable [`Self::close`]. Drop attempts ordinary cleanup
-/// without panicking or allocating diagnostics. If another provider shared owner
-/// prevents cleanup, the native graph remains retained, possibly until process
-/// exit. Drop is not proof of cleanup. Access is single-threaded by construction.
+/// without panicking or allocating diagnostics, and never unregisters. While
+/// registered, ownership is uncertain, or another provider shared owner blocks
+/// cleanup, the native graph remains retained, possibly until process exit.
+/// Drop is not proof of cleanup. Access is single-threaded by construction.
 ///
 /// ```compile_fail
 /// fn clone_owner(buffer: &ams_mel_ir::HostBuffer) { let _: ams_mel_ir::HostBuffer = buffer.clone(); }
@@ -377,7 +383,8 @@ impl HostBuffer {
     ///
     /// # Errors
     /// Native failure preserves the native output handle for retry. In particular,
-    /// another provider shared owner refuses cleanup without freeing storage.
+    /// a registration obligation or another provider shared owner prevents cleanup
+    /// without freeing storage. Close never unregisters the Buffer.
     /// Success must clear the handle; otherwise a protocol error retains it.
     pub fn close(&mut self) -> Result<(), Error> {
         close_with(&mut self.raw, |out, d, c, r| {

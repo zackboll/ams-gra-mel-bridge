@@ -92,7 +92,8 @@ use ams_mel_sys as sys;
 mod ir_buffer;
 mod ir_c2_metadata;
 pub use ir_buffer::{
-    BufferFlag, BufferFlagsError, BufferInfo, BufferOpenError, HostBuffer, ImageLocation,
+    BufferFlag, BufferFlagsError, BufferInfo, BufferOpenError, ChannelOperationError, HostBuffer,
+    ImageLocation,
 };
 mod ir_comms_metadata;
 mod ir_discovery;
@@ -1385,11 +1386,24 @@ impl ImageStream {
     /// # Errors
     /// Returns native cleanup failures. This consuming API cannot return an owner
     /// for retry; Drop attempts cleanup again only if the native handle remains.
+    /// Use [`Self::try_close`] when managing application Buffer registrations.
     pub fn close(mut self) -> Result<(), Error> {
-        self.close_inner()
+        self.try_close()
     }
 
-    fn close_inner(&mut self) -> Result<(), Error> {
+    /// Attempts native Close without consuming this Rust wrapper.
+    ///
+    /// Prefer this over consuming [`Self::close`] when cleanup can be refused.
+    /// This never unregisters a host Buffer. For control-only Image, explicitly
+    /// [disable](ChannelView::disable) and
+    /// [unregister](ChannelView::unregister_buffer) before closing.
+    ///
+    /// # Errors
+    /// Reports native cleanup failures. If native Close retains the owner (for
+    /// example, while a Buffer is registered), the caller can resolve the
+    /// obligation and retry without losing the stream. Some errors can consume
+    /// the native handle; calling this again on a closed wrapper is a no-op.
+    pub fn try_close(&mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
             // SAFETY: native close receives this wrapper's unique owner and
             // clears it according to the documented cleanup contract.
