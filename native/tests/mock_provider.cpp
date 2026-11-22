@@ -5782,7 +5782,7 @@ public:
             return Return::Fail;
         }
         if (scenario == "sched-ack-sync" || scenario == "sched-ack-late" ||
-            scenario == "sched-ack-late-closed" || scenario == "sched-both-sync" ||
+            scenario == "sched-ack-late-closed" || scenario == "sched-both-sync" || scenario == "sched-both-all-events" ||
             scenario == "sched-both-late") {
             /* Synchronous delivery from inside registration, before return:
              * default (both zero), both UINT32_MAX, high bits, then unequal. */
@@ -5927,7 +5927,7 @@ bool rep_scenario(const std::string& scenario)
 bool rep_sync_scenario(const std::string& scenario)
 {
     return scenario == "sched-rep-sync" || scenario == "sched-rep-late" ||
-           scenario == "sched-rep-late-closed" || scenario == "sched-both-sync" ||
+           scenario == "sched-rep-late-closed" || scenario == "sched-both-sync" || scenario == "sched-both-all-events" ||
            scenario == "sched-both-late";
 }
 
@@ -6227,11 +6227,66 @@ extern "C" __attribute__((visibility("default"))) int mock_scheduling_update_del
 extern "C" __attribute__((visibility("default"))) void mock_scheduling_update_reentry(void (*callback)())
 { update_reentry = callback; }
 
+using TaskEventsCallback = std::function<void(irmel::Channel&, const irmel::TaskEvents *const)>;
+std::mutex events_registry_mutex;
+TaskEventsCallback active_events;
+irmel::Channel *active_events_channel{};
+void (*events_reentry)(){};
+
+void deliver_task_event(const TaskEventsCallback& callback, irmel::Channel& channel,
+                        std::uint32_t type, std::uint32_t bar, std::uint32_t stop,
+                        std::int64_t time, std::uint32_t track, bool null_payload = false)
+{
+    auto value = std::make_unique<irmel::TaskEvents>();
+    value->setEventType(static_cast<irmel::EventType>(type));
+    value->setScanBar(bar);
+    value->setStopNumber(stop);
+    value->setSystemTime(std::chrono::nanoseconds{time});
+    value->setTrackId(track);
+    callback(channel, null_payload ? nullptr : value.get());
+    *value = {};
+    // Actual upstream object and its EventType reference expire here.
+}
+
+extern "C" __attribute__((visibility("default"))) int mock_scheduling_events_deliver(
+    std::uint32_t type, std::uint32_t bar, std::uint32_t stop, std::int64_t time,
+    std::uint32_t track, int null_payload)
+{
+    TaskEventsCallback callback;
+    irmel::Channel *channel;
+    {
+        std::lock_guard lock{events_registry_mutex};
+        callback = active_events;
+        channel = active_events_channel;
+    }
+    if (!callback || !channel) return 0;
+    deliver_task_event(callback, *channel, type, bar, stop, time, track, null_payload != 0);
+    return 1;
+}
+
+extern "C" __attribute__((visibility("default"))) void mock_scheduling_events_reentry(void (*callback)())
+{ events_reentry = callback; }
+
+extern "C" __attribute__((visibility("default"))) int mock_scheduling_events_republish_rep()
+{ return mock_scheduling_rep_deliver(&rep_sync[1], 0); }
+
 class MockSchedulingChannel final : public irmel::SchedulingChannel {
 public:
     explicit MockSchedulingChannel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockSchedulingChannel() override
     {
+        if (events_producer_.joinable()) events_producer_.join();
+        {
+            std::lock_guard lock{events_registry_mutex};
+            if (active_events_channel == this) {
+                active_events = nullptr;
+                active_events_channel = nullptr;
+            }
+        }
+        if (events_) {
+            record("late_task_events_callback_invoked");
+            deliver_task_event(events_, *this, 7, 91, 60, -21, 45);
+        }
         if (update_producer_.joinable()) update_producer_.join();
         {
             std::lock_guard lock{update_registry_mutex};
@@ -6272,7 +6327,7 @@ public:
         if (scenario_ == "sched-stare-return-invalid-future" || scenario_ == "sched-scan-return-invalid-future" || scenario_ == "sched-track-return-invalid-future") return {};
         if (scenario_ == "sched-keepalive-throw")
             throw std::runtime_error("mock Scheduling keepalive send exception");
-        if (scenario_ == "sched-ada-common")
+        if (scenario_ == "sched-ada-common" || scenario_ == "sched-events-not-supported")
             return ready_request(std::make_shared<Return>(Return::Success));
         return held_request(std::make_shared<Return>(Return::Success), 1);
     }
@@ -6346,7 +6401,7 @@ public:
     mel::RequestFor<irmel::TrackListResponse> send(irmel::PrioritizedTrackListCmd command) override
     {
         using Receipt = irmel::TrackListResponse;
-        if (!scenario_.starts_with("sched-prioritized-"))
+        if (!scenario_.starts_with("sched-prioritized-") && scenario_ != "sched-events-commands")
             return unsupported<Receipt>("scheduling_prioritized_track_list_sent");
         ++prioritized_calls;
         record("scheduling_prioritized_track_list_sent");
@@ -6383,7 +6438,7 @@ public:
             malformed_prioritized_receipt = std::make_unique<Receipt>(Receipt::Accepted);
             return ready_request(std::shared_ptr<Receipt>{std::shared_ptr<Receipt>{}, malformed_prioritized_receipt.get()});
         }
-        if (scenario_ == "sched-prioritized-delayed" || scenario_ == "sched-prioritized-detach-fail")
+        if (scenario_ == "sched-events-commands" || scenario_ == "sched-prioritized-delayed" || scenario_ == "sched-prioritized-detach-fail")
             return held_request(std::make_shared<Receipt>(Receipt::Accepted), 19);
         if (scenario_ == "sched-prioritized-update-independent")
             return held_request(std::make_shared<Receipt>(Receipt::Rejected), 19);
@@ -6408,7 +6463,8 @@ public:
     Return registerMetadataCallback(
         ScheduleCreatedCallback callback) override
     {
-        if (scenario_.rfind("sched-created-", 0U) != 0U && scenario_ != "sched-both-sync")
+        if (scenario_.rfind("sched-created-", 0U) != 0U && scenario_ != "sched-both-sync" &&
+            scenario_ != "sched-both-all-events" && scenario_ != "sched-both-events-drain")
             return unsupported_registration("scheduling_sched_created_registered");
         record("scheduling_sched_created_registered");
         created_ = std::move(callback);
@@ -6423,14 +6479,14 @@ public:
             created_(*this, &value);
             return Return::Fail;
         }
-        if (scenario_ == "sched-created-sync" || scenario_ == "sched-both-sync" ||
+        if (scenario_ == "sched-created-sync" || scenario_ == "sched-both-sync" || scenario_ == "sched-both-all-events" ||
             scenario_ == "sched-created-detach-fail") {
             for (unsigned i = 0; i < 3U; ++i) {
                 const auto value = build_created(i);
                 created_(*this, &value);
             }
         }
-        if (scenario_ == "sched-created-unpin") {
+        if (scenario_ == "sched-created-unpin" || scenario_ == "sched-both-events-drain") {
             created_producer_ = std::thread{[this, producer = created_] {
                 const auto value = build_created(2U);
                 producer(*this, &value);
@@ -6452,6 +6508,7 @@ public:
         UpdateTrackListCallback callback) override
     {
         if (!scenario_.starts_with("sched-update-") && scenario_ != "sched-both-sync" &&
+            scenario_ != "sched-both-all-events" && scenario_ != "sched-both-events-drain" &&
             scenario_ != "sched-prioritized-update-independent")
             return unsupported_registration("scheduling_update_track_list_registered");
         record("scheduling_update_track_list_registered");
@@ -6462,7 +6519,7 @@ public:
             active_update_channel = this;
         }
         if (update_reentry) update_reentry();
-        if (scenario_ == "sched-update-sync" || scenario_ == "sched-both-sync" ||
+        if (scenario_ == "sched-update-sync" || scenario_ == "sched-both-sync" || scenario_ == "sched-both-all-events" ||
             scenario_ == "sched-update-detach-fail" || scenario_ == "sched-update-fail") {
             deliver_update(update_, *this, 0U, 0U);
             deliver_update(update_, *this, UINT32_MAX, 1U);
@@ -6489,15 +6546,53 @@ public:
         if (scenario_ == "sched-update-fail") return Return::Fail;
         return Return::Success;
     }
-    Return registerMetadataCallback(
-        std::function<void(irmel::Channel&, const irmel::TaskEvents *const)>) override
-    { return unsupported_registration("scheduling_task_events_registered"); }
+    Return registerMetadataCallback(TaskEventsCallback callback) override
+    {
+        if (!scenario_.starts_with("sched-events-") && scenario_ != "sched-both-all-events" &&
+            scenario_ != "sched-both-events-drain")
+            return unsupported_registration("scheduling_task_events_registered");
+        record("scheduling_task_events_registered");
+        events_ = std::move(callback);
+        {
+            std::lock_guard lock{events_registry_mutex};
+            active_events = events_;
+            active_events_channel = this;
+        }
+        if (events_reentry) events_reentry();
+        if (scenario_ == "sched-events-sync" || scenario_ == "sched-both-all-events" ||
+            scenario_ == "sched-events-detach-fail" || scenario_ == "sched-events-fail") {
+            for (std::uint32_t i = 0; i < 8; ++i)
+                deliver_task_event(events_, *this, i, i == 1 ? UINT32_MAX : 19 * i,
+                                   i == 2 ? UINT32_MAX : 7 * i,
+                                   i == 0 ? INT64_MIN : i == 1 ? INT64_MAX : -3 * std::int64_t{i},
+                                   i % 2 == 0 ? 0 : UINT32_MAX);
+            if (scenario_ == "sched-events-sync") {
+                deliver_task_event(events_, *this, 8, 0, 0, 0, 0);
+                deliver_task_event(events_, *this, UINT32_MAX, 0, 0, 0, 0);
+                deliver_task_event(events_, *this, 0, 0, 0, 0, 0, true);
+            }
+        }
+        if (scenario_ == "sched-events-unpin" || scenario_ == "sched-events-close-copy" ||
+            scenario_ == "sched-events-overlap" || scenario_ == "sched-both-events-drain") {
+            events_producer_ = std::thread{[this, producer = events_] {
+                deliver_task_event(producer, *this, 4, 13, 27, -19, UINT32_MAX);
+                record("task_events_producer_returned");
+            }};
+        }
+        if (scenario_ == "sched-events-throw") throw std::runtime_error("mock TaskEvents registration");
+        if (scenario_ == "sched-events-unknown") return static_cast<Return>(77U);
+        if (scenario_ == "sched-events-not-supported") return Return::NotSupported;
+        if (scenario_ == "sched-events-not-implemented") return Return::NotImplemented;
+        if (scenario_ == "sched-events-bad-pointer") return Return::BadPointer;
+        if (scenario_ == "sched-events-fail") return Return::Fail;
+        return Return::Success;
+    }
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&, const irmel::ScanPerformanceReport *const)>) override
     { return unsupported_registration("scheduling_scan_performance_registered"); }
     mel::RequestFor<Return> exec(irmel::AbortTask) override
     {
-        if (scenario_.rfind("sched-abort-", 0) != 0)
+        if (scenario_.rfind("sched-abort-", 0) != 0 && scenario_ != "sched-events-commands")
             return unsupported<Return>("scheduling_abort_task_exec");
         ++scheduling_abort_calls;
         record("scheduling_abort_task_exec");
@@ -6505,7 +6600,7 @@ public:
         c2_send_boundary(15);
         if (scenario_ == "sched-abort-exec-throw")
             throw std::runtime_error("mock AbortTask exec exception");
-        if (scenario_ == "sched-abort-delayed")
+        if (scenario_ == "sched-events-commands" || scenario_ == "sched-abort-delayed")
             return held_request(std::make_shared<Return>(Return::Success), 15);
         if (scenario_ == "sched-abort-unsupported" || scenario_ == "sched-abort-invalid-state") {
             std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
@@ -6531,7 +6626,7 @@ public:
     }
     mel::RequestFor<Return> exec(irmel::IRSTScanTask task) override
     {
-        if (scenario_.rfind("sched-scan-", 0) != 0)
+        if (scenario_.rfind("sched-scan-", 0) != 0 && scenario_ != "sched-events-commands")
             return unsupported<Return>("scheduling_scan_task_exec");
         const auto params = task.getParams();
         const auto center = params.getCenter();
@@ -6560,7 +6655,7 @@ public:
         c2_send_boundary(17);
         if (scenario_ == "sched-scan-exec-throw")
             throw std::runtime_error("mock ScanTask exec exception");
-        if (scenario_ == "sched-scan-delayed" || scenario_ == "sched-scan-detach-fail")
+        if (scenario_ == "sched-events-commands" || scenario_ == "sched-scan-delayed" || scenario_ == "sched-scan-detach-fail")
             return held_request(std::make_shared<Return>(Return::Success), 17);
         if (scenario_ == "sched-scan-unsupported" || scenario_ == "sched-scan-invalid-state") {
             std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
@@ -6594,7 +6689,7 @@ public:
     }
     mel::RequestFor<Return> exec(irmel::IRSTStareTask task) override
     {
-        if (scenario_.rfind("sched-stare-", 0) != 0)
+        if (scenario_.rfind("sched-stare-", 0) != 0 && scenario_ != "sched-events-commands")
             return unsupported<Return>("scheduling_stare_task_exec");
         const auto params = task.getParams();
         const auto center = params.getCenter();
@@ -6613,7 +6708,7 @@ public:
         c2_send_boundary(16);
         if (scenario_ == "sched-stare-exec-throw")
             throw std::runtime_error("mock StareTask exec exception");
-        if (scenario_ == "sched-stare-delayed" || scenario_ == "sched-stare-detach-fail")
+        if (scenario_ == "sched-events-commands" || scenario_ == "sched-stare-delayed" || scenario_ == "sched-stare-detach-fail")
             return held_request(std::make_shared<Return>(Return::Success), 16);
         if (scenario_ == "sched-stare-unsupported" || scenario_ == "sched-stare-invalid-state") {
             std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
@@ -6647,7 +6742,7 @@ public:
     }
     mel::RequestFor<Return> exec(irmel::IRSTTrackTask task) override
     {
-        if (scenario_.rfind("sched-track-", 0) != 0)
+        if (scenario_.rfind("sched-track-", 0) != 0 && scenario_ != "sched-events-commands")
             return unsupported<Return>("scheduling_track_task_exec");
         const auto params = task.getParams();
         const auto info = task.getTaskInfo();
@@ -6675,7 +6770,7 @@ public:
         c2_send_boundary(18);
         if (scenario_ == "sched-track-exec-throw")
             throw std::runtime_error("mock TrackTask exec exception");
-        if (scenario_ == "sched-track-delayed" || scenario_ == "sched-track-detach-fail")
+        if (scenario_ == "sched-events-commands" || scenario_ == "sched-track-delayed" || scenario_ == "sched-track-detach-fail")
             return held_request(std::make_shared<Return>(Return::Success), 18);
         if (scenario_ == "sched-track-unsupported" || scenario_ == "sched-track-invalid-state") {
             std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
@@ -6732,6 +6827,8 @@ private:
     std::thread created_producer_;
     UpdateTrackListCallback update_;
     std::thread update_producer_;
+    TaskEventsCallback events_;
+    std::thread events_producer_;
 };
 
 /* Test-only negative control: count Scheduling-specific calls that reached
@@ -7215,7 +7312,8 @@ public:
              instance_ == "sched-rep-deferred-detach-fail" ||
              instance_ == "sched-both-detach-fail" ||
              instance_ == "sched-created-detach-fail" ||
-             instance_ == "sched-update-detach-fail") && !detach_failed_) {
+             instance_ == "sched-update-detach-fail" ||
+             instance_ == "sched-events-detach-fail") && !detach_failed_) {
             detach_failed_ = true;
             record("channel_detach_failed");
             return Return::Fail;

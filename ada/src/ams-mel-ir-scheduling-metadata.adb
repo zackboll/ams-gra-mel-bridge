@@ -607,4 +607,128 @@ package body AMS.MEL.IR.Scheduling.Metadata is
       when others =>
          Stream.Handle := C.Null_Scheduling_Update_Track_List_Metadata;
    end Finalize;
+
+   type Task_Event_View_Access is access constant C.IR_Task_Events_V1;
+   function To_Task_Event_View is new
+     Ada.Unchecked_Conversion (System.Address, Task_Event_View_Access);
+   use type C.Scheduling_Task_Events_Metadata_Handle;
+
+   function Open_Task_Events
+     (Channel : Scheduling_Channel; Queue_Capacity : Positive) return Task_Events_Stream
+   is
+      D            : aliased Diagnostic := [others => Interfaces.C.nul];
+      R            : aliased C.Size_T := 0;
+      Registration : aliased Interfaces.Unsigned_32 := 16#FFFF_FFFF#;
+   begin
+      return Result : Task_Events_Stream do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Scheduling_Task_Events_Open
+                (Channel.Handle,
+                 C.Size_T (Queue_Capacity),
+                 Result.Handle'Access,
+                 Registration'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
+         begin
+            if Code = C.Provider_Failed and then Registration = Not_Supported_Return then
+               raise Not_Supported with Message (D);
+            end if;
+            Check (Code, D);
+         end;
+      end return;
+   end Open_Task_Events;
+
+   function Receive_Task_Events
+     (Stream : Task_Events_Stream; Timeout_Milliseconds : Natural := 0) return Task_Event
+   is
+      use type System.Address;
+      Event   : aliased C.Scheduling_Task_Events_Event_Handle :=
+        C.Null_Scheduling_Task_Events_Event;
+      Address : aliased System.Address := System.Null_Address;
+      D       : aliased Diagnostic := [others => Interfaces.C.nul];
+      R       : aliased C.Size_T := 0;
+      Result  : Task_Event;
+      procedure Release is
+         Ignored : Interfaces.Integer_32;
+      begin
+         Ignored :=
+           C.IR_Scheduling_Task_Events_Event_Close (Event'Access, System.Null_Address, 0, null);
+      end Release;
+   begin
+      if Stream.Handle = C.Null_Scheduling_Task_Events_Metadata then
+         raise Provider_Error with "TaskEvents metadata owner is closed";
+      end if;
+      Check
+        (C.IR_Scheduling_Task_Events_Receive
+           (Stream.Handle,
+            Interfaces.Unsigned_32 (Timeout_Milliseconds),
+            Event'Access,
+            D'Address,
+            D'Length,
+            R'Access),
+         D);
+      Check
+        (C.IR_Scheduling_Task_Events_Event_View
+           (Event, Address'Access, D'Address, D'Length, R'Access),
+         D);
+      if Address = System.Null_Address then
+         raise Provider_Error with "null TaskEvents view";
+      end if;
+      declare
+         Raw : constant C.IR_Task_Events_V1 := To_Task_Event_View (Address).all;
+      begin
+         if Raw.Event_Type > Task_Event_Type'Enum_Rep (Task_Event_Type'Last) then
+            raise Provider_Error with "unknown TaskEvents EventType";
+         end if;
+         Result :=
+           (Event_Type     => Task_Event_Type'Enum_Val (Raw.Event_Type),
+            Scan_Bar       => Raw.Scan_Bar,
+            Stop_Number    => Raw.Stop_Number,
+            System_Time_NS => Raw.System_Time_NS,
+            Track_ID       => Raw.Track_ID);
+      end;
+      Release;
+      return Result;
+   exception
+      when others =>
+         Release;
+         raise;
+   end Receive_Task_Events;
+
+   function Task_Events_Counters (Stream : Task_Events_Stream) return Metadata_Counters is
+      Raw : aliased C.Metadata_Counters_V1 := (others => 0);
+      D   : aliased Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      Check
+        (C.IR_Scheduling_Task_Events_Get_Counters
+           (Stream.Handle, Raw'Access, D'Address, D'Length, R'Access),
+         D);
+      return
+        (AMS.MEL.IR.Counter (Raw.Events_Received),
+         AMS.MEL.IR.Counter (Raw.Events_Dropped_Queue_Full),
+         AMS.MEL.IR.Counter (Raw.Malformed_Or_Unsupported));
+   end Task_Events_Counters;
+
+   procedure Close (Stream : in out Task_Events_Stream) is
+      D : aliased Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check
+        (C.IR_Scheduling_Task_Events_Close (Stream.Handle'Access, D'Address, D'Length, R'Access),
+         D);
+   end Close;
+
+   overriding
+   procedure Finalize (Stream : in out Task_Events_Stream) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored :=
+        C.IR_Scheduling_Task_Events_Close (Stream.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Stream.Handle := C.Null_Scheduling_Task_Events_Metadata;
+   end Finalize;
 end AMS.MEL.IR.Scheduling.Metadata;

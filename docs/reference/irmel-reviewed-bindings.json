@@ -2630,12 +2630,65 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::SchedulingChannel::registerMetadataCallback(std::function<void(Channel&,const TaskEvents*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_task_events.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_events_open"
+        },
+        {
+          "path": "native/src/ir_scheduling_task_events.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_events_receive"
+        },
+        {
+          "path": "native/src/ir_scheduling_task_events.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_events_get_counters"
+        },
+        {
+          "path": "native/src/ir_scheduling_task_events.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_events_close"
+        },
+        {
+          "path": "native/src/ir_scheduling_task_events.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_events_event_view"
+        },
+        {
+          "path": "native/src/ir_scheduling_task_events.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_events_event_close"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Open_Task_Events"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Receive_Task_Events"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Task_Events_Counters"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Close"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_task_events.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_events_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-029: optional independent one-shot opt-in while Attached or Enabled; bounded drop-incoming queue with complete owned events.",
+      "limitations": [
+        "Mock-provider qualification only. No unregister, task-success inference, physical movement, timestamp accuracy, imagery, or command-future correlation."
+      ],
       "representation": []
     },
     {
@@ -9665,12 +9718,33 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::EventType",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_task_events.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_events_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Task_Event_Type"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_task_events.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_events_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Exact pinned uint32_t EventType alternatives 0 through 7, including enumNotSet and both reserved values.",
+      "limitations": [
+        "Reserved values are preserved without interpretation; 8 and above are rejected."
+      ],
       "representation": []
     },
     {
@@ -12666,7 +12740,7 @@
       "tests": [],
       "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks. IRMEL-ADA-023 adds actual exec(IRSTStareTask) with complete owned parameters and the existing TaskInfo; metadata remains independent. IRMEL-ADA-024 adds actual exec(IRSTScanTask) reusing complete C2 ScanParam and TaskInfo; metadata remains independent. IRMEL-ADA-025 adds actual exec(IRSTTrackTask), preserving all 255 stored targets, signed IDs/duration and independent binary64 location/rate values; metadata remains independent. IRMEL-ADA-026 adds send(PrioritizedTrackListCmd) with a distinct typed receipt and no metadata correlation.",
       "limitations": [
-        "IRMEL-ADA-027 and -028 add independent SchedCreatedRep and UpdateTrackListResponse reception with complete owned values. Two Scheduling-specific registrations remain missing: TaskEvents and ScanPerformanceReport. No physical execution or metadata delivery is inferred from a command future.",
+        "IRMEL-ADA-027 through -029 add independent SchedCreatedRep, UpdateTrackListResponse and optional TaskEvents reception with complete owned values. The ScanPerformanceReport registration remains missing. No physical execution or metadata delivery is inferred from a command future.",
         "Disable is performed only inside Close; there is no standalone Disable.",
         "Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.",
         "Positive evidence is mock-provider only; no real provider or hardware tasking ran."
@@ -13677,37 +13751,83 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::TaskEvents",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_task_events.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_events_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Task_Event"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_task_events.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_events_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "All five getters copied: exact EventType, unsigned ScanBar, StopNumber and TrackId, and signed int64 nanoseconds without an epoch assumption.",
+      "limitations": [
+        "Unknown EventType and null payloads are malformed. Identifiers and times are not ordered, deduplicated, or correlated."
+      ],
       "representation": [
         {
           "upstream": "getEventType",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Task_Event"
+            }
+          ]
         },
         {
           "upstream": "getScanBar",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Task_Event"
+            }
+          ]
         },
         {
           "upstream": "getStopNumber",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Task_Event"
+            }
+          ]
         },
         {
           "upstream": "getSystemTime",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Task_Event"
+            }
+          ]
         },
         {
           "upstream": "getTrackId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Task_Event"
+            }
+          ]
         }
       ]
     },
@@ -15669,12 +15789,12 @@
     "ada/src/ams-mel-status.ads": "309b6e11b9979a86661ea65807c534b156da3f42e84e451dfbb3226540127f06",
     "ada/src/ams-mel.adb": "5f3abf3e9ee264da4da5898ad7500ea1e550d5a7ce76563243463f1f287fe7db",
     "ada/src/ams-mel.ads": "8356a8d10aa905993f849affe0e01d23b4343a4f81b1f8d0704ba0366a9fc426",
-    "ada/src/ams-mel_c_api.ads": "662ee81748a6993e0da18bf7e4d5411a8c7c8dd715d6247a2e94666ff21da0fa",
-    "native/include/ams_mel/abi.h": "3c44aeb5feacd5a55ce72df1e30cefcd03c68964b77228ebdfdc3e9f9891fd6d",
+    "ada/src/ams-mel_c_api.ads": "41cfc59c4b8f54610df41dc66e2a4ef9e65503835da070454e4e94e4f364503a",
+    "native/include/ams_mel/abi.h": "3fd98c768ad7140d1fd010e20a82af33d773ee2497755a90ecd44c4b7e6b2938",
     "native/src/abi.cpp": "a8a2c41770297b7bb5a3b0d8f8e50fce89ea275a596cc56d207fe41f345501b1",
     "native/src/common_channel_requests.cpp": "c6c014c42c67fe95b341f15c48d48e26bea20feb240706ee77d5590bc7b4142a",
     "native/src/completion_probe.cpp": "b8470e409b4013f001039d800060eaeda4c045935c13e9c7e67c03dd5abfcb10",
-    "native/src/exports.map": "88bd85ca4d9ac4eeacb92a9bc68746b661dec295f5bdb2c7c34c65945a15c433",
+    "native/src/exports.map": "94766f4495ed63891434e4ef9053aa0bc44793cbcb098a80f894fefbe542e543",
     "native/src/internal.hpp": "d3ccd4d633f6563fb26f56834f7ddae5802a64335402e04ee13c6318257f5b6b",
     "native/src/internal/common_channel_requests.hpp": "625e9894028a5a4f5b3342478e5e4529f34e2bf8625a1f2c1090bd1dce099bea",
     "native/src/internal/completion_probe.hpp": "00001e661c4aaf132920d9bdd06860454024db2a82371b59c699f61ce5b93a80",
@@ -15722,12 +15842,16 @@
     "native/tests/test_image_checkout.c": "b298aa094232f0b08580ec616df9a149fa0f661b6a4d3e0360556430b97711c0",
     "native/tests/test_image_checkout_allocation.cpp": "7118864358763daf1e36964b960ebdd3d445aaf70ee25d169b7a4df725136323",
     "ada/tests/src/ams_mel_ir_checkout_tests.adb": "00f1234ccd21d8dfec24b80d0c85bbb5a21c4766f1f923a2ae3156088b51b76b",
-    "native/src/ir_scheduling.cpp": "911eeb421b05ef5cb1dcacdc65daea47ce852728293f68ffc6fa6f65966903ca",
+    "native/src/ir_scheduling.cpp": "83a413f70e2eb71ab32a3359f4ded3bf5f4d85fe5752346eb6fa02abdf6779ea",
     "native/src/internal/ir_task_info.hpp": "d0b9f07e210d7dd08d530675226a1aa21a2437080b3738b46eebea9cbad0a7d8",
     "ada/src/ams-mel-ir-scheduling-commands.ads": "d25c5ab80188751e24f802f6bbb6cf0eeecc83fc5bc630e252c3f5177c51e333",
     "ada/src/ams-mel-ir-scheduling-commands.adb": "d3281523c3cce5bac5e7c3e2101f9f27983ee915d7c3a6bc22a443fb5bd258ea",
     "ada/src/ams-mel-ir-scheduling.ads": "05982680b143478604b685bf58e6915346975f03d4e8758f3cedd4d338b909ec",
     "native/src/internal/ir_track_task.hpp": "57603388252390860046152439e4420851b67833e34ab880dbf8dd1dd1aa2d4f",
-    "native/src/internal/ir_prioritized_track_list.hpp": "7064fb617e61ec5ba613a28a6ef1c3d18cc384eef9f5fdcd4be04a51bc18ca40"
+    "native/src/internal/ir_prioritized_track_list.hpp": "7064fb617e61ec5ba613a28a6ef1c3d18cc384eef9f5fdcd4be04a51bc18ca40",
+    "native/src/ir_scheduling_task_events.cpp": "5c4394fcaf89075061d9346d83346c613a5886e3a3308274c72aa04ff1142ba7",
+    "native/src/internal/ir_scheduling_task_events.hpp": "d4f9ab3a5f3535b38e0c70c94cd1ca43df2259ef6bce186242a2c7dca2d47c5a",
+    "ada/src/ams-mel-ir-scheduling-metadata.ads": "3b5f1ec1ecaff6ae3042128d4359810d8211d455e2fe952c10dea7a1944b88ea",
+    "ada/src/ams-mel-ir-scheduling-metadata.adb": "e4af012a30dd60615a2fc3de2833b20e3242d80a623cf96a724825766635267b"
   }
 }

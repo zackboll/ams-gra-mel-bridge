@@ -2462,6 +2462,40 @@ pub struct AmsMelIrSchedulingUpdateTrackListEvent {
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
 
+pub const AMS_MEL_IR_TASK_EVENT_NOT_SET: u32 = 0;
+pub const AMS_MEL_IR_TASK_EVENT_SLEW_START: u32 = 1;
+pub const AMS_MEL_IR_TASK_EVENT_SCAN_START: u32 = 2;
+pub const AMS_MEL_IR_TASK_EVENT_BREAK_SCAN: u32 = 3;
+pub const AMS_MEL_IR_TASK_EVENT_RESERVED_11: u32 = 4;
+pub const AMS_MEL_IR_TASK_EVENT_RESERVED_12: u32 = 5;
+pub const AMS_MEL_IR_TASK_EVENT_ACCEL_START: u32 = 6;
+pub const AMS_MEL_IR_TASK_EVENT_ACCEL_COMPLETE: u32 = 7;
+
+/// Complete event-owned snapshot of all five TaskEvents getters.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrTaskEventsV1 {
+    pub event_type: u32,
+    pub scan_bar: u32,
+    pub stop_number: u32,
+    pub system_time_ns: i64,
+    pub track_id: u32,
+}
+
+/// Raw opt-in Scheduling TaskEvents consumption owner.
+#[repr(C)]
+pub struct AmsMelIrSchedulingTaskEventsMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
+/// Raw TaskEvents event owner, independent of provider lifetime.
+#[repr(C)]
+pub struct AmsMelIrSchedulingTaskEventsEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
 /// Opaque public consumption owner for the retained IRSTTrackReport queue.
 /// Complete raw owned-event activity value.
 #[repr(C)]
@@ -4577,6 +4611,50 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_scheduling_update_track_list_event_close(
         event: *mut *mut AmsMelIrSchedulingUpdateTrackListEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_scheduling_task_events_open(
+        scheduling: *mut AmsMelIrScheduling,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrSchedulingTaskEventsMetadata,
+        out_registration: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_task_events_receive(
+        metadata: *mut AmsMelIrSchedulingTaskEventsMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrSchedulingTaskEventsEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_task_events_get_counters(
+        metadata: *const AmsMelIrSchedulingTaskEventsMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_task_events_close(
+        metadata: *mut *mut AmsMelIrSchedulingTaskEventsMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_task_events_event_view(
+        event: *const AmsMelIrSchedulingTaskEventsEvent,
+        out: *mut *const AmsMelIrTaskEventsV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_task_events_event_close(
+        event: *mut *mut AmsMelIrSchedulingTaskEventsEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

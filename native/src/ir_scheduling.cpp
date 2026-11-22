@@ -18,7 +18,8 @@
  * IRMEL-ADA-027 integrates the independent SchedCreatedRep owner and
  * drains its admitted payload reads before physical teardown.
  * IRMEL-ADA-028 integrates the independent UpdateTrackListResponse owner.
- * NOT implemented: TaskEvents and ScanPerformanceReport registrations. */
+ * IRMEL-ADA-029 integrates the independent optional TaskEvents owner.
+ * NOT implemented: ScanPerformanceReport registration. */
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
@@ -27,6 +28,7 @@
 #include "internal/ir_scheduling_task_executing.hpp"
 #include "internal/ir_scheduling_schedule_created.hpp"
 #include "internal/ir_scheduling_update_track_list.hpp"
+#include "internal/ir_scheduling_task_events.hpp"
 #include "internal/ir_task_info.hpp"
 #include "internal/ir_stare_task.hpp"
 #include "internal/ir_scan_task.hpp"
@@ -141,6 +143,8 @@ struct SchedulingState {
     std::shared_ptr<ScheduleCreatedState> schedule_created;
     bool update_track_list_attempted{};
     std::shared_ptr<UpdateTrackListState> update_track_list;
+    bool task_events_attempted{};
+    std::shared_ptr<TaskEventsState> task_events;
     /* Allocation-free permanent retention root for graphs whose detach
      * ownership could not be proven. */
     std::shared_ptr<SchedulingState> emergency_self;
@@ -187,6 +191,7 @@ bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
     std::shared_ptr<TaskExecutingState> executing;
     std::shared_ptr<ScheduleCreatedState> created;
     std::shared_ptr<UpdateTrackListState> update;
+    std::shared_ptr<TaskEventsState> events;
     bool disable = false;
     {
         std::lock_guard lock{state->mutex};
@@ -198,6 +203,7 @@ bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
         executing = state->task_executing;
         created = state->schedule_created;
         update = state->update_track_list;
+        events = state->task_events;
         disable = state->enable_attempted;
         /* disable() is attempted at most once: a Close retried after an
          * unproven detach only retries the detach. */
@@ -208,6 +214,7 @@ bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
      * copies before provider disable/detach can destroy their source. */
     ams_mel::internal::scheduling_schedule_created_drained(created);
     ams_mel::internal::scheduling_update_track_list_drained(update);
+    ams_mel::internal::scheduling_task_events_drained(events);
     /* Inherited Channel::disable() is invoked only when Enable was attempted;
      * this foundation has no separate public Disable. */
     if (disable && channel) {
@@ -230,6 +237,7 @@ bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
         ams_mel::internal::scheduling_task_executing_failed(executing);
         ams_mel::internal::scheduling_schedule_created_failed(created);
         ams_mel::internal::scheduling_update_track_list_failed(update);
+        ams_mel::internal::scheduling_task_events_failed(events);
         return false;
     }
     {
@@ -255,6 +263,7 @@ bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
         ams_mel::internal::scheduling_task_executing_failed(executing);
         ams_mel::internal::scheduling_schedule_created_failed(created);
         ams_mel::internal::scheduling_update_track_list_failed(update);
+        ams_mel::internal::scheduling_task_events_failed(events);
     }
     return ok;
 }
@@ -567,6 +576,28 @@ bool claim_scheduling_update_track_list(
         return false;
     }
 }
+
+bool claim_scheduling_task_events(
+    ams_mel_ir_scheduling& owner, const std::shared_ptr<TaskEventsState>& state,
+    std::shared_ptr<irmel::SchedulingChannel>& channel, std::shared_ptr<void>& graph) noexcept
+{
+    try {
+        const auto& scheduling = owner.state;
+        if (!scheduling) return false;
+        std::lock_guard lock{scheduling->mutex};
+        if ((scheduling->lifecycle != Lifecycle::Attached &&
+             scheduling->lifecycle != Lifecycle::Enabled) ||
+            !scheduling->scheduling || scheduling->task_events_attempted)
+            return false;
+        scheduling->task_events_attempted = true;
+        scheduling->task_events = state;
+        channel = scheduling->scheduling;
+        graph = scheduling;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
 } // namespace ams_mel::internal
 
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
@@ -752,6 +783,7 @@ extern "C" ams_mel_status_t ams_mel_ir_scheduling_close(
         std::shared_ptr<TaskExecutingState> executing;
         std::shared_ptr<ScheduleCreatedState> created;
         std::shared_ptr<UpdateTrackListState> update;
+        std::shared_ptr<TaskEventsState> events;
         bool now = false;
         {
             std::lock_guard lock{state->mutex};
@@ -763,6 +795,7 @@ extern "C" ams_mel_status_t ams_mel_ir_scheduling_close(
             executing = state->task_executing;
             created = state->schedule_created;
             update = state->update_track_list;
+            events = state->task_events;
         }
         /* IRMEL-ADA-012: logical Close stops ExecuteTaskAck consumption and
          * wakes receivers immediately, even while admitted common requests
@@ -772,6 +805,7 @@ extern "C" ams_mel_status_t ams_mel_ir_scheduling_close(
         ams_mel::internal::scheduling_task_executing_stopped(executing);
         ams_mel::internal::scheduling_schedule_created_stopped(created);
         ams_mel::internal::scheduling_update_track_list_stopped(update);
+        ams_mel::internal::scheduling_task_events_stopped(events);
         const bool ok = !now || cleanup(state, false);
         if (now && state->channel) {
             /* Detach could not be proven: the graph and the caller's owner are

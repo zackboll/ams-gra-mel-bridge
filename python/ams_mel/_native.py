@@ -1538,6 +1538,47 @@ ams_mel_ir_scheduling_update_track_list_event_close = _LIBRARY.ams_mel_ir_schedu
 ams_mel_ir_scheduling_update_track_list_event_close.argtypes = [ctypes.POINTER(IrSchedulingUpdateTrackListEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_scheduling_update_track_list_event_close.restype = ctypes.c_int32
 
+
+class IrTaskEventsV1(ctypes.Structure):
+    _fields_ = [
+        ("event_type", ctypes.c_uint32),
+        ("scan_bar", ctypes.c_uint32),
+        ("stop_number", ctypes.c_uint32),
+        ("system_time_ns", ctypes.c_int64),
+        ("track_id", ctypes.c_uint32),
+    ]
+
+
+AMS_MEL_IR_TASK_EVENT_NOT_SET = 0
+AMS_MEL_IR_TASK_EVENT_SLEW_START = 1
+AMS_MEL_IR_TASK_EVENT_SCAN_START = 2
+AMS_MEL_IR_TASK_EVENT_BREAK_SCAN = 3
+AMS_MEL_IR_TASK_EVENT_RESERVED_11 = 4
+AMS_MEL_IR_TASK_EVENT_RESERVED_12 = 5
+AMS_MEL_IR_TASK_EVENT_ACCEL_START = 6
+AMS_MEL_IR_TASK_EVENT_ACCEL_COMPLETE = 7
+
+IrSchedulingTaskEventsMetadataHandle = ctypes.c_void_p
+IrSchedulingTaskEventsEventHandle = ctypes.c_void_p
+ams_mel_ir_scheduling_task_events_open = _LIBRARY.ams_mel_ir_scheduling_task_events_open
+ams_mel_ir_scheduling_task_events_open.argtypes = [IrSchedulingHandle, ctypes.c_size_t, ctypes.POINTER(IrSchedulingTaskEventsMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_task_events_open.restype = ctypes.c_int32
+ams_mel_ir_scheduling_task_events_receive = _LIBRARY.ams_mel_ir_scheduling_task_events_receive
+ams_mel_ir_scheduling_task_events_receive.argtypes = [IrSchedulingTaskEventsMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrSchedulingTaskEventsEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_task_events_receive.restype = ctypes.c_int32
+ams_mel_ir_scheduling_task_events_get_counters = _LIBRARY.ams_mel_ir_scheduling_task_events_get_counters
+ams_mel_ir_scheduling_task_events_get_counters.argtypes = [IrSchedulingTaskEventsMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_task_events_get_counters.restype = ctypes.c_int32
+ams_mel_ir_scheduling_task_events_close = _LIBRARY.ams_mel_ir_scheduling_task_events_close
+ams_mel_ir_scheduling_task_events_close.argtypes = [ctypes.POINTER(IrSchedulingTaskEventsMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_task_events_close.restype = ctypes.c_int32
+ams_mel_ir_scheduling_task_events_event_view = _LIBRARY.ams_mel_ir_scheduling_task_events_event_view
+ams_mel_ir_scheduling_task_events_event_view.argtypes = [IrSchedulingTaskEventsEventHandle, ctypes.POINTER(ctypes.POINTER(IrTaskEventsV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_task_events_event_view.restype = ctypes.c_int32
+ams_mel_ir_scheduling_task_events_event_close = _LIBRARY.ams_mel_ir_scheduling_task_events_event_close
+ams_mel_ir_scheduling_task_events_event_close.argtypes = [ctypes.POINTER(IrSchedulingTaskEventsEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_task_events_event_close.restype = ctypes.c_int32
+
 ams_mel_ir_track_metadata_open = _LIBRARY.ams_mel_ir_track_metadata_open
 ams_mel_ir_track_metadata_open.argtypes = [IrTrackHandle, ctypes.c_size_t, ctypes.POINTER(IrTrackMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_metadata_open.restype = ctypes.c_int32
@@ -2610,6 +2651,12 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_scheduling_update_track_list_close",
     "ams_mel_ir_scheduling_update_track_list_event_view",
     "ams_mel_ir_scheduling_update_track_list_event_close",
+    "ams_mel_ir_scheduling_task_events_open",
+    "ams_mel_ir_scheduling_task_events_receive",
+    "ams_mel_ir_scheduling_task_events_get_counters",
+    "ams_mel_ir_scheduling_task_events_close",
+    "ams_mel_ir_scheduling_task_events_event_view",
+    "ams_mel_ir_scheduling_task_events_event_close",
     "ams_mel_ir_scheduling_execute_task_ack_open",
     "ams_mel_ir_scheduling_execute_task_ack_receive",
     "ams_mel_ir_scheduling_execute_task_ack_get_counters",

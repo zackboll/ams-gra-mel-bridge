@@ -382,7 +382,94 @@ package AMS.MEL.IR.Scheduling.Metadata is
    --  affecting other metadata families or cancelling any Scheduling command.
    --  @param Stream Consumption owner to close.
    --  @exception Provider_Error Native closure failed.
+   type Task_Event_Type is
+     (Not_Set,
+      Slew_Start,
+      Scan_Start,
+      Break_Scan,
+      Reserved_11,
+      Reserved_12,
+      Accel_Start,
+      Accel_Complete);
+   --  Exact upstream EventType values. These are provider reports, not task status.
+   --  @enum Not_Set Upstream enumNotSet (0); valid metadata.
+   --  @enum Slew_Start Upstream SLEW_START (1).
+   --  @enum Scan_Start Upstream SCAN_START (2).
+   --  @enum Break_Scan Upstream BREAK_SCAN (3).
+   --  @enum Reserved_11 Upstream Reserved11 (4); no operational meaning assigned.
+   --  @enum Reserved_12 Upstream Reserved12 (5); no operational meaning assigned.
+   --  @enum Accel_Start Upstream ACCEL_START (6).
+   --  @enum Accel_Complete Upstream ACCEL_COMPLETE (7).
+   for Task_Event_Type use
+     (Not_Set        => 0,
+      Slew_Start     => 1,
+      Scan_Start     => 2,
+      Break_Scan     => 3,
+      Reserved_11    => 4,
+      Reserved_12    => 5,
+      Accel_Start    => 6,
+      Accel_Complete => 7);
+   for Task_Event_Type'Size use 32;
+
+   type Task_Event is record
+      Event_Type     : Task_Event_Type := Not_Set;
+      Scan_Bar       : Interfaces.Unsigned_32 := 0;
+      Stop_Number    : Interfaces.Unsigned_32 := 0;
+      System_Time_NS : Interfaces.Integer_64 := 0;
+      Track_ID       : Interfaces.Unsigned_32 := 0;
+   end record;
+   --  Complete owned provider-reported event. It establishes neither task success,
+   --  physical movement, timestamp accuracy, image production, nor command correlation.
+   --  @field Event_Type Exact EventType discriminator.
+   --  @field Scan_Bar All 32 unsigned bits from getScanBar().
+   --  @field Stop_Number All 32 unsigned bits from getStopNumber().
+   --  @field System_Time_NS Signed nanoseconds verbatim; no epoch assumed.
+   --  @field Track_ID All 32 unsigned bits from getTrackId(), not the signed task TrackId.
+
+   type Task_Events_Stream is limited private;
+   --  Limited-controlled consumption owner with non-raising finalization. Serialize operations
+   --  and Close on this stream; Scheduling Close may run while its Receive waits.
+
+   function Open_Task_Events
+     (Channel : Scheduling_Channel; Queue_Capacity : Positive) return Task_Events_Stream;
+   --  Opt in to the optional TaskEvents overload, once per Scheduling owner. Any
+   --  provider attempt consumes the one-shot; registration may deliver synchronously. This does
+   --  not submit a command and neither a command submission nor its future registers this stream.
+   --  @param Channel Attached or Enabled owner, serialized against its other owner operations.
+   --  @param Queue_Capacity Maximum number of events in the bounded drop-incoming queue.
+   --  @return Independent metadata consumption owner.
+   --  @exception Not_Supported Provider answered NotSupported; other Scheduling interfaces stay usable.
+   --  @exception Provider_Error Ineligible owner, second attempt or other native failure.
+
+   function Receive_Task_Events
+     (Stream : Task_Events_Stream; Timeout_Milliseconds : Natural := 0) return Task_Event;
+   --  Copy all five fields before closing the native event. Queued events drain in successful-enqueue
+   --  order after Scheduling Close. Receiving an event does not complete or change any future.
+   --  @param Stream Open consumption owner.
+   --  @param Timeout_Milliseconds Maximum wait in milliseconds; zero polls without cancellation.
+   --  @return Owned event valid after the stream, channel, session and provider close.
+   --  @exception Timeout_Error Active queue remained empty.
+   --  @exception Stream_Stopped Stopped queue is empty.
+   --  @exception Provider_Error Closed stream, malformed native view or provider cleanup failure.
+
+   function Task_Events_Counters (Stream : Task_Events_Stream) return Metadata_Counters;
+   --  @param Stream Open consumption owner.
+   --  @return Saturating callback counters; malformed includes null, unknown EventType or copy failure.
+   --  @exception Provider_Error Closed stream or native query failure.
+
+   procedure Close (Stream : in out Task_Events_Stream);
+   --  Idempotently discard queued events and deactivate consumption without unregistering,
+   --  affecting other metadata families or cancelling any Scheduling command.
+   --  @param Stream Consumption owner to close.
+   --  @exception Provider_Error Native closure failed.
 private
+   type Task_Events_Stream is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Scheduling_Task_Events_Metadata_Handle :=
+        AMS.MEL_C_API.Null_Scheduling_Task_Events_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Stream : in out Task_Events_Stream);
+
    type Update_Track_List_Stream is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.Scheduling_Update_Track_List_Metadata_Handle :=
         AMS.MEL_C_API.Null_Scheduling_Update_Track_List_Metadata;
