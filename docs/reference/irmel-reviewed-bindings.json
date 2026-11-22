@@ -2675,12 +2675,37 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::SchedulingChannel::registerMetadataCallback(std::function<void(Channel&,const UpdateTrackListResponse*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_update_track_list.cpp",
+          "symbol": "ams_mel_ir_scheduling_update_track_list_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Open_Update_Track_List"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Receive_Update_Track_List"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_update_track_list.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_update_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-028: independent one-shot opt-in while Attached or Enabled, bounded drop-incoming queue and complete owned two-field event.",
+      "limitations": [
+        "Mock-provider qualification only; no unregister or automatic correlation with PrioritizedTrackListCmd futures. A receipt does not establish physical tracking, execution, feasibility or imagery."
+      ],
       "representation": []
     },
     {
@@ -12641,7 +12666,7 @@
       "tests": [],
       "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks. IRMEL-ADA-023 adds actual exec(IRSTStareTask) with complete owned parameters and the existing TaskInfo; metadata remains independent. IRMEL-ADA-024 adds actual exec(IRSTScanTask) reusing complete C2 ScanParam and TaskInfo; metadata remains independent. IRMEL-ADA-025 adds actual exec(IRSTTrackTask), preserving all 255 stored targets, signed IDs/duration and independent binary64 location/rate values; metadata remains independent. IRMEL-ADA-026 adds send(PrioritizedTrackListCmd) with a distinct typed receipt and no metadata correlation.",
       "limitations": [
-        "IRMEL-ADA-027 adds independent SchedCreatedRep reception with complete owned activities. Three Scheduling-specific metadata registrations remain missing, including UpdateTrackListResponse. No physical execution or metadata delivery is inferred from a command future.",
+        "IRMEL-ADA-027 and -028 add independent SchedCreatedRep and UpdateTrackListResponse reception with complete owned values. Two Scheduling-specific registrations remain missing: TaskEvents and ScanPerformanceReport. No physical execution or metadata delivery is inferred from a command future.",
         "Disable is performed only inside Close; there is no standalone Disable.",
         "Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.",
         "Positive evidence is mock-provider only; no real provider or hardware tasking ran."
@@ -14983,22 +15008,53 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::UpdateTrackListResponse",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_update_track_list.cpp",
+          "symbol": "ams_mel_ir_scheduling_update_track_list_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Update_Track_List_Response"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_update_track_list.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_update_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Owned Command_ID and exact Track_List_Receipt, including valid Rejected and Rejected_Expired reports.",
+      "limitations": [
+        "Unknown receipt values and null payloads reject the entire callback. Identifiers are not matched, filtered, sorted or deduplicated."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Update_Track_List_Response"
+            }
+          ]
         },
         {
           "upstream": "getTrackListResponse",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Update_Track_List_Response"
+            }
+          ]
         }
       ]
     },

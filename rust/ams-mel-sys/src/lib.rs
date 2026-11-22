@@ -2440,6 +2440,28 @@ pub struct AmsMelIrSchedulingRepEvent {
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
 
+/// Complete event-owned snapshot of the two UpdateTrackListResponse getters.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrUpdateTrackListResponseV1 {
+    pub command_id: u32,
+    pub response: AmsMelIrTrackListResponse,
+}
+
+/// Raw opt-in Scheduling UpdateTrackListResponse consumption owner.
+#[repr(C)]
+pub struct AmsMelIrSchedulingUpdateTrackListMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
+/// Raw UpdateTrackListResponse event owner, independent of provider lifetime.
+#[repr(C)]
+pub struct AmsMelIrSchedulingUpdateTrackListEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
 /// Opaque public consumption owner for the retained IRSTTrackReport queue.
 /// Complete raw owned-event activity value.
 #[repr(C)]
@@ -4512,6 +4534,49 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_scheduling_close(
         scheduling: *mut *mut AmsMelIrScheduling,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_update_track_list_open(
+        scheduling: *mut AmsMelIrScheduling,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrSchedulingUpdateTrackListMetadata,
+        out_registration: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_update_track_list_receive(
+        metadata: *mut AmsMelIrSchedulingUpdateTrackListMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrSchedulingUpdateTrackListEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_update_track_list_get_counters(
+        metadata: *const AmsMelIrSchedulingUpdateTrackListMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_update_track_list_close(
+        metadata: *mut *mut AmsMelIrSchedulingUpdateTrackListMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_update_track_list_event_view(
+        event: *const AmsMelIrSchedulingUpdateTrackListEvent,
+        out: *mut *const AmsMelIrUpdateTrackListResponseV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_update_track_list_event_close(
+        event: *mut *mut AmsMelIrSchedulingUpdateTrackListEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

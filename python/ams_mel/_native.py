@@ -1506,6 +1506,38 @@ ams_mel_ir_scheduling_schedule_created_event_view.restype = ctypes.c_int32
 ams_mel_ir_scheduling_schedule_created_event_close = _LIBRARY.ams_mel_ir_scheduling_schedule_created_event_close
 ams_mel_ir_scheduling_schedule_created_event_close.argtypes = [ctypes.POINTER(IrSchedulingCreatedEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_scheduling_schedule_created_event_close.restype = ctypes.c_int32
+
+
+class IrUpdateTrackListResponseV1(ctypes.Structure):
+    _fields_ = [("command_id", ctypes.c_uint32), ("response", ctypes.c_uint32)]
+
+
+AMS_MEL_IR_TRACK_LIST_RESPONSE_NONE = 0
+AMS_MEL_IR_TRACK_LIST_RESPONSE_REJECTED = 1
+AMS_MEL_IR_TRACK_LIST_RESPONSE_REJECTED_EXPIRED = 2
+AMS_MEL_IR_TRACK_LIST_RESPONSE_ACCEPTED = 3
+
+IrSchedulingUpdateTrackListMetadataHandle = ctypes.c_void_p
+IrSchedulingUpdateTrackListEventHandle = ctypes.c_void_p
+ams_mel_ir_scheduling_update_track_list_open = _LIBRARY.ams_mel_ir_scheduling_update_track_list_open
+ams_mel_ir_scheduling_update_track_list_open.argtypes = [IrSchedulingHandle, ctypes.c_size_t, ctypes.POINTER(IrSchedulingUpdateTrackListMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_update_track_list_open.restype = ctypes.c_int32
+ams_mel_ir_scheduling_update_track_list_receive = _LIBRARY.ams_mel_ir_scheduling_update_track_list_receive
+ams_mel_ir_scheduling_update_track_list_receive.argtypes = [IrSchedulingUpdateTrackListMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrSchedulingUpdateTrackListEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_update_track_list_receive.restype = ctypes.c_int32
+ams_mel_ir_scheduling_update_track_list_get_counters = _LIBRARY.ams_mel_ir_scheduling_update_track_list_get_counters
+ams_mel_ir_scheduling_update_track_list_get_counters.argtypes = [IrSchedulingUpdateTrackListMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_update_track_list_get_counters.restype = ctypes.c_int32
+ams_mel_ir_scheduling_update_track_list_close = _LIBRARY.ams_mel_ir_scheduling_update_track_list_close
+ams_mel_ir_scheduling_update_track_list_close.argtypes = [ctypes.POINTER(IrSchedulingUpdateTrackListMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_update_track_list_close.restype = ctypes.c_int32
+ams_mel_ir_scheduling_update_track_list_event_view = _LIBRARY.ams_mel_ir_scheduling_update_track_list_event_view
+ams_mel_ir_scheduling_update_track_list_event_view.argtypes = [IrSchedulingUpdateTrackListEventHandle, ctypes.POINTER(ctypes.POINTER(IrUpdateTrackListResponseV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_update_track_list_event_view.restype = ctypes.c_int32
+ams_mel_ir_scheduling_update_track_list_event_close = _LIBRARY.ams_mel_ir_scheduling_update_track_list_event_close
+ams_mel_ir_scheduling_update_track_list_event_close.argtypes = [ctypes.POINTER(IrSchedulingUpdateTrackListEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_update_track_list_event_close.restype = ctypes.c_int32
+
 ams_mel_ir_track_metadata_open = _LIBRARY.ams_mel_ir_track_metadata_open
 ams_mel_ir_track_metadata_open.argtypes = [IrTrackHandle, ctypes.c_size_t, ctypes.POINTER(IrTrackMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_metadata_open.restype = ctypes.c_int32
@@ -2572,6 +2604,12 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_scheduling_schedule_created_close",
     "ams_mel_ir_scheduling_schedule_created_event_view",
     "ams_mel_ir_scheduling_schedule_created_event_close",
+    "ams_mel_ir_scheduling_update_track_list_open",
+    "ams_mel_ir_scheduling_update_track_list_receive",
+    "ams_mel_ir_scheduling_update_track_list_get_counters",
+    "ams_mel_ir_scheduling_update_track_list_close",
+    "ams_mel_ir_scheduling_update_track_list_event_view",
+    "ams_mel_ir_scheduling_update_track_list_event_close",
     "ams_mel_ir_scheduling_execute_task_ack_open",
     "ams_mel_ir_scheduling_execute_task_ack_receive",
     "ams_mel_ir_scheduling_execute_task_ack_get_counters",
