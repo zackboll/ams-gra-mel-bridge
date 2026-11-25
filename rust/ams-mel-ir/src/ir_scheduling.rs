@@ -1,5 +1,6 @@
 //! Scheduling ownership, common Channel services and task execution.
 use super::*;
+use crate::ir_scan_conversion::raw_scan_parameters;
 use std::{fmt, marker::PhantomData};
 
 /// Task list action carried unchanged in [`SchedulingTaskInfo`].
@@ -53,6 +54,17 @@ pub struct SchedulingStareTask {
     pub command_id: u32,
     /// Pointing and duration values, without unit or frame conversion.
     pub parameters: SchedulingStareParameters,
+    /// Task information, including the exact caller-selected action.
+    pub task_info: SchedulingTaskInfo,
+}
+
+/// Owned input to the upstream `SchedulingChannel::exec(IRSTScanTask)` operation.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SchedulingScanTask {
+    /// Full-width command ID, independent of the request ID in `task_info`.
+    pub command_id: u32,
+    /// The same complete scan parameters used by [`ModeCommand`].
+    pub parameters: ScanParameters,
     /// Task information, including the exact caller-selected action.
     pub task_info: SchedulingTaskInfo,
 }
@@ -206,6 +218,31 @@ impl SchedulingChannel {
         })
     }
 
+    /// Submits one `IRSTScanTask` on an Enabled channel. Native code copies the
+    /// values during the call. Rust does not normalize values, change units or
+    /// frames, or impose scan feasibility or scheduling policy.
+    ///
+    /// The independent [`ReturnRequest`] survives channel and Session closure.
+    /// A zero-timeout wait polls; timeouts and observer Close/Drop do not cancel
+    /// work. The cached [`ReturnResult`] distinguishes a provider Return from
+    /// an explicit MEL rejection. Successful provider completion does not
+    /// establish physical scanning, image acquisition, or sensor performance.
+    /// This operation does not register or consume Scheduling metadata.
+    ///
+    /// # Errors
+    /// Refuses Attached, Failed and Closed channels. Native validation, admission
+    /// and provider failures retain their categories and available diagnostics.
+    /// An error can occur after dispatch, including failure to publish the request
+    /// owner. This method never enables the channel implicitly or retries.
+    pub fn exec_scan(&mut self, task: &SchedulingScanTask) -> Result<ReturnRequest, Error> {
+        let raw = self.live()?;
+        submit_with("ScanTask", |out, d, c, r| {
+            // SAFETY: unique live owner and writable outputs. Native checks
+            // Enabled and copies the ABI record synchronously.
+            unsafe { sys::ams_mel_ir_scheduling_exec_scan(raw, &raw_scan_task(task), out, d, c, r) }
+        })
+    }
+
     /// Copies a complete capability snapshot while Attached or Enabled.
     /// It outlives the channel and provider. `task_schedule_depth` is an unmodified
     /// `u32`: zero is a valid application-managed priority mode, not lack of support.
@@ -292,6 +329,14 @@ fn raw_stare_task(task: &SchedulingStareTask) -> sys::AmsMelIrStareTaskV1 {
         azimuth_frame: parameters.azimuth_frame as u32,
         command_id: task.command_id,
         task_info: raw_task_info(&task.task_info),
+    }
+}
+
+fn raw_scan_task(task: &SchedulingScanTask) -> sys::AmsMelIrScanTaskV1 {
+    sys::AmsMelIrScanTaskV1 {
+        scan_parameters: raw_scan_parameters(&task.parameters),
+        task_info: raw_task_info(&task.task_info),
+        command_id: task.command_id,
     }
 }
 

@@ -30,6 +30,117 @@ const STARE: SchedulingStareTask = SchedulingStareTask {
     task_info: TASK,
 };
 
+fn scan_task() -> SchedulingScanTask {
+    SchedulingScanTask {
+        command_id: u32::MAX,
+        parameters: ScanParameters::default(),
+        task_info: TASK,
+    }
+}
+
+// The compiled mock stores the last scan arguments in one process-wide slot.
+static SCAN_MOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[test]
+fn scan_exact_layout_and_null_success() {
+    type Raw = sys::AmsMelIrScanTaskV1;
+    if cfg!(all(target_pointer_width = "64", not(target_os = "windows"))) {
+        assert_eq!(mem::size_of::<Raw>(), 144);
+        assert_eq!(mem::align_of::<Raw>(), 8);
+        assert_eq!(mem::offset_of!(Raw, scan_parameters), 0);
+        assert_eq!(mem::offset_of!(Raw, task_info), 112);
+        assert_eq!(mem::offset_of!(Raw, command_id), 136);
+    }
+    let mut task = scan_task();
+    task.parameters.center_az_rad = -0.0;
+    task.parameters.scan_type.continuous_scan = u32::MAX;
+    let raw = raw_scan_task(&task);
+    assert_eq!(raw.command_id, u32::MAX);
+    assert_eq!(
+        raw.scan_parameters.center_az_rad.to_bits(),
+        (-0.0_f64).to_bits()
+    );
+    assert_eq!(raw.scan_parameters.center_frame_ref_el, 0);
+    assert_eq!(raw.scan_parameters.center_frame_ref_az, 1);
+    assert_eq!(raw.scan_parameters.scan_type.continuous_scan, u32::MAX);
+    assert_eq!(raw.task_info.system_time_ns, i64::MIN);
+    assert_eq!(raw.task_info.request_id, 0xf123_4567);
+
+    let mut calls = 0;
+    let error = submit_with("ScanTask", |out, d, _, r| {
+        calls += 1;
+        assert!(out.is_null());
+        // SAFETY: writable diagnostic buffer and length slot.
+        unsafe {
+            *d = 0;
+            *r = 1;
+        }
+        sys::AMS_MEL_OK
+    })
+    .unwrap_err();
+    assert_eq!(calls, 1);
+    assert_eq!(error.kind(), &ErrorKind::ProtocolInconsistency);
+    assert_eq!(
+        error.diagnostic(),
+        Some("Scheduling ScanTask succeeded without a request owner")
+    );
+}
+
+#[test]
+fn scan_native_validation_diagnostic() {
+    let _fixture = SCAN_MOCK.lock().unwrap();
+    let session = Session::open(mock_provider(), "sched-scan-success", "").unwrap();
+    let mut channel = session.open_scheduling_channel(&config()).unwrap();
+    channel.enable().unwrap();
+    // These invalid discriminators cannot be constructed with the public Rust types.
+    for (selector, el, az, degradation, action) in [
+        (2, 0, 1, 0, 0),
+        (0, 2, 1, 0, 0),
+        (0, 0, 2, 0, 0),
+        (0, 0, 1, 4, 0),
+        (0, 0, 1, 0, 4),
+    ] {
+        let mut raw = raw_scan_task(&scan_task());
+        raw.scan_parameters
+            .elevation_defined_with_range_and_altitude = selector;
+        raw.scan_parameters.center_frame_ref_el = el;
+        raw.scan_parameters.center_frame_ref_az = az;
+        raw.scan_parameters.degradation_method = degradation;
+        raw.task_info.action = action;
+        let error = submit_with("ScanTask", |out, d, c, r| {
+            assert!(out.is_null());
+            // SAFETY: live channel, initialized input and writable outputs.
+            unsafe { sys::ams_mel_ir_scheduling_exec_scan(channel.raw, &raw, out, d, c, r) }
+        })
+        .unwrap_err();
+        assert_eq!(error.kind(), &ErrorKind::InvalidArgument);
+        assert_eq!(error.diagnostic(), Some("invalid Scheduling ScanTask"));
+    }
+    channel.close().unwrap();
+    session.close().unwrap();
+}
+
+#[test]
+fn scan_contradictory_owner_and_diagnostics() {
+    let _fixture = SCAN_MOCK.lock().unwrap();
+    contradictory_owner_and_diagnostics("ScanTask", "sched-scan-success", |channel| {
+        channel.exec_scan(&scan_task())
+    });
+}
+
+#[test]
+fn scan_is_independent_of_actual_matching_ack_delivery() {
+    let _fixture = SCAN_MOCK.lock().unwrap();
+    let task = scan_task();
+    independent_ack(
+        "sched-scan-delayed",
+        task.command_id,
+        task.task_info.request_id,
+        17,
+        |channel| channel.exec_scan(&task),
+    );
+}
+
 #[test]
 fn abort_exact_fields_and_null_success() {
     for (index, (action, time, request_id, precedence, priority)) in [

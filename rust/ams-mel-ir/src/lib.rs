@@ -129,6 +129,7 @@ pub use ir_optical_distortion_map::{
 mod ir_bit;
 mod ir_config_set;
 mod ir_mode;
+mod ir_scan_conversion;
 pub use ir_bit::{BitAction, BitCommand};
 pub use ir_c2_metadata::{
     BitConfiguration, BitControlInterface, BitTypeDefinition, C2MetadataCounters, C2MetadataEvent,
@@ -160,8 +161,8 @@ pub use ir_nuc::{
     NucCounters, NucOpenError, NucPixelValue, NucPointType, NucStream, NucTempData, NucTempPoint,
 };
 pub use ir_scheduling::{
-    SchedulingChannel, SchedulingConfig, SchedulingStareParameters, SchedulingStareTask,
-    SchedulingTaskInfo, TaskListAction,
+    SchedulingChannel, SchedulingConfig, SchedulingScanTask, SchedulingStareParameters,
+    SchedulingStareTask, SchedulingTaskInfo, TaskListAction,
 };
 pub use ir_stacked::{StackedChannel, StackedConfig};
 
