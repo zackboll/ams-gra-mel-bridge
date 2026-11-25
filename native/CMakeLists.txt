@@ -17,6 +17,7 @@ add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/
     src/ir_scheduling_execute_task_ack.cpp src/ir_scheduling_task_executing.cpp
     src/ir_scheduling_schedule_created.cpp
     src/ir_scheduling_update_track_list.cpp
+    src/ir_scheduling_task_events.cpp
     src/completion_probe.cpp
     src/rf_data.cpp src/rf_product_rx.cpp src/rf_admin.cpp src/rf_c2.cpp src/rf_virtual_aperture.cpp
     src/rf_job.cpp src/rf_job_interval_status.cpp src/rf_va_status.cpp)
@@ -49,7 +50,7 @@ if(UNIX AND NOT APPLE)
         file(READ "${ams_mel_export_map}" ams_mel_test_exports)
         string(REPLACE "    global:" "    global:\n        ams_mel_test_comms_metadata_probe;"
             ams_mel_test_exports "${ams_mel_test_exports}")
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_schedule_created_probe;\n        ams_mel_test_update_track_list_probe;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_schedule_created_probe;\n        ams_mel_test_update_track_list_probe;\n        ams_mel_test_task_events_probe;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_va_signal_hold;\n        ams_mel_test_va_signal_waiters;\n        ams_mel_test_va_signal_preset;\n        ams_mel_test_va_signal_last;"
             ams_mel_test_exports "${ams_mel_test_exports}")
@@ -1609,6 +1610,32 @@ if(AMS_MEL_BUILD_TESTS)
         add_test(NAME ir_scheduling_update_${case}
             COMMAND test_ir_scheduling_update_track_list ${case})
         set_tests_properties(ir_scheduling_update_${case} PROPERTIES TIMEOUT 30)
+    endforeach()
+
+    add_executable(test_ir_scheduling_task_events tests/test_ir_scheduling_task_events.c)
+    target_compile_features(test_ir_scheduling_task_events PRIVATE c_std_11)
+    set_target_properties(test_ir_scheduling_task_events PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_scheduling_task_events PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_scheduling_task_events PRIVATE ams_mel::ams_mel_c
+        Threads::Threads ${CMAKE_DL_LIBS})
+    add_dependencies(test_ir_scheduling_task_events mock_ir_provider)
+    ams_mel_warnings(test_ir_scheduling_task_events)
+    add_executable(test_ir_scheduling_events_layout tests/scheduling_task_events_layout_probe.c)
+    target_compile_features(test_ir_scheduling_events_layout PRIVATE c_std_11)
+    set_target_properties(test_ir_scheduling_events_layout PROPERTIES C_EXTENSIONS OFF)
+    target_include_directories(test_ir_scheduling_events_layout PRIVATE include)
+    ams_mel_warnings(test_ir_scheduling_events_layout)
+    add_test(NAME ir_scheduling_events_layout COMMAND test_ir_scheduling_events_layout)
+    foreach(case IN ITEMS sched-events-sync sched-events-saturate sched-events-wake
+            sched-events-unpin sched-events-close-copy sched-events-overlap
+            sched-both-all-events sched-both-events-drain sched-events-detach-fail
+            sched-events-throw sched-events-unknown sched-events-not-supported
+            sched-events-not-implemented sched-events-bad-pointer sched-events-fail
+            sched-events-commands)
+        add_test(NAME ir_scheduling_events_${case}
+            COMMAND test_ir_scheduling_task_events ${case})
+        set_tests_properties(ir_scheduling_events_${case} PROPERTIES TIMEOUT 30)
     endforeach()
 
     add_executable(test_ir_track_metadata tests/test_ir_track_metadata.c)

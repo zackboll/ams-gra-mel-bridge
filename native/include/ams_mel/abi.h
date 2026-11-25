@@ -255,6 +255,10 @@ typedef struct ams_mel_ir_scheduling_update_track_list_metadata
     ams_mel_ir_scheduling_update_track_list_metadata;
 typedef struct ams_mel_ir_scheduling_update_track_list_event
     ams_mel_ir_scheduling_update_track_list_event;
+typedef struct ams_mel_ir_scheduling_task_events_metadata
+    ams_mel_ir_scheduling_task_events_metadata;
+typedef struct ams_mel_ir_scheduling_task_events_event
+    ams_mel_ir_scheduling_task_events_event;
 /* Owns public consumption of the retained IRSTTrackReport callback queue. The
  * callback-accessible state itself belongs to the Track channel, not to this
  * wrapper, because upstream provides no unregister operation. */
@@ -3872,6 +3876,66 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_update_track_list_event_view(
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_update_track_list_event_close(
     ams_mel_ir_scheduling_update_track_list_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Complete fixed-size TaskEvents snapshot. The signed nanosecond count is
+ * copied verbatim, without inferring an epoch. Identifiers are unsigned. */
+#define AMS_MEL_IR_TASK_EVENT_NOT_SET UINT32_C(0)
+#define AMS_MEL_IR_TASK_EVENT_SLEW_START UINT32_C(1)
+#define AMS_MEL_IR_TASK_EVENT_SCAN_START UINT32_C(2)
+#define AMS_MEL_IR_TASK_EVENT_BREAK_SCAN UINT32_C(3)
+#define AMS_MEL_IR_TASK_EVENT_RESERVED_11 UINT32_C(4)
+#define AMS_MEL_IR_TASK_EVENT_RESERVED_12 UINT32_C(5)
+#define AMS_MEL_IR_TASK_EVENT_ACCEL_START UINT32_C(6)
+#define AMS_MEL_IR_TASK_EVENT_ACCEL_COMPLETE UINT32_C(7)
+
+typedef struct ams_mel_ir_task_events_v1 {
+    uint32_t event_type;
+    uint32_t scan_bar;
+    uint32_t stop_number;
+    int64_t system_time_ns;
+    uint32_t track_id;
+} ams_mel_ir_task_events_v1;
+
+/* Explicitly opt in to the optional TaskEvents callback while Attached or
+ * Enabled. Serialize open against Scheduling owner operations. Registration
+ * runs unlocked and may deliver synchronously. Arguments rejected locally
+ * do not consume the attempt. Once
+ * the provider is called, there is no retry or unregister. A known Return
+ * (including NotSupported) is written to out_registration when provided;
+ * unknown values and exceptions leave it unchanged. Refusal does not fail
+ * the Scheduling owner. out_metadata must be non-NULL and initially NULL.
+ * The bounded queue drops valid incoming events when full; null, unknown
+ * EventType and allocation failures are counted as malformed. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_task_events_open(
+    ams_mel_ir_scheduling *scheduling, size_t queue_capacity,
+    ams_mel_ir_scheduling_task_events_metadata **out_metadata,
+    ams_mel_ir_return_t *out_registration, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Dequeue in successful-enqueue order. Zero timeout polls. Scheduling Close
+ * wakes receivers; queued events drain before a terminal stopped/failure
+ * status. out_event must be non-NULL and initially NULL. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_task_events_receive(
+    ams_mel_ir_scheduling_task_events_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_scheduling_task_events_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_task_events_get_counters(
+    const ams_mel_ir_scheduling_task_events_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Serialize against operations on this stream. Discard queued events and
+ * deactivate consumption, not registration. Does not cancel requests. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_task_events_close(
+    ams_mel_ir_scheduling_task_events_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* The immutable view borrows only from the event owner and is valid until
+ * event_close, independent of the stream and all provider owners. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_task_events_event_view(
+    const ams_mel_ir_scheduling_task_events_event *event,
+    const ams_mel_ir_task_events_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_task_events_event_close(
+    ams_mel_ir_scheduling_task_events_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Registers the @RequiredIfTrack IRSTTrackReport callback and opens bounded
