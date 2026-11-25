@@ -24,13 +24,13 @@ from example_sources import References, occurrence_ledger
 import symbol_audit
 import api_catalog
 
-VERSION = "0.1.7"
-REVISION = "5efaea9ac018101f33ac5b68b1b98ab4b3e170f6"
-RELEASE_TREE = "733c472ab4c3a570f2156487c3cde7b6fd0c187a"
-WHEEL_NAME = "ada_gnatdoc_enhancer-0.1.7-py3-none-any.whl"
-WHEEL_URL = "https://github.com/zackboll/ada-gnatdoc-enhancer/releases/download/v0.1.7/" + WHEEL_NAME
-WHEEL_SHA256 = "957c65797b03b5c6b3779e2a1918730a2e44749670e37535d2c8ff3e109f3ba4"
-PACKAGE_SHA256 = "f6c8557c71092a2ef741f1d534a5948cdcef3805244306fb0b8424f51011ff04"
+VERSION = "0.1.8"
+REVISION = "1245720eb962f8a68a74dae13ab15ce370ef74f5"
+RELEASE_TREE = "c86e6c015251ce01ab51180b157f81ac98a59df6"
+WHEEL_NAME = "ada_gnatdoc_enhancer-0.1.8-py3-none-any.whl"
+WHEEL_URL = "https://github.com/zackboll/ada-gnatdoc-enhancer/releases/download/v0.1.8/" + WHEEL_NAME
+WHEEL_SHA256 = "baa45c742383d4057444ba7562bce2a8af1c6ab36ac4523d13305daa8ea1393b"
+PACKAGE_SHA256 = "4c523e698ae9f839f889d5bd7eee3468f54670884c7d0c62a822c6730ba4039a"
 JAVASCRIPT_SHA256 = "233cf43211a711d0d64dfba2815bc2d9cc887720faed0ca38f464bc6d29e145f"
 SOURCE_SHA256 = "467cd45ef85888bb22ccee2d9e325b6b55e985dadac66c317dbbc653193114c8"
 ANCHORS_SHA256 = "06b602439be15557118790a2827bb8bacc45c1b02d055fa3e9502204857f5aed"
@@ -138,7 +138,7 @@ def tool():
     require(package.resolve() == Path(distribution.locate_file("ada_gnatdoc_enhancer")).resolve(),
             "enhancer import origin mismatch")
     origin = json.loads(distribution.read_text("direct_url.json") or "{}")
-    require(origin.get("url") == WHEEL_URL and
+    require(set(origin) == {"url", "archive_info"} and origin.get("url") == WHEEL_URL and
             origin.get("archive_info", {}).get("hashes", {}).get("sha256") == WHEEL_SHA256,
             "enhancer wheel origin/digest mismatch")
 
