@@ -177,3 +177,24 @@ outputs and one-time cleanup. Subprocesses use native lifetime logs and
 callback barriers to establish actual provider teardown, with independent
 views of retained stream and event lifetimes. The existing native contract
 tests also exercise the unchanged v1, v2 and v3 layouts and registrations.
+
+| Local command | Exit status and observed result |
+| --- | --- |
+| `make native` | 0; production build succeeded. |
+| `make test-native` | 0; 1,026 passed. |
+| `make test-python` | 0; 1,026 native and 928 Python tests passed. |
+| `make test-rust` | 0; 1,026 native and 736 Rust tests passed, with 16 Rust tests ignored. |
+| `make test-policy` | 0; 333 unittest cases passed, including the documentation suite. |
+| `make test-docs-ci` | 0; 129 passed. |
+| `make check-ir-api-coverage` | 0; the coverage checker and 90 controls passed. |
+
+The separate production build from incorporated main and the feature build
+have identical `nm -D --defined-only` inventories (356 `AMS_MEL_0.1`
+exports). The example printed all four kinds in FIFO order. Generated Python
+reference HTML and inventory contain all 18 new root/IR types, `open_metadata`,
+and the stream lifecycle, receive and counter operations. Explicit runtime
+reference qualification against the production ABI passed.
+
+The PR qualification ledger records the final commit and tree, focused and
+aggregate check results, and hosted workflow conclusions against that exact
+head without requiring a new source commit after hosted validation.
