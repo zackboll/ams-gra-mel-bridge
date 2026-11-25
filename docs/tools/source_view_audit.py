@@ -80,8 +80,8 @@ def prepare(root, site):
     return result
 
 
-def page(name, raw, *, highlighted=True):
-    """Independent serialization of the official schema-1 source page contract."""
+def page(name, raw, *, highlighted=True, correspondence=''):
+    """Independent serialization of a complete static Ada source page."""
     text = raw.decode('utf-8')
     p.require('\x00' not in text and '\r' not in text.replace('\r\n', ''), 'unsupported source text')
     def escape(value):
@@ -105,12 +105,14 @@ def page(name, raw, *, highlighted=True):
                    f'href="#L{i}" aria-label="Line {i}"></a>{line}</span>'
                    for i, line in enumerate(lines, 1))
     css = posixpath.relpath(CSS, posixpath.dirname('api/source/' + name + '.html'))
+    visibility = ('Complete implementation body, including private helpers.' if name.endswith('.adb') else
+                  'Complete specification, including any private section.')
     value = ('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">'
              '<meta name="viewport" content="width=device-width, initial-scale=1">'
              '<title>' + html.escape(name + ' — AMS MEL Bridge') + '</title><link rel="stylesheet" href="' +
              css + '"></head><body class="source-view"><h1>' + html.escape(name) + '</h1>' +
-             '<p>Complete specification, including any private section. SHA-256: <samp>' + p.sha(raw) +
-             '</samp></p><pre class="source-code"><code>' + code + '</code></pre></body></html>\n')
+             '<p>' + visibility + ' SHA-256: <samp>' + p.sha(raw) +
+             '</samp></p>' + correspondence + '<pre class="source-code"><code>' + code + '</code></pre></body></html>\n')
     return value.encode(), len(lines)
 
 
@@ -159,7 +161,7 @@ def reconstruct(root, site, authority):
                                   native_evidence=options(root, site), files=records)
 
 
-def restore(text, original, record):
+def restore(text, original, record, *, with_bodies=False):
     package, source, entries = record
     p.require(text.count(HEAD) == 1 and
               text.count('<link rel="stylesheet" href="gnatdoc-theme.css">' + HEAD + '</head>') == 1,
@@ -173,8 +175,11 @@ def restore(text, original, record):
             found = re.findall(r'<h4 id=(?:"' + anchor + '"|' + anchor + r')>[^<]+</h4>', original)
             p.require(len(found) == 1, 'ambiguous native source-link destination')
             marker = found[0]
-        link = ('<a class="view-source" target="_top" href="source/' + source +
-                '.html#L' + str(entry['line']) + '">View source</a>')
+        def link_to(path, line, label):
+            return f'<a class="view-source" target="_top" href="source/{path}.html#L{line}">{label}</a>'
+        link = link_to(source, entry['line'], 'View specification' if with_bodies else 'View source')
+        if with_bodies and 'body_line' in entry:
+            link += ' ' + link_to(entry['body_source'], entry['body_line'], 'View body')
         p.require(text.count(marker + link) == 1, 'wrong/missing/duplicate declaration source destination')
         text = text.replace(marker + link, marker, 1)
     p.require('view-source' not in text and 'gnatdoc-source' not in text,
