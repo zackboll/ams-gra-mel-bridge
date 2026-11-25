@@ -1,4 +1,5 @@
 #include "internal/ir_scan_task.hpp"
+#include "scan_performance_fixture.h"
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -7,6 +8,17 @@
 int main()
 {
     using namespace ams_mel::internal;
+    for (unsigned fixture = 0; fixture < 14; ++fixture) {
+        for (unsigned side = 0; side < 2; ++side) {
+            const auto input = performance_param(fixture, side);
+            const auto upstream = convert_scan(input);
+            CHECK(matches_scan(input, upstream));
+            const auto received = snapshot_scan(upstream);
+            CHECK(valid_scan(received));
+            CHECK(matches_scan(received, upstream));
+            CHECK(matches_scan(input, convert_scan(received)));
+        }
+    }
     for (const auto time : std::array<std::int64_t, 4>{INT64_MIN, INT64_MAX, 0, -987654321}) {
         for (const auto id : std::array<std::uint32_t, 3>{0, 0x80000000U, UINT32_MAX}) {
             for (std::uint32_t action = 0; action != 4; ++action) {

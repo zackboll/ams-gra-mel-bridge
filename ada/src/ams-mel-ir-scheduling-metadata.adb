@@ -1,3 +1,4 @@
+with AMS.MEL.IR.Scan_Conversion;
 with Ada.Containers;
 with Ada.Unchecked_Conversion;
 with Interfaces.C;
@@ -730,5 +731,125 @@ package body AMS.MEL.IR.Scheduling.Metadata is
    exception
       when others =>
          Stream.Handle := C.Null_Scheduling_Task_Events_Metadata;
+   end Finalize;
+
+   type Scan_Performance_View_Access is access constant C.IR_Scan_Performance_Report_V1;
+   function To_Scan_Performance_View is new
+     Ada.Unchecked_Conversion (System.Address, Scan_Performance_View_Access);
+   use type C.Scheduling_Scan_Performance_Metadata_Handle;
+
+   function Open_Scan_Performance
+     (Channel : Scheduling_Channel; Queue_Capacity : Positive) return Scan_Performance_Stream
+   is
+      D            : aliased Diagnostic := [others => Interfaces.C.nul];
+      R            : aliased C.Size_T := 0;
+      Registration : aliased Interfaces.Unsigned_32 := 16#FFFF_FFFF#;
+   begin
+      return Result : Scan_Performance_Stream do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Scheduling_Scan_Performance_Open
+                (Channel.Handle,
+                 C.Size_T (Queue_Capacity),
+                 Result.Handle'Access,
+                 Registration'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
+         begin
+            if Code = C.Provider_Failed and then Registration = Not_Supported_Return then
+               raise Not_Supported with Message (D);
+            end if;
+            Check (Code, D);
+         end;
+      end return;
+   end Open_Scan_Performance;
+
+   function Receive_Scan_Performance
+     (Stream : Scan_Performance_Stream; Timeout_Milliseconds : Natural := 0)
+      return Scan_Performance_Report
+   is
+      use type System.Address;
+      Event   : aliased C.Scheduling_Scan_Performance_Event_Handle :=
+        C.Null_Scheduling_Scan_Performance_Event;
+      Address : aliased System.Address := System.Null_Address;
+      D       : aliased Diagnostic := [others => Interfaces.C.nul];
+      R       : aliased C.Size_T := 0;
+      procedure Release is
+         Ignored : Interfaces.Integer_32;
+      begin
+         Ignored :=
+           C.IR_Scheduling_Scan_Performance_Event_Close
+             (Event'Access, System.Null_Address, 0, null);
+      end Release;
+   begin
+      if Stream.Handle = C.Null_Scheduling_Scan_Performance_Metadata then
+         raise Provider_Error with "ScanPerformanceReport metadata owner is closed";
+      end if;
+      Check
+        (C.IR_Scheduling_Scan_Performance_Receive
+           (Stream.Handle,
+            Interfaces.Unsigned_32 (Timeout_Milliseconds),
+            Event'Access,
+            D'Address,
+            D'Length,
+            R'Access),
+         D);
+      Check
+        (C.IR_Scheduling_Scan_Performance_Event_View
+           (Event, Address'Access, D'Address, D'Length, R'Access),
+         D);
+      if Address = System.Null_Address then
+         raise Provider_Error with "null ScanPerformanceReport view";
+      end if;
+      declare
+         Raw    : C.IR_Scan_Performance_Report_V1 renames To_Scan_Performance_View (Address).all;
+         Result : constant Scan_Performance_Report :=
+           (Commanded => Scan_Conversion.From_Raw (Raw.Commanded),
+            Achieved  => Scan_Conversion.From_Raw (Raw.Achieved));
+      begin
+         Release;
+         return Result;
+      end;
+   exception
+      when others =>
+         Release;
+         raise;
+   end Receive_Scan_Performance;
+
+   function Scan_Performance_Counters (Stream : Scan_Performance_Stream) return Metadata_Counters is
+      Raw : aliased C.Metadata_Counters_V1 := (others => 0);
+      D   : aliased Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      Check
+        (C.IR_Scheduling_Scan_Performance_Get_Counters
+           (Stream.Handle, Raw'Access, D'Address, D'Length, R'Access),
+         D);
+      return
+        (AMS.MEL.IR.Counter (Raw.Events_Received),
+         AMS.MEL.IR.Counter (Raw.Events_Dropped_Queue_Full),
+         AMS.MEL.IR.Counter (Raw.Malformed_Or_Unsupported));
+   end Scan_Performance_Counters;
+
+   procedure Close (Stream : in out Scan_Performance_Stream) is
+      D : aliased Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check
+        (C.IR_Scheduling_Scan_Performance_Close
+           (Stream.Handle'Access, D'Address, D'Length, R'Access),
+         D);
+   end Close;
+
+   overriding
+   procedure Finalize (Stream : in out Scan_Performance_Stream) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored :=
+        C.IR_Scheduling_Scan_Performance_Close (Stream.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Stream.Handle := C.Null_Scheduling_Scan_Performance_Metadata;
    end Finalize;
 end AMS.MEL.IR.Scheduling.Metadata;

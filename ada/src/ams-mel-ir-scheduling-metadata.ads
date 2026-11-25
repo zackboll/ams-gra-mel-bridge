@@ -1,3 +1,4 @@
+with AMS.MEL.IR.C2;
 with Interfaces;
 private with Ada.Containers.Vectors;
 private with Ada.Finalization;
@@ -462,6 +463,52 @@ package AMS.MEL.IR.Scheduling.Metadata is
    --  affecting other metadata families or cancelling any Scheduling command.
    --  @param Stream Consumption owner to close.
    --  @exception Provider_Error Native closure failed.
+
+   type Scan_Performance_Report is record
+      Commanded : AMS.MEL.IR.C2.Scan_Parameters;
+      Achieved  : AMS.MEL.IR.C2.Scan_Parameters;
+   end record;
+   --  Independent provider-reported values, copied without interpretation.
+   --  @field Commanded Complete commanded ScanParam, including inactive fields and binary64 representations.
+   --  @field Achieved Complete achieved ScanParam, not inferred from Commanded.
+
+   type Scan_Performance_Stream is limited private;
+   --  Limited-controlled consumption owner with non-raising finalization. Serialize operations
+   --  and Close on this stream; Scheduling Close may run while its Receive waits.
+
+   function Open_Scan_Performance
+     (Channel : Scheduling_Channel; Queue_Capacity : Positive) return Scan_Performance_Stream;
+   --  Opt in to the optional ScanPerformanceReport overload, once per Scheduling owner. Any
+   --  provider attempt consumes the one-shot; registration may deliver synchronously. This does
+   --  not submit a command and neither a command submission nor its future registers this stream.
+   --  @param Channel Attached or Enabled owner, serialized against its other owner operations.
+   --  @param Queue_Capacity Maximum number of events in the bounded drop-incoming queue.
+   --  @return Independent metadata consumption owner.
+   --  @exception Not_Supported Provider answered NotSupported; other Scheduling interfaces stay usable.
+   --  @exception Provider_Error Ineligible owner, second attempt or other native failure.
+
+   function Receive_Scan_Performance
+     (Stream : Scan_Performance_Stream; Timeout_Milliseconds : Natural := 0)
+      return Scan_Performance_Report;
+   --  Copy both complete ScanParam values before closing the native event. Queued events drain in successful-enqueue
+   --  order after Scheduling Close. Receiving an event does not complete or change any future.
+   --  @param Stream Open consumption owner.
+   --  @param Timeout_Milliseconds Maximum wait in milliseconds; zero polls without cancellation.
+   --  @return Owned event valid after the stream, channel, session and provider close.
+   --  @exception Timeout_Error Active queue remained empty.
+   --  @exception Stream_Stopped Stopped queue is empty.
+   --  @exception Provider_Error Closed stream, malformed native view or provider cleanup failure.
+
+   function Scan_Performance_Counters (Stream : Scan_Performance_Stream) return Metadata_Counters;
+   --  @param Stream Open consumption owner.
+   --  @return Saturating callback counters; malformed includes null, invalid nested discriminators or copy failure.
+   --  @exception Provider_Error Closed stream or native query failure.
+
+   procedure Close (Stream : in out Scan_Performance_Stream);
+   --  Idempotently discard queued events and deactivate consumption without unregistering,
+   --  affecting other metadata families or cancelling any Scheduling command.
+   --  @param Stream Consumption owner to close.
+   --  @exception Provider_Error Native closure failed.
 private
    type Task_Events_Stream is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.Scheduling_Task_Events_Metadata_Handle :=
@@ -469,6 +516,13 @@ private
    end record;
    overriding
    procedure Finalize (Stream : in out Task_Events_Stream);
+
+   type Scan_Performance_Stream is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Scheduling_Scan_Performance_Metadata_Handle :=
+        AMS.MEL_C_API.Null_Scheduling_Scan_Performance_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Stream : in out Scan_Performance_Stream);
 
    type Update_Track_List_Stream is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.Scheduling_Update_Track_List_Metadata_Handle :=

@@ -534,6 +534,64 @@ class AbiTests(unittest.TestCase):
                                                              _native.SizePointer])
             self.assertIs(function.restype, ctypes.c_int32)
 
+    def test_private_scheduling_scan_performance_abi(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-pedantic-errors",
+                            "-Wall", "-Wextra", "-Werror", "-I" + str(root / "native/include"),
+                            str(root / "native/tests/scheduling_scan_performance_layout_probe.c"),
+                            "-o", str(executable)], check=True)
+            actual = list(map(int, subprocess.check_output([executable]).split()))
+        record = _native.IrScanPerformanceReportV1
+        owner = _native.IrSchedulingScanPerformanceMetadataHandle
+        event = _native.IrSchedulingScanPerformanceEventHandle
+        self.assertEqual(record._fields_, [("commanded", _native.IrScanParamV1),
+                                          ("achieved", _native.IrScanParamV1)])
+        expected = self._layout(record, "commanded", "achieved")
+        expected += self._layout(_native.IrScanParamV1,
+            "elevation_defined_with_range_and_altitude",
+            "center_az_rad",
+            "center_el_rad",
+            "center_frame_ref_el",
+            "center_frame_ref_az",
+            "scan_width_rad",
+            "scan_height_rad",
+            "scan_type",
+            "scan_id",
+            "scan_rate_rad_per_second",
+            "preferred_revisit_interval_seconds",
+            "required_revisit_interval_seconds",
+            "max_range_of_interest_m",
+            "min_range_of_interest_m",
+            "elevation_scan_center_altitude_m",
+            "elevation_scan_center_range_m",
+            "degradation_method",
+        )
+        expected += self._layout(_native.IrScanTypeV1,
+            "continuous_scan",
+            "returning",
+            "agile_scan",
+        )
+        for handle in (owner, event):
+            expected += [ctypes.sizeof(handle), ctypes.alignment(handle)]
+        expected += [_native.AMS_MEL_IR_METADATA_SCAN_PERFORMANCE_REPORT]
+        self.assertEqual(actual, expected)
+        pointer = ctypes.POINTER
+        signatures = {
+            "open": [_native.IrSchedulingHandle, ctypes.c_size_t, pointer(owner), pointer(ctypes.c_uint32)],
+            "receive": [owner, ctypes.c_uint32, pointer(event)],
+            "get_counters": [owner, pointer(_native.IrC2MetadataCountersV1)],
+            "close": [pointer(owner)],
+            "event_view": [event, pointer(pointer(record))],
+            "event_close": [pointer(event)],
+        }
+        for suffix, arguments in signatures.items():
+            function = getattr(_native, "ams_mel_ir_scheduling_scan_performance_" + suffix)
+            self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t,
+                                                             _native.SizePointer])
+            self.assertIs(function.restype, ctypes.c_int32)
+
     def test_private_scheduling_task_executing_abi(self) -> None:
         """IRMEL-ADA-013: private raw Scheduling TaskExecutingRep mirror only."""
         root = Path(__file__).resolve().parents[2]
@@ -1559,6 +1617,12 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_scheduling_task_events_close",
                 "ams_mel_ir_scheduling_task_events_event_view",
                 "ams_mel_ir_scheduling_task_events_event_close",
+                "ams_mel_ir_scheduling_scan_performance_open",
+                "ams_mel_ir_scheduling_scan_performance_receive",
+                "ams_mel_ir_scheduling_scan_performance_get_counters",
+                "ams_mel_ir_scheduling_scan_performance_close",
+                "ams_mel_ir_scheduling_scan_performance_event_view",
+                "ams_mel_ir_scheduling_scan_performance_event_close",
                 "ams_mel_ir_scheduling_execute_task_ack_open",
                 "ams_mel_ir_scheduling_execute_task_ack_receive",
                 "ams_mel_ir_scheduling_execute_task_ack_get_counters",

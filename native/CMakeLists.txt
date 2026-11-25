@@ -18,6 +18,7 @@ add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/
     src/ir_scheduling_schedule_created.cpp
     src/ir_scheduling_update_track_list.cpp
     src/ir_scheduling_task_events.cpp
+    src/ir_scheduling_scan_performance.cpp
     src/completion_probe.cpp
     src/rf_data.cpp src/rf_product_rx.cpp src/rf_admin.cpp src/rf_c2.cpp src/rf_virtual_aperture.cpp
     src/rf_job.cpp src/rf_job_interval_status.cpp src/rf_va_status.cpp)
@@ -50,7 +51,7 @@ if(UNIX AND NOT APPLE)
         file(READ "${ams_mel_export_map}" ams_mel_test_exports)
         string(REPLACE "    global:" "    global:\n        ams_mel_test_comms_metadata_probe;"
             ams_mel_test_exports "${ams_mel_test_exports}")
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_schedule_created_probe;\n        ams_mel_test_update_track_list_probe;\n        ams_mel_test_task_events_probe;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_schedule_created_probe;\n        ams_mel_test_update_track_list_probe;\n        ams_mel_test_task_events_probe;\n        ams_mel_test_scan_performance_probe;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_va_signal_hold;\n        ams_mel_test_va_signal_waiters;\n        ams_mel_test_va_signal_preset;\n        ams_mel_test_va_signal_last;"
             ams_mel_test_exports "${ams_mel_test_exports}")
@@ -1636,6 +1637,32 @@ if(AMS_MEL_BUILD_TESTS)
         add_test(NAME ir_scheduling_events_${case}
             COMMAND test_ir_scheduling_task_events ${case})
         set_tests_properties(ir_scheduling_events_${case} PROPERTIES TIMEOUT 30)
+    endforeach()
+
+    add_executable(test_ir_scheduling_scan_performance tests/test_ir_scheduling_scan_performance.c)
+    target_compile_features(test_ir_scheduling_scan_performance PRIVATE c_std_11)
+    set_target_properties(test_ir_scheduling_scan_performance PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_scheduling_scan_performance PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_scheduling_scan_performance PRIVATE ams_mel::ams_mel_c
+        Threads::Threads ${CMAKE_DL_LIBS})
+    add_dependencies(test_ir_scheduling_scan_performance mock_ir_provider)
+    ams_mel_warnings(test_ir_scheduling_scan_performance)
+    add_executable(test_ir_scheduling_performance_layout tests/scheduling_scan_performance_layout_probe.c)
+    target_compile_features(test_ir_scheduling_performance_layout PRIVATE c_std_11)
+    set_target_properties(test_ir_scheduling_performance_layout PROPERTIES C_EXTENSIONS OFF)
+    target_include_directories(test_ir_scheduling_performance_layout PRIVATE include)
+    ams_mel_warnings(test_ir_scheduling_performance_layout)
+    add_test(NAME ir_scheduling_performance_layout COMMAND test_ir_scheduling_performance_layout)
+    foreach(case IN ITEMS sched-performance-sync sched-performance-saturate sched-performance-wake
+            sched-performance-unpin sched-performance-close-copy sched-performance-overlap
+            sched-both-all-events sched-both-events-drain sched-performance-detach-fail
+            sched-performance-throw sched-performance-unknown sched-performance-not-supported
+            sched-performance-not-implemented sched-performance-bad-pointer sched-performance-fail
+            sched-performance-commands)
+        add_test(NAME ir_scheduling_performance_${case}
+            COMMAND test_ir_scheduling_scan_performance ${case})
+        set_tests_properties(ir_scheduling_performance_${case} PROPERTIES TIMEOUT 30)
     endforeach()
 
     add_executable(test_ir_track_metadata tests/test_ir_track_metadata.c)

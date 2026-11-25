@@ -2496,6 +2496,28 @@ pub struct AmsMelIrSchedulingTaskEventsEvent {
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
 
+/// Complete event-owned copies of the commanded and achieved scan parameters.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrScanPerformanceReportV1 {
+    pub commanded: AmsMelIrScanParamV1,
+    pub achieved: AmsMelIrScanParamV1,
+}
+
+/// Raw opt-in Scheduling ScanPerformanceReport consumption owner.
+#[repr(C)]
+pub struct AmsMelIrSchedulingScanPerformanceMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
+/// Raw ScanPerformanceReport event owner, independent of provider lifetime.
+#[repr(C)]
+pub struct AmsMelIrSchedulingScanPerformanceEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
 /// Opaque public consumption owner for the retained IRSTTrackReport queue.
 /// Complete raw owned-event activity value.
 #[repr(C)]
@@ -4655,6 +4677,49 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_scheduling_task_events_event_close(
         event: *mut *mut AmsMelIrSchedulingTaskEventsEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_scan_performance_open(
+        scheduling: *mut AmsMelIrScheduling,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrSchedulingScanPerformanceMetadata,
+        out_registration: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_scan_performance_receive(
+        metadata: *mut AmsMelIrSchedulingScanPerformanceMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrSchedulingScanPerformanceEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_scan_performance_get_counters(
+        metadata: *const AmsMelIrSchedulingScanPerformanceMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_scan_performance_close(
+        metadata: *mut *mut AmsMelIrSchedulingScanPerformanceMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_scan_performance_event_view(
+        event: *const AmsMelIrSchedulingScanPerformanceEvent,
+        out: *mut *const AmsMelIrScanPerformanceReportV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_scan_performance_event_close(
+        event: *mut *mut AmsMelIrSchedulingScanPerformanceEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
