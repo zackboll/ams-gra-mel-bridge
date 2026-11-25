@@ -1,5 +1,4 @@
 use super::*;
-use std::cell::RefCell;
 
 const TASK: SchedulingTaskInfo = SchedulingTaskInfo {
     system_time_ns: i64::MIN,
@@ -19,23 +18,6 @@ fn submit(
     info: &ams_mel_ir::SchedulingTaskInfo,
 ) -> Result<ams_mel_ir::ReturnRequest, Error> {
     channel.exec_abort(info)
-}
-
-fn wait_for_return_cleanup() {
-    unsafe extern "C" {
-        fn ams_mel_test_completion_owner_notify(
-            family: u32,
-            op: u32,
-            target: u64,
-            out: *mut u64,
-        ) -> i32;
-    }
-    let mut observed = 0;
-    // SAFETY: test-only handshake, Return family, drain all owner notifications.
-    assert_eq!(
-        unsafe { ams_mel_test_completion_owner_notify(1, 0, 0, &mut observed) },
-        1
-    );
 }
 
 fn terminal(scenario: &str, channel: &mut SchedulingChannel) -> u32 {
@@ -117,32 +99,6 @@ fn terminal(scenario: &str, channel: &mut SchedulingChannel) -> u32 {
     4
 }
 
-thread_local! {
-    static REENTRY: RefCell<Option<(ChannelView, bool)>> = const { RefCell::new(None) };
-}
-
-extern "C" fn reenter_capabilities() {
-    // The mock calls back on the submitting thread. Use an independent weak
-    // view of the same channel, not an alias of the mutably borrowed owner.
-    REENTRY.with_borrow_mut(|slot| {
-        if let Some((view, succeeded)) = slot {
-            *succeeded = view.capabilities().is_ok();
-        }
-    });
-}
-
-fn arm_reentry(pin: &Pin, view: ChannelView) {
-    REENTRY.set(Some((view, false)));
-    // SAFETY: exact mock signature, held DSO pin. The mock consumes this hook
-    // once, synchronously inside exec, before returning the future.
-    unsafe {
-        let symbol = dlsym(pin.0, c"mock_scheduling_abort_reentry".as_ptr());
-        assert!(!symbol.is_null());
-        let set: unsafe extern "C" fn(extern "C" fn()) = std::mem::transmute(symbol);
-        set(reenter_capabilities);
-    }
-}
-
 fn view_closed(view: &mut ChannelView) {
     assert_eq!(
         view.capabilities().unwrap_err().kind(),
@@ -164,7 +120,7 @@ fn assert_dispatch(log: &Log, pin: &Pin, count: u32) {
         assert_eq!(pin.count(symbol), 0, "{symbol:?}");
     }
     log.check("scheduling_abort_task_exec", count as usize);
-    log.no_unexpected_scheduling_operations(true);
+    log.no_unexpected_scheduling_operations(Some("scheduling_abort_task_exec"));
 }
 
 pub(super) fn run(scenario: &str, log: &Log) {
@@ -276,7 +232,11 @@ pub(super) fn run(scenario: &str, log: &Log) {
         drop(pin);
     } else {
         if case == "reentry" {
-            arm_reentry(&pin, channel.channel_view().unwrap());
+            arm_reentry(
+                &pin,
+                c"mock_scheduling_abort_reentry",
+                channel.channel_view().unwrap(),
+            );
         }
         let calls = if case == "admission-states" {
             0
@@ -284,9 +244,7 @@ pub(super) fn run(scenario: &str, log: &Log) {
             terminal(case, &mut channel)
         };
         if case == "reentry" {
-            let (mut reentrant_view, succeeded) = REENTRY.take().unwrap();
-            assert!(succeeded);
-            reentrant_view.close().unwrap();
+            finish_reentry();
         }
         channel.close().unwrap();
         assert_eq!(
@@ -300,7 +258,7 @@ pub(super) fn run(scenario: &str, log: &Log) {
         drop(pin);
     }
     log.check_cleanup_order(true);
-    log.no_unexpected_scheduling_operations(true);
+    log.no_unexpected_scheduling_operations(Some("scheduling_abort_task_exec"));
 }
 
 scenarios! {

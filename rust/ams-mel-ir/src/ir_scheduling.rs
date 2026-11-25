@@ -1,4 +1,4 @@
-//! Scheduling ownership, common Channel services and AbortTask execution.
+//! Scheduling ownership, common Channel services and task execution.
 use super::*;
 use std::{fmt, marker::PhantomData};
 
@@ -16,7 +16,7 @@ pub enum TaskListAction {
     Abort = 3,
 }
 
-/// Owned `TaskInfo` for the upstream `AbortTask` operation.
+/// Owned `TaskInfo` shared by Scheduling task operations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SchedulingTaskInfo {
     /// Signed system time in nanoseconds, with no epoch conversion.
@@ -29,6 +29,32 @@ pub struct SchedulingTaskInfo {
     pub precedence_within_priority: u32,
     /// Full-width priority, without normalization.
     pub priority: u32,
+}
+
+/// Owned parameters for a Scheduling stare, with independent frame references.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SchedulingStareParameters {
+    /// Center azimuth in binary64 radians.
+    pub center_azimuth_rad: f64,
+    /// Center elevation in binary64 radians.
+    pub center_elevation_rad: f64,
+    /// Frame of the center elevation.
+    pub elevation_frame: CoordinateFrameReference,
+    /// Frame of the center azimuth, independent of the elevation frame.
+    pub azimuth_frame: CoordinateFrameReference,
+    /// Signed duration in nanoseconds, passed unchanged.
+    pub duration_ns: i64,
+}
+
+/// Owned input to the upstream `SchedulingChannel::exec(IRSTStareTask)` operation.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SchedulingStareTask {
+    /// Full-width command ID, independent of the request ID in `task_info`.
+    pub command_id: u32,
+    /// Pointing and duration values, without unit or frame conversion.
+    pub parameters: SchedulingStareParameters,
+    /// Task information, including the exact caller-selected action.
+    pub task_info: SchedulingTaskInfo,
 }
 
 /// Owned channel identity, platform identity and sensor location for attachment.
@@ -144,10 +170,39 @@ impl SchedulingChannel {
     /// provider did not execute. This method never retries submission.
     pub fn exec_abort(&mut self, info: &SchedulingTaskInfo) -> Result<ReturnRequest, Error> {
         let raw = self.live()?;
-        submit_abort_with(info, |info, out, d, c, r| {
+        submit_with("AbortTask", |out, d, c, r| {
             // SAFETY: the unique borrow serializes submission against Close. Native
             // checks Enabled and copies info synchronously. All outputs are writable.
-            unsafe { sys::ams_mel_ir_scheduling_exec_abort(raw, info, out, d, c, r) }
+            unsafe {
+                sys::ams_mel_ir_scheduling_exec_abort(raw, &raw_task_info(info), out, d, c, r)
+            }
+        })
+    }
+
+    /// Submits one `IRSTStareTask` on an Enabled channel. Native code copies
+    /// the values during the call. Rust does not normalize the angles (including
+    /// signed zero), change frames or units, or impose scheduling policy.
+    ///
+    /// Submission and completion are separate. The [`ReturnRequest`] survives
+    /// closure of the channel, Session and weak views. A zero-timeout wait polls;
+    /// timeout and observer Close/Drop do not cancel admitted work. The cached
+    /// [`ReturnResult`] distinguishes a provider Return from an explicit MEL
+    /// rejection. Neither establishes physical staring, pointing accuracy, or
+    /// image acquisition. This method does not register or consume metadata.
+    ///
+    /// # Errors
+    /// Refuses Attached, Failed and Closed channels. Native validation,
+    /// admission and provider failures retain their error categories and
+    /// available diagnostics. An error can occur after dispatch, including a
+    /// failure to publish the request owner. This method never retries.
+    pub fn exec_stare(&mut self, task: &SchedulingStareTask) -> Result<ReturnRequest, Error> {
+        let raw = self.live()?;
+        submit_with("StareTask", |out, d, c, r| {
+            // SAFETY: unique live owner and writable outputs. Native checks
+            // Enabled and copies the ABI record synchronously.
+            unsafe {
+                sys::ams_mel_ir_scheduling_exec_stare(raw, &raw_stare_task(task), out, d, c, r)
+            }
         })
     }
 
@@ -217,34 +272,44 @@ impl Drop for SchedulingChannel {
     }
 }
 
-fn submit_abort_with(
-    info: &SchedulingTaskInfo,
-    submit: impl FnOnce(
-        &sys::AmsMelIrTaskInfoV1,
-        &mut *mut sys::AmsMelIrReturnRequest,
-        *mut c_char,
-        usize,
-        *mut usize,
-    ) -> i32,
-) -> Result<ReturnRequest, Error> {
-    let info = sys::AmsMelIrTaskInfoV1 {
+fn raw_task_info(info: &SchedulingTaskInfo) -> sys::AmsMelIrTaskInfoV1 {
+    sys::AmsMelIrTaskInfoV1 {
         system_time_ns: info.system_time_ns,
         request_id: info.request_id,
         action: info.action as u32,
         precedence_within_priority: info.precedence_within_priority,
         priority: info.priority,
-    };
+    }
+}
+
+fn raw_stare_task(task: &SchedulingStareTask) -> sys::AmsMelIrStareTaskV1 {
+    let parameters = task.parameters;
+    sys::AmsMelIrStareTaskV1 {
+        center_azimuth_rad: parameters.center_azimuth_rad,
+        center_elevation_rad: parameters.center_elevation_rad,
+        duration_ns: parameters.duration_ns,
+        elevation_frame: parameters.elevation_frame as u32,
+        azimuth_frame: parameters.azimuth_frame as u32,
+        command_id: task.command_id,
+        task_info: raw_task_info(&task.task_info),
+    }
+}
+
+fn submit_with(
+    operation: &str,
+    submit: impl FnOnce(&mut *mut sys::AmsMelIrReturnRequest, *mut c_char, usize, *mut usize) -> i32,
+) -> Result<ReturnRequest, Error> {
     // Guard even an unexpected handle on failure or malformed success. Drop
     // attempts cleanup once, without adopting the output as a usable request.
     let mut owner = ReturnRequest {
         raw: ptr::null_mut(),
         _not_send_sync: Rc::new(()),
     };
-    call_with_diagnostic(|d, c, r| submit(&info, &mut owner.raw, d, c, r))?;
+    call_with_diagnostic(|d, c, r| submit(&mut owner.raw, d, c, r))?;
     if owner.raw.is_null() {
-        return Err(protocol(
-            "Scheduling AbortTask succeeded without a request owner",
-        ));
+        return Err(protocol(&format!(
+            "Scheduling {operation} succeeded without a request owner"
+        )));
     }
     Ok(owner)
 }

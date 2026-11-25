@@ -18,6 +18,18 @@ const TASK: SchedulingTaskInfo = SchedulingTaskInfo {
     priority: 0x8000_0001,
 };
 
+const STARE: SchedulingStareTask = SchedulingStareTask {
+    command_id: u32::MAX,
+    parameters: SchedulingStareParameters {
+        center_azimuth_rad: -0.0,
+        center_elevation_rad: 1.25,
+        elevation_frame: CoordinateFrameReference::Inertial,
+        azimuth_frame: CoordinateFrameReference::Aircraft,
+        duration_ns: i64::MIN,
+    },
+    task_info: TASK,
+};
+
 #[test]
 fn abort_exact_fields_and_null_success() {
     for (index, (action, time, request_id, precedence, priority)) in [
@@ -43,7 +55,8 @@ fn abort_exact_fields_and_null_success() {
             priority,
         };
         let mut calls = 0;
-        let err = submit_abort_with(&info, |raw, out, d, _, r| {
+        let err = submit_with("AbortTask", |out, d, _, r| {
+            let raw = raw_task_info(&info);
             calls += 1;
             assert!(out.is_null());
             assert_eq!(raw.system_time_ns, time);
@@ -68,6 +81,95 @@ fn abort_exact_fields_and_null_success() {
     }
 }
 
+#[test]
+fn stare_exact_layout_bits_and_null_success() {
+    use CoordinateFrameReference::{Aircraft, Inertial};
+    use TaskListAction::{Abort, Immediate, Next, Normal};
+
+    if cfg!(all(target_pointer_width = "64", not(target_os = "windows"))) {
+        assert_eq!(mem::size_of::<sys::AmsMelIrStareTaskV1>(), 64);
+        assert_eq!(mem::align_of::<sys::AmsMelIrStareTaskV1>(), 8);
+        assert_eq!(mem::offset_of!(sys::AmsMelIrStareTaskV1, task_info), 40);
+    }
+    for (index, (el, az, duration, action, azimuth, elevation)) in [
+        (Inertial, Aircraft, i64::MIN, Normal, -0.0, 0.0),
+        (Aircraft, Inertial, i64::MAX, Next, 0.0, -0.0),
+        (Inertial, Inertial, -1, Immediate, -1.23456789012345, 2.75),
+        (Aircraft, Aircraft, 0, Abort, 1.23456789012345, -2.75),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let task = SchedulingStareTask {
+            command_id: u32::MAX - index as u32,
+            parameters: SchedulingStareParameters {
+                center_azimuth_rad: azimuth,
+                center_elevation_rad: elevation,
+                elevation_frame: el,
+                azimuth_frame: az,
+                duration_ns: duration,
+            },
+            task_info: SchedulingTaskInfo { action, ..TASK },
+        };
+        let mut calls = 0;
+        let error = submit_with("StareTask", |out, d, _, r| {
+            calls += 1;
+            assert!(out.is_null());
+            let raw = raw_stare_task(&task);
+            assert_eq!(raw.center_azimuth_rad.to_bits(), azimuth.to_bits());
+            assert_eq!(raw.center_elevation_rad.to_bits(), elevation.to_bits());
+            assert_eq!(raw.duration_ns, duration);
+            assert_eq!(raw.elevation_frame, [0, 1, 0, 1][index]);
+            assert_eq!(raw.azimuth_frame, [1, 0, 0, 1][index]);
+            assert_eq!(raw.command_id, task.command_id);
+            assert_eq!(raw.task_info.system_time_ns, i64::MIN);
+            assert_eq!(raw.task_info.request_id, 0xf123_4567);
+            assert_eq!(raw.task_info.action, index as u32);
+            assert_eq!(raw.task_info.precedence_within_priority, u32::MAX);
+            assert_eq!(raw.task_info.priority, 0x8000_0001);
+            // SAFETY: writable diagnostic and required-size slots.
+            unsafe {
+                *d = 0;
+                *r = 1;
+            }
+            sys::AMS_MEL_OK
+        })
+        .unwrap_err();
+        assert_eq!(calls, 1);
+        assert_eq!(error.kind(), &ErrorKind::ProtocolInconsistency);
+        assert_eq!(
+            error.diagnostic(),
+            Some("Scheduling StareTask succeeded without a request owner")
+        );
+    }
+}
+
+#[test]
+fn stare_native_validation_diagnostic() {
+    let session = Session::open(mock_provider(), "sched-stare-success", "").unwrap();
+    let mut channel = session.open_scheduling_channel(&config()).unwrap();
+    channel.enable().unwrap();
+    // A bad discriminator cannot be constructed by safe clients. Inject it
+    // into the ABI record, not into a Rust enum, to check native validation.
+    for (el, az, action) in [(2, 1, 0), (0, u32::MAX, 0), (0, 1, u32::MAX)] {
+        let mut raw = raw_stare_task(&STARE);
+        raw.elevation_frame = el;
+        raw.azimuth_frame = az;
+        raw.task_info.action = action;
+        let error = submit_with("StareTask", |out, d, c, r| {
+            assert!(out.is_null());
+            // SAFETY: live channel and a valid C record with invalid scalar
+            // values; output and diagnostic storage are valid through the call.
+            unsafe { sys::ams_mel_ir_scheduling_exec_stare(channel.raw, &raw, out, d, c, r) }
+        })
+        .unwrap_err();
+        assert_eq!(error.kind(), &ErrorKind::InvalidArgument);
+        assert_eq!(error.diagnostic(), Some("invalid Scheduling StareTask"));
+    }
+    channel.close().unwrap();
+    session.close().unwrap();
+}
+
 fn mock_provider() -> PathBuf {
     std::env::var_os("AMS_MEL_TEST_PROVIDER_DIR")
         .map(PathBuf::from)
@@ -79,7 +181,24 @@ fn mock_provider() -> PathBuf {
 
 #[test]
 fn abort_contradictory_owner_and_diagnostics() {
-    let session = Session::open(mock_provider(), "sched-abort-success", "").unwrap();
+    contradictory_owner_and_diagnostics("AbortTask", "sched-abort-success", |channel| {
+        channel.exec_abort(&TASK)
+    });
+}
+
+#[test]
+fn stare_contradictory_owner_and_diagnostics() {
+    contradictory_owner_and_diagnostics("StareTask", "sched-stare-success", |channel| {
+        channel.exec_stare(&STARE)
+    });
+}
+
+fn contradictory_owner_and_diagnostics(
+    operation: &str,
+    scenario: &str,
+    exec: impl Fn(&mut SchedulingChannel) -> Result<ReturnRequest, Error>,
+) {
+    let session = Session::open(mock_provider(), scenario, "").unwrap();
     let mut channel = session.open_scheduling_channel(&config()).unwrap();
     channel.enable().unwrap();
     for (status, bytes, size, kind) in [
@@ -126,7 +245,7 @@ fn abort_contradictory_owner_and_diagnostics() {
             ErrorKind::InvalidUtf8,
         ),
     ] {
-        let mut real = channel.exec_abort(&TASK).unwrap();
+        let mut real = exec(&mut channel).unwrap();
         assert_eq!(
             real.wait(5_000).unwrap(),
             ReturnResult::Completed {
@@ -134,7 +253,7 @@ fn abort_contradictory_owner_and_diagnostics() {
             }
         );
         let mut calls = 0;
-        let err = submit_abort_with(&TASK, |_, out, d, c, r| {
+        let err = submit_with(operation, |out, d, c, r| {
             calls += 1;
             assert!(out.is_null());
             // Transfer a real unique handle to exercise ReturnRequest Drop;
@@ -160,9 +279,9 @@ fn abort_contradictory_owner_and_diagnostics() {
 }
 
 #[test]
-fn abort_reuses_return_boundary_for_bad_pointer_and_unknown_rejection() {
-    // The existing Scheduling mock does not return BadPointer, and the native
-    // facade diagnoses unknown upstream MEL codes before they reach this ABI.
+fn shared_task_return_boundary_for_bad_pointer_and_long_utf8_rejection() {
+    // The existing Scheduling mock does not return BadPointer or non-ASCII
+    // rejection text. The facade rejects unknown MEL codes before this ABI.
     for (status, value, code, message, expected) in [
         (
             sys::AMS_MEL_OK,
@@ -171,6 +290,16 @@ fn abort_reuses_return_boundary_for_bad_pointer_and_unknown_rejection() {
             "".to_owned(),
             ReturnResult::Completed {
                 value: CommandReturn::BadPointer,
+            },
+        ),
+        (
+            sys::AMS_MEL_COMMAND_REJECTED,
+            0,
+            sys::AMS_MEL_ERROR_UNSUPPORTED,
+            "rejected: é🛰".repeat(150),
+            ReturnResult::Rejected {
+                code: MelErrorCode::Unsupported,
+                description: "rejected: é🛰".repeat(150),
             },
         ),
         (
@@ -210,7 +339,35 @@ fn abort_reuses_return_boundary_for_bad_pointer_and_unknown_rejection() {
 
 #[test]
 fn abort_is_independent_of_actual_ack_delivery() {
+    independent_ack("sched-abort-delayed", 17, TASK.request_id, 15, |channel| {
+        channel.exec_abort(&TASK)
+    });
+}
+
+#[test]
+fn stare_is_independent_of_actual_matching_ack_delivery() {
+    independent_ack(
+        "sched-stare-delayed",
+        STARE.command_id,
+        STARE.task_info.request_id,
+        16,
+        |channel| channel.exec_stare(&STARE),
+    );
+}
+
+fn independent_ack(
+    scenario: &str,
+    command_id: u32,
+    request_id: u32,
+    family: u32,
+    exec: impl FnOnce(&mut SchedulingChannel) -> Result<ReturnRequest, Error>,
+) {
     use std::ffi::{c_void, CString};
+    use std::sync::Mutex;
+
+    // The mock has one process-wide ACK callback slot for both scenarios.
+    static ACK_FIXTURE: Mutex<()> = Mutex::new(());
+    let _fixture = ACK_FIXTURE.lock().unwrap();
 
     unsafe extern "C" {
         fn dlopen(path: *const c_char, flags: i32) -> *mut c_void;
@@ -226,10 +383,10 @@ fn abort_is_independent_of_actual_ack_delivery() {
     }
 
     let provider = mock_provider();
-    let session = Session::open(&provider, "sched-abort-delayed", "").unwrap();
+    let session = Session::open(&provider, scenario, "").unwrap();
     let mut channel = session.open_scheduling_channel(&config()).unwrap();
     channel.enable().unwrap();
-    let mut request = channel.exec_abort(&TASK).unwrap();
+    let mut request = exec(&mut channel).unwrap();
     assert_eq!(request.wait(0).unwrap_err().kind(), &ErrorKind::Timeout);
     let path = CString::new(provider.as_os_str().as_encoded_bytes()).unwrap();
     let mut ack = ptr::null_mut();
@@ -248,7 +405,7 @@ fn abort_is_independent_of_actual_ack_delivery() {
         let d = ptr::null_mut();
         let r = ptr::null_mut();
         assert_eq!(
-            deliver(17, TASK.request_id, 0),
+            deliver(command_id, request_id, 0),
             0,
             "no implicit ACK registration"
         );
@@ -268,7 +425,7 @@ fn abort_is_independent_of_actual_ack_delivery() {
             sys::ams_mel_ir_scheduling_execute_task_ack_receive(ack, 0, &mut event, d, 0, r),
             sys::AMS_MEL_TIMEOUT
         );
-        assert_eq!(deliver(17, TASK.request_id, 0), 1);
+        assert_eq!(deliver(command_id, request_id, 0), 1);
         assert_eq!(request.wait(0).unwrap_err().kind(), &ErrorKind::Timeout);
         assert_eq!(
             sys::ams_mel_ir_scheduling_execute_task_ack_receive(ack, 0, &mut event, d, 0, r),
@@ -282,7 +439,7 @@ fn abort_is_independent_of_actual_ack_delivery() {
         let snapshot = snapshot.as_ref().unwrap();
         assert_eq!(
             (snapshot.command_id, snapshot.request_id),
-            (17, TASK.request_id)
+            (command_id, request_id)
         );
         assert_eq!(
             sys::ams_mel_ir_scheduling_execute_task_ack_event_close(&mut event, d, 0, r),
@@ -292,7 +449,7 @@ fn abort_is_independent_of_actual_ack_delivery() {
             sys::ams_mel_ir_scheduling_execute_task_ack_close(&mut ack, d, 0, r),
             sys::AMS_MEL_OK
         );
-        assert_eq!(release(15, 1), 1);
+        assert_eq!(release(family, 1), 1);
     }
     assert_eq!(
         request.wait(5_000).unwrap(),
