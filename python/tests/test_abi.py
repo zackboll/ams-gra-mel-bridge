@@ -156,6 +156,28 @@ class AbiTests(unittest.TestCase):
             self.assertFalse(hasattr(ams_mel, name))
         self.assertFalse(hasattr(ams_mel, "IrChannelCommsMetadataHandle"))
 
+    def test_private_track_metadata_signatures(self) -> None:
+        pointer = ctypes.POINTER
+        owner, event = _native.IrTrackMetadataHandle, _native.IrTrackMetadataEventHandle
+        signatures = {
+            "open": [_native.IrTrackHandle, ctypes.c_size_t, pointer(owner)],
+            "receive": [owner, ctypes.c_uint32, pointer(event)],
+            "get_counters": [owner, pointer(_native.IrC2MetadataCountersV1)],
+            "event_view_v3": [event, pointer(pointer(_native.IrTrackMetadataEventV3))],
+            "event_close": [pointer(event)],
+            "close": [pointer(owner)],
+        }
+        import ams_mel
+        for suffix, arguments in signatures.items():
+            name = "ams_mel_ir_track_metadata_" + suffix
+            function = getattr(_native, name)
+            self.assertEqual(function.argtypes, arguments + [
+                _native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+            self.assertIs(function.restype, ctypes.c_int32)
+            self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertFalse(hasattr(ams_mel, name))
+        self.assertFalse(hasattr(ams_mel, "IrTrackMetadataEventV3"))
+
     def test_private_image_control_abi(self) -> None:
         """Identity-only raw mirror; no public Python attachment API."""
         config = _native.IrImageControlConfigV1

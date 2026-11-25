@@ -1,4 +1,4 @@
-"""Private Track ownership; no Track-specific callbacks or commands."""
+"""Private Track ownership; no Track-specific command submission."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from . import _native
 from ._common import ChannelView, _open_channel_view
 from ._errors import ErrorKind, MelError, _call_with_diagnostic, _local_error
 from ._ffi import _channel_capabilities
+from ._track_metadata import TrackMetadataStream, _open_metadata
 from ._types import ChannelCapability
 
 
@@ -33,6 +34,7 @@ class TrackChannel:
         result._close_function = _native.ams_mel_ir_track_close
         result._owner = owner
         result._close_state = "opening"
+        result._metadata_attempted = False
         return result
 
     def _publish_open(self) -> None:
@@ -79,6 +81,14 @@ class TrackChannel:
         """Return a weak common view that keeps neither this owner nor Session alive."""
         self._require_open()
         return _open_channel_view(_native.ams_mel_ir_channel_from_track, self._owner)
+
+    def open_metadata(self, queue_capacity: int = 16) -> TrackMetadataStream:
+        """Explicitly register one inbound metadata FIFO while Attached or Enabled.
+
+        The native attempt is one-shot, even on failure. The stream is independent
+        of this Python owner and does not submit responses to inbound requests.
+        """
+        return _open_metadata(self, queue_capacity)
 
     def close(self) -> None:
         """Close the owner, or explicitly retry a documented retained detach failure.
