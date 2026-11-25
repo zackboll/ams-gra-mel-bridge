@@ -2,6 +2,10 @@ name: Ada specification and body qualification (non-deploying)
 
 on:
   workflow_dispatch:
+  # GitHub cannot dispatch a new workflow until its definition is on the
+  # default branch. This exact qualification ref is the only push opt-in.
+  push:
+    branches: [docs/mel-gnatdoc-body-001-qualification]
 
 permissions:
   contents: read

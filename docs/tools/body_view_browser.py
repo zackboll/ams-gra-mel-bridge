@@ -46,9 +46,12 @@ def activate(locator):
     locator.press('Enter')
 
 
-def arrive(page, base, target):
+def arrive(page, base, target, *, restored_scroll=False):
     expect(page).to_have_url(base + target)
-    expect(page.locator('#' + target.rsplit('#', 1)[1])).to_be_in_viewport(ratio=0.01)
+    line = page.locator('#' + target.rsplit('#', 1)[1])
+    expect(line).to_have_count(1)
+    if not restored_scroll:
+        expect(line).to_be_in_viewport(ratio=0.01)
 
 
 def selected_source(locator):
@@ -164,7 +167,7 @@ def run(root, site, records, output):
                         other = Path(record['specification'] if reverse else record['body']).name + '.html'
                         expected = [f'{other}#L{paired[0][remote]}']
                         for item in sorted(paired[1:], key=lambda d: d[local]):
-                            expected.extend([f'#{"L"}{item[local]}', f'{other}#L{item[remote]}'])
+                            expected.extend([f'#L{item[local]}', f'{other}#L{item[remote]}'])
                     require(observed == expected, 'browser correspondence inventory differs: ' + path)
                     if reverse:
                         nav = page.locator('nav > p > a')
@@ -223,9 +226,11 @@ def run(root, site, records, output):
                         activate(row.locator('a').nth(1))
                         arrive(page, base, spec_target)
                         page.go_back()
-                        arrive(page, base, body_target)
+                        # Chromium restores the scroll offset where the reverse
+                        # link was used, not the original deep-link offset.
+                        arrive(page, base, body_target, restored_scroll=True)
                         page.go_forward()
-                        arrive(page, base, spec_target)
+                        arrive(page, base, spec_target, restored_scroll=True)
                         output_data['display'].append(dict(javascript=javascript, width=width, scheme=scheme))
                         ctx.close()
             chromium.close()

@@ -108,8 +108,10 @@ evidence to simulate an allowlist.
        --output .doc-tools/body-diagnostics'
    ```
 
-The `documentation-body.yml` manual workflow runs the same entry point. It
-has read-only permissions, checks the exact event commit, and uploads only
+The `documentation-body.yml` workflow runs the same entry point on manual
+dispatch or a push to the exact dedicated qualification branch (so it can
+run before GitHub permits dispatch from a default-branch definition). It
+has no PR or main-push trigger, uses read-only permissions, checks the exact event commit, and uploads only
 sanitized JSON: file fingerprints, counts, source paths/line numbers, mutation
 results and browser observations. It has no deployment path. A run does not
 pass unless it writes `result.json` with `status: passed` after both builds and

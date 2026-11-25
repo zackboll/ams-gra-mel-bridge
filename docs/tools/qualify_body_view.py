@@ -23,6 +23,8 @@ import source_epoch as epoch
 import source_view_audit as spec_view
 from source_view_parity import compare as compare_toggle
 
+QUALIFICATION_REF = 'refs/heads/docs/mel-gnatdoc-body-001-qualification'
+
 
 def render(config, pristine, output):
     from ada_gnatdoc_enhancer.pipeline import enhance, verify
@@ -103,8 +105,9 @@ def qualify(root, prefix, browser_python, output):
     p.require(not any(q.is_symlink() for q in (output, *output.parents)), 'symlink diagnostics path')
     p.require(not output.exists(), 'diagnostics output must be fresh')
     context = docs_ci.identity(root)
-    p.require(context['mode'] == 'local-not-deployable' or context['event'] == 'workflow_dispatch',
-              'hosted body qualification requires explicit workflow_dispatch')
+    p.require(context['mode'] == 'local-not-deployable' or context['event'] == 'workflow_dispatch' or
+              (context['event'] == 'push' and context['ref'] == QUALIFICATION_REF),
+              'hosted body qualification requires manual dispatch or the exact qualification ref')
     p.tool()
     prefix = epoch.toolchain(prefix)
     output.mkdir(parents=True)
