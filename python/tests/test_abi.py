@@ -1946,7 +1946,7 @@ class AbiTests(unittest.TestCase):
             ),
         )
         self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 362)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 356)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 362)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1954,7 +1954,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 356)
+        self.assertEqual(len(exported), 362)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
