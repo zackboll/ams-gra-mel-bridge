@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ctypes
-from typing import TYPE_CHECKING
 
 from . import _native
 from ._common import _NativeOwner
@@ -13,11 +12,7 @@ from ._track_convert import _event_from_raw
 from ._track_types import TrackMetadataCounters, TrackMetadataEvent
 from ._validation import _validate_size_t, _validate_timeout
 
-if TYPE_CHECKING:
-    from ._track import TrackChannel
-
-
-def _open_metadata(parent: TrackChannel, queue_capacity: int) -> TrackMetadataStream:
+def _open_metadata(parent, queue_capacity: int) -> TrackMetadataStream:
     parent._require_open()
     _validate_size_t(queue_capacity, "queue_capacity")
     if queue_capacity == 0:

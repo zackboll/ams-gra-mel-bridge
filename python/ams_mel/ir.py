@@ -2,7 +2,7 @@
 
 Session opens the IR Control factory and provides discovery and typed channel
 factories. This namespace also includes the inherited IR ChannelView services,
-Image/StackedImage, C2, Health, Instrumentation, navigation and metadata APIs.
+Image/StackedImage, C2, Health, Instrumentation, Track, navigation and metadata APIs.
 Shared values such as UciId, ComponentLocation and MFAState, plus MelError and
 ErrorKind, are available from ams_mel.common.
 
