@@ -14,6 +14,7 @@ package body AMS_MEL_IR_Scheduling_Performance_Tests is
    use type Interfaces.Unsigned_64;
    use type Interfaces.C.int;
    use type M.Metadata_Counters;
+   use type System.Address;
 
    Config : constant Sch.Scheduling_Config :=
      Sch.Create_Config
@@ -23,6 +24,10 @@ package body AMS_MEL_IR_Scheduling_Performance_Tests is
 
    function Dlsym (Handle : System.Address; Name : Interfaces.C.char_array) return System.Address
    with Import, Convention => C, External_Name => "dlsym";
+   function Dlopen (Path : Interfaces.C.char_array; Flags : Interfaces.C.int) return System.Address
+   with Import, Convention => C, External_Name => "dlopen";
+   function Dlclose (Handle : System.Address) return Interfaces.C.int
+   with Import, Convention => C, External_Name => "dlclose";
    type Probe_Function is
      access function
        (Stream : System.Address; Operation : Interfaces.C.unsigned) return Interfaces.C.int
@@ -137,6 +142,15 @@ package body AMS_MEL_IR_Scheduling_Performance_Tests is
       Reports (0) := M.Receive_Scan_Performance (Stream);
       Sch.Close (Channel);
       AMS.MEL.Close (Parent);
+      declare
+         --  Linux RTLD_NOW | RTLD_NOLOAD: observe, do not load the mock again.
+         Pin : constant System.Address := Dlopen (Interfaces.C.To_C (Provider_Path), 6);
+      begin
+         if Pin /= System.Null_Address then
+            Require (Dlclose (Pin) = 0, "release loader probe");
+            raise Program_Error with "provider unexpectedly retained after Scheduling cleanup";
+         end if;
+      end;
       for J in 1 .. Reports'Last loop
          Reports (J) := M.Receive_Scan_Performance (Stream);
       end loop;
