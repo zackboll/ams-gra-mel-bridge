@@ -159,7 +159,10 @@ pub use ir_mode::{
 pub use ir_nuc::{
     NucCounters, NucOpenError, NucPixelValue, NucPointType, NucStream, NucTempData, NucTempPoint,
 };
-pub use ir_scheduling::{SchedulingChannel, SchedulingConfig, SchedulingTaskInfo, TaskListAction};
+pub use ir_scheduling::{
+    SchedulingChannel, SchedulingConfig, SchedulingStareParameters, SchedulingStareTask,
+    SchedulingTaskInfo, TaskListAction,
+};
 pub use ir_stacked::{StackedChannel, StackedConfig};
 
 const DIAGNOSTIC_CAPACITY: usize = 4096;
