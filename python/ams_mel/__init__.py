@@ -20,7 +20,8 @@ CommsTest reports. Request timeout and close do not cancel provider work.
 
 Common Channel: :meth:`ControlChannel.channel_view`,
 :meth:`ImageStream.channel_view`, :meth:`InstrumentationChannel.channel_view`,
-:meth:`HealthStatusChannel.channel_view`, and :meth:`StackedChannel.channel_view`
+:meth:`HealthStatusChannel.channel_view`, :meth:`StackedChannel.channel_view`,
+and :meth:`TrackChannel.channel_view`
 return a weak :class:`ChannelView` offering
 the inherited KeepAlive (the existing :class:`ReturnRequest`), CommsTest
 (:class:`CommsRequest`), and a complete Python-owned
@@ -235,6 +236,8 @@ from .ir import (
     HealthStatusChannel,
     StackedConfig,
     StackedChannel,
+    TrackConfig,
+    TrackChannel,
     ImageBand,
     ImageConfig,
     ImageControlConfig,
@@ -443,6 +446,8 @@ for _public_symbol in (
     ImageBand,
     StackedConfig,
     StackedChannel,
+    TrackConfig,
+    TrackChannel,
     ImageConfig,
     ImageControlConfig,
     ImageFlip,
@@ -650,6 +655,8 @@ __all__ = [
     "HealthStatusChannel",
     "StackedConfig",
     "StackedChannel",
+    "TrackConfig",
+    "TrackChannel",
     "ImageBand",
     "ImageConfig",
     "ImageControlConfig",

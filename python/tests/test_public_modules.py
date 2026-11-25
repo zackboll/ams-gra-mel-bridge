@@ -70,6 +70,24 @@ class PublicModuleTests(unittest.TestCase):
         self.assertIs(type(config.channel_id), ams_mel.UciId)
         self.assertIs(type(config.sensor_location), ams_mel.ComponentLocation)
 
+    def test_track_identity_and_canonical_shared_values(self):
+        from ams_mel import _track, _types
+
+        for name, value in (("TrackConfig", _types.TrackConfig),
+                            ("TrackChannel", _track.TrackChannel)):
+            self.assertIn(name, ir.__all__)
+            self.assertIs(getattr(ir, name), value)
+            self.assertIs(getattr(ams_mel, name), value)
+            self.assertIs(pickle.loads(pickle.dumps(value)), value)
+        config = ir.TrackConfig.new(common.UciId(bytes(16), "Track"),
+                                    common.UciId(bytes(16), "Platform"),
+                                    common.ComponentLocation(0.0, 0.0, 0.0, "", ""))
+        self.assertIs(type(config.channel_id), common.UciId)
+        self.assertIs(type(config.sensor_location), common.ComponentLocation)
+        self.assertEqual(pickle.loads(pickle.dumps(config)), config)
+        self.assertIs(_track.ChannelCapability, ir.ChannelCapability)
+        self.assertIs(_track.ChannelView, ir.ChannelView)
+
     def test_calibration_status_request_and_receiver_are_separate(self):
         self.assertTrue(callable(ir.ControlChannel.open_calibration_status))
         self.assertTrue(callable(ir.ControlChannel.open_calibration_configuration))
