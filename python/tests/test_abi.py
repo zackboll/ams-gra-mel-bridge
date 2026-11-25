@@ -1945,7 +1945,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 356)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 362)
         self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 356)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
