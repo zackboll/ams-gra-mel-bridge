@@ -259,6 +259,10 @@ typedef struct ams_mel_ir_scheduling_task_events_metadata
     ams_mel_ir_scheduling_task_events_metadata;
 typedef struct ams_mel_ir_scheduling_task_events_event
     ams_mel_ir_scheduling_task_events_event;
+typedef struct ams_mel_ir_scheduling_scan_performance_metadata
+    ams_mel_ir_scheduling_scan_performance_metadata;
+typedef struct ams_mel_ir_scheduling_scan_performance_event
+    ams_mel_ir_scheduling_scan_performance_event;
 /* Owns public consumption of the retained IRSTTrackReport callback queue. The
  * callback-accessible state itself belongs to the Track channel, not to this
  * wrapper, because upstream provides no unregister operation. */
@@ -3936,6 +3940,51 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_task_events_event_view(
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_task_events_event_close(
     ams_mel_ir_scheduling_task_events_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+typedef struct ams_mel_ir_scan_performance_report_v1 {
+    ams_mel_ir_scan_param_v1 commanded;
+    ams_mel_ir_scan_param_v1 achieved;
+} ams_mel_ir_scan_performance_report_v1;
+
+/* Explicitly opt in to the optional ScanPerformanceReport callback while Attached or
+ * Enabled. Serialize open against Scheduling owner operations. Registration
+ * runs unlocked and may deliver synchronously. Arguments rejected locally
+ * do not consume the attempt. Once the provider is called, there is no retry or unregister. A known Return
+ * (including NotSupported) is written to out_registration when provided;
+ * unknown values and exceptions leave it unchanged. Refusal does not fail
+ * the Scheduling owner. out_metadata must be non-NULL and initially NULL.
+ * The bounded queue drops valid incoming events when full; null, unknown
+ * nested discriminators and allocation failures are counted as malformed. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_scan_performance_open(
+    ams_mel_ir_scheduling *scheduling, size_t queue_capacity,
+    ams_mel_ir_scheduling_scan_performance_metadata **out_metadata,
+    ams_mel_ir_return_t *out_registration, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Dequeue in successful-enqueue order. Zero timeout polls. Scheduling Close
+ * wakes receivers; queued events drain before a terminal stopped/failure
+ * status. out_event must be non-NULL and initially NULL. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_scan_performance_receive(
+    ams_mel_ir_scheduling_scan_performance_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_scheduling_scan_performance_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_scan_performance_get_counters(
+    const ams_mel_ir_scheduling_scan_performance_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Serialize against operations on this stream. Discard queued events and
+ * deactivate consumption, not registration. Does not cancel requests. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_scan_performance_close(
+    ams_mel_ir_scheduling_scan_performance_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* The immutable view borrows only from the event owner and is valid until
+ * event_close, independent of the stream and all provider owners. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_scan_performance_event_view(
+    const ams_mel_ir_scheduling_scan_performance_event *event,
+    const ams_mel_ir_scan_performance_report_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_scan_performance_event_close(
+    ams_mel_ir_scheduling_scan_performance_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Registers the @RequiredIfTrack IRSTTrackReport callback and opens bounded

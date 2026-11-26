@@ -3224,12 +3224,65 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::SchedulingChannel::registerMetadataCallback(std::function<void(Channel&,const ScanPerformanceReport*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_scan_performance.cpp",
+          "symbol": "ams_mel_ir_scheduling_scan_performance_open"
+        },
+        {
+          "path": "native/src/ir_scheduling_scan_performance.cpp",
+          "symbol": "ams_mel_ir_scheduling_scan_performance_receive"
+        },
+        {
+          "path": "native/src/ir_scheduling_scan_performance.cpp",
+          "symbol": "ams_mel_ir_scheduling_scan_performance_get_counters"
+        },
+        {
+          "path": "native/src/ir_scheduling_scan_performance.cpp",
+          "symbol": "ams_mel_ir_scheduling_scan_performance_close"
+        },
+        {
+          "path": "native/src/ir_scheduling_scan_performance.cpp",
+          "symbol": "ams_mel_ir_scheduling_scan_performance_event_view"
+        },
+        {
+          "path": "native/src/ir_scheduling_scan_performance.cpp",
+          "symbol": "ams_mel_ir_scheduling_scan_performance_event_close"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Open_Scan_Performance"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Receive_Scan_Performance"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Scan_Performance_Counters"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Close"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_scan_performance.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_performance_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-030: independent optional one-shot opt-in while Attached or Enabled; bounded drop-incoming queue of complete commanded and achieved ScanParam values.",
+      "limitations": [
+        "Mock-provider qualification only. No unregister, physical performance validation or command-future correlation."
+      ],
       "representation": []
     },
     {
@@ -13208,22 +13261,53 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::ScanPerformanceReport",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_scan_performance.cpp",
+          "symbol": "ams_mel_ir_scheduling_scan_performance_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Scan_Performance_Report"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_scan_performance.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_performance_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Both published getters copied as independent complete C2.Scan_Parameters values, using the existing ScanParam, ScanType, CoordFrameRef and DegradationMethod representations without duplicate coverage credit.",
+      "limitations": [
+        "Malformed nested discriminators reject the whole report. No matching identifiers or other physical or semantic checks."
+      ],
       "representation": [
         {
           "upstream": "getCommanded",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Scan_Performance_Report"
+            }
+          ]
         },
         {
           "upstream": "getAchieved",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Scan_Performance_Report"
+            }
+          ]
         }
       ]
     },
@@ -13379,7 +13463,7 @@
       "tests": [],
       "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial. IRMEL-ADA-022 adds actual exec(AbortTask), independent of both metadata callbacks. IRMEL-ADA-023 adds actual exec(IRSTStareTask) with complete owned parameters and the existing TaskInfo; metadata remains independent. IRMEL-ADA-024 adds actual exec(IRSTScanTask) reusing complete C2 ScanParam and TaskInfo; metadata remains independent. IRMEL-ADA-025 adds actual exec(IRSTTrackTask), preserving all 255 stored targets, signed IDs/duration and independent binary64 location/rate values; metadata remains independent. IRMEL-ADA-026 adds send(PrioritizedTrackListCmd) with a distinct typed receipt and no metadata correlation.",
       "limitations": [
-        "IRMEL-ADA-027 through -029 add independent SchedCreatedRep, UpdateTrackListResponse and optional TaskEvents reception with complete owned values. The ScanPerformanceReport registration remains missing. No physical execution or metadata delivery is inferred from a command future.",
+        "IRMEL-ADA-027 through -030 complete all 11 Scheduling-specific operations and add independent owned reception of SchedCreatedRep, UpdateTrackListResponse, TaskEvents and ScanPerformanceReport. No physical execution or metadata delivery is inferred from a command future.",
         "Disable is performed only inside Close; there is no standalone Disable.",
         "Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.",
         "Positive evidence is mock-provider only; no real provider or hardware tasking ran."
@@ -16383,7 +16467,6 @@
   "priorities": [
     "C2 EraseCommand and typed EraseCommandType result; no speculative commands.",
     "Independent C2 SystemTrackDataResponse send; reuse value conversion, not Track request accounting.",
-    "Remaining Scheduling ScanPerformanceReport registration as a separate vertical slice.",
     "LOS3D dependency closure, StackedImage reception and image-format/buffer extensions as separately qualified slices."
   ],
   "qualifications": [
@@ -16416,6 +16499,7 @@
     "IRMEL-ADA-026: complete ordered PrioritizedTrackListCmd and TrackData conversion; typed cached TrackListResponse or independent MEL ErrorOr. Unique safe Ada operations 61 -> 62; four Scheduling operations remain missing. Mock-provider only; see docs/irmel-ada-026-prioritized-track-list.md.",
     "IRMEL-ADA-027: SchedCreatedRep reception and both complete nested payload types gain safe Ada coverage. Unique safe Ada operations 62 -> 63; three Scheduling-specific operations remain missing.",
     "IRMEL-ADA-028: only UpdateTrackListResponse registration and the two-getter type gain safe Ada coverage; the TrackListResponse enum and prioritized submission retain existing credit. Unique safe Ada operations 63 -> 64; two Scheduling-specific operations remain missing; exports 344 -> 350 (AMS_MEL_0.1). See docs/irmel-ada-028-update-track-list-response.md.",
-    "IRMEL-ADA-029: only TaskEvents registration, TaskEvents and EventType gain safe Ada coverage. Unique safe Ada operations 64 -> 65; ScanPerformanceReport remains the only missing Scheduling-specific operation. Production exports 350 -> 356 (AMS_MEL_0.1). See docs/irmel-ada-029-task-events-metadata.md."
+    "IRMEL-ADA-029: only TaskEvents registration, TaskEvents and EventType gain safe Ada coverage. Unique safe Ada operations 64 -> 65; ScanPerformanceReport remains the only missing Scheduling-specific operation. Production exports 350 -> 356 (AMS_MEL_0.1). See docs/irmel-ada-029-task-events-metadata.md.",
+    "IRMEL-ADA-030: ScanPerformanceReport registration and its two-getter payload gain safe Ada coverage; all nested types retain existing credit. Unique safe Ada operations 65 -> 66; Scheduling-specific operations 10/11 -> 11/11. SchedulingChannel remains partial due to inherited gaps. Production exports 356 -> 362 (AMS_MEL_0.1). See docs/irmel-ada-030-scan-performance-metadata.md."
   ]
 }

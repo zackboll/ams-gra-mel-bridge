@@ -303,6 +303,19 @@ begin
    AMS_MEL_IR_Scheduling_Created_Tests.Run (Provider_Path);
    AMS_MEL_IR_Scheduling_Update_Tests.Run (Provider_Path);
    AMS_MEL_IR_Scheduling_Events_Tests.Run (Provider_Path);
+   --  Several earlier tests deliberately retain an uncertain provider graph.
+   --  Check this receiver's unload in a fresh process with no prior owners.
+   declare
+      Arguments : GNAT.OS_Lib.Argument_List := [new String'(Provider_Path)];
+      Code      : constant Integer :=
+        GNAT.OS_Lib.Spawn
+          (Workspace_Root & "/ada/tests/bin/ams_mel_ir_scheduling_performance_focused", Arguments);
+   begin
+      GNAT.OS_Lib.Free (Arguments (1));
+      if Code /= 0 then
+         raise Program_Error with "isolated Scheduling ScanPerformanceReport suite failed";
+      end if;
+   end;
    AMS_MEL_IR_Channel_Tests.Run (Provider_Path);
    AMS_MEL_RF_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    AMS_MEL_RF_C2_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
