@@ -88,6 +88,30 @@ class PublicModuleTests(unittest.TestCase):
         self.assertIs(_track.ChannelCapability, ir.ChannelCapability)
         self.assertIs(_track.ChannelView, ir.ChannelView)
 
+    def test_track_metadata_exports(self):
+        from ams_mel import _los_quaternion, _navigation_types, _optical_distortion_map
+        from ams_mel import _track_metadata, _track_types
+
+        for name in (
+            "TrackMetadataStream", "TrackMetadataCounters", "TrackMetadataEvent", "TrackMetadataKind",
+            "IRSTTrackReport", "IRSTTrackMode", "IRSTTrackState", "RequestSystemTrackData",
+            "Directional", "Uncertainty", "SensorInertialState", "HotRegionType", "HotRegion",
+            "CandidateObjectHeader", "CandidateObject", "CandidateObjectMessage",
+            "CandidateObjectPreProc", "CandidateObjectPreProcMessage",
+        ):
+            with self.subTest(name=name):
+                module = _track_metadata if name == "TrackMetadataStream" else _track_types
+                value = getattr(module, name)
+                self.assertIn(name, ir.__all__)
+                self.assertIn(name, ams_mel.__all__)
+                self.assertIs(getattr(ir, name), value)
+                self.assertIs(getattr(ams_mel, name), value)
+                self.assertEqual(value.__module__, "ams_mel")
+                self.assertIs(pickle.loads(pickle.dumps(value)), value)
+        self.assertIs(_track_types.NorthEastDown, _navigation_types.NorthEastDown)
+        self.assertIs(_track_types.Quaternion, _los_quaternion.Quaternion)
+        self.assertIs(_track_types.RowCol, _optical_distortion_map.RowCol)
+
     def test_calibration_status_request_and_receiver_are_separate(self):
         self.assertTrue(callable(ir.ControlChannel.open_calibration_status))
         self.assertTrue(callable(ir.ControlChannel.open_calibration_configuration))

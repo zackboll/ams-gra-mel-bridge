@@ -2,7 +2,7 @@
 
 Session opens the IR Control factory and provides discovery and typed channel
 factories. This namespace also includes the inherited IR ChannelView services,
-Image/StackedImage, C2, Health, Instrumentation, navigation and metadata APIs.
+Image/StackedImage, C2, Health, Instrumentation, Track, navigation and metadata APIs.
 Shared values such as UciId, ComponentLocation and MFAState, plus MelError and
 ErrorKind, are available from ams_mel.common.
 
@@ -224,6 +224,26 @@ from ._stacked import (
     StackedChannel,
 )
 from ._track import TrackChannel
+from ._track_metadata import TrackMetadataStream
+from ._track_types import (
+    CandidateObject,
+    CandidateObjectHeader,
+    CandidateObjectMessage,
+    CandidateObjectPreProc,
+    CandidateObjectPreProcMessage,
+    Directional,
+    HotRegion,
+    HotRegionType,
+    IRSTTrackMode,
+    IRSTTrackReport,
+    IRSTTrackState,
+    RequestSystemTrackData,
+    SensorInertialState,
+    TrackMetadataCounters,
+    TrackMetadataEvent,
+    TrackMetadataKind,
+    Uncertainty,
+)
 
 from ._health_types import (
     About,
@@ -450,6 +470,24 @@ __all__ = [
     "StackedChannel",
     "TrackConfig",
     "TrackChannel",
+    "TrackMetadataStream",
+    "TrackMetadataCounters",
+    "TrackMetadataEvent",
+    "TrackMetadataKind",
+    "IRSTTrackReport",
+    "IRSTTrackState",
+    "IRSTTrackMode",
+    "RequestSystemTrackData",
+    "Directional",
+    "Uncertainty",
+    "SensorInertialState",
+    "HotRegion",
+    "HotRegionType",
+    "CandidateObjectHeader",
+    "CandidateObject",
+    "CandidateObjectMessage",
+    "CandidateObjectPreProc",
+    "CandidateObjectPreProcMessage",
     "ImageBand",
     "ImageConfig",
     "ImageControlConfig",

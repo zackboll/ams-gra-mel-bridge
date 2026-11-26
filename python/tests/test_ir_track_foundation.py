@@ -77,7 +77,7 @@ class TrackConfigTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             m.TrackChannel()
         self.assertEqual({name for name in dir(m.TrackChannel) if not name.startswith("_")},
-                         {"is_open", "enable", "capabilities", "channel_view", "close"})
+                         {"is_open", "enable", "capabilities", "channel_view", "open_metadata", "close"})
 
     def test_invalid_construction_and_mutation_never_reach_open(self):
         cases = [(None, name, object()) for name in ("channel_id", "platform_id", "sensor_location")]
