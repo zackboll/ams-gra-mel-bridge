@@ -1,0 +1,53 @@
+name: Ada specification and body qualification (non-deploying)
+
+on:
+  workflow_dispatch:
+  # GitHub cannot dispatch a new workflow until its definition is on the
+  # default branch. This exact qualification ref is the only push opt-in.
+  push:
+    branches: [docs/mel-gnatdoc-body-001-qualification]
+
+permissions:
+  contents: read
+
+env:
+  DOC_SOURCE_SHA: ${{ github.sha }}
+  ALIRE_SETTINGS_DIR: ${{ github.workspace }}/.doc-tools/settings
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.DOC_SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install official pinned documentation tools
+        run: sh docs/tools/install_docs_toolchain.sh
+      - name: Install pinned Chromium test tools
+        run: |
+          python3 -m venv .doc-tools/browser
+          .doc-tools/browser/bin/pip install playwright==1.64.0
+          .doc-tools/browser/bin/playwright install --with-deps chromium
+      - name: Reconstruct and independently qualify all three modes twice
+        run: |
+          alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
+            cd ../..
+            .doc-tools/enhancer/bin/python -W error docs/tools/qualify_body_view.py \
+              --gnatdoc-prefix .doc-tools/gnatdoc-26.0.0 \
+              --browser-python .doc-tools/browser/bin/python \
+              --output "$RUNNER_TEMP/body-diagnostics"'
+      - name: Retain sanitized metrics and results only
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: body-qualification-${{ env.DOC_SOURCE_SHA }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/body-diagnostics/identity.json
+            ${{ runner.temp }}/body-diagnostics/qualification.json
+            ${{ runner.temp }}/body-diagnostics/schema1-browser.json
+            ${{ runner.temp }}/body-diagnostics/schema2-browser.json
+            ${{ runner.temp }}/body-diagnostics/result.json
+          if-no-files-found: warn
