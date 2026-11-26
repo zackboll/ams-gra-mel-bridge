@@ -654,6 +654,8 @@ scenarios! {
 
 #[path = "ir_scheduling/abort.rs"]
 mod abort;
+#[path = "ir_scheduling/scan.rs"]
+mod scan;
 #[path = "ir_scheduling/stare.rs"]
 mod stare;
 
@@ -672,6 +674,7 @@ fn scenario_child() {
             pending(&scenario, &log)
         }
         scenario if scenario.starts_with("abort-") => abort::run(scenario, &log),
+        scenario if scenario.starts_with("scan-") => scan::run(scenario, &log),
         scenario if scenario.starts_with("stare-") => stare::run(scenario, &log),
         _ => enable_or_close_failure(&scenario, &log),
     }
